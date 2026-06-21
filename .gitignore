@@ -1,0 +1,31 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# SCons build artifacts
+.sconsign.dblite
+.sconf_temp
+config.log
+*.obj
+*.o
+*.lib
+*.exp
+*.ilk
+*.pdb
+*.idb
+*.dll
+*.exe
+~*.dll
+
+# Build output directories
+bin/
+build/
+
+# Editor temp files
+*.tmp
+
+.vscode/
+.vs/
+*.suo
+*.user
+

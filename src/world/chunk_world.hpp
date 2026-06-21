@@ -1,0 +1,85 @@
+#ifndef FUK_MINECRAFT_CHUNK_WORLD_HPP
+#define FUK_MINECRAFT_CHUNK_WORLD_HPP
+#include "core/chunk_map.hpp"
+#include "core/terrain_params.hpp"
+#include "core/chunk_types.hpp"
+#include "world/chunk_scheduler.hpp"
+#include "core/thread_pool.hpp"
+#include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
+#include <godot_cpp/variant/aabb.hpp>
+#include <godot_cpp/variant/string.hpp>
+#include <cmath>
+#include <deque>
+#include <unordered_set>
+#include <unordered_map>
+#include <mutex>
+#include <atomic>
+#include <chrono>
+
+namespace VoxelEngine {
+
+class MeshManager;
+class LightPropagator;
+
+class ChunkWorld {
+public:
+    void set_owner(godot::Node* node) { owner = node; }
+    godot::Node* get_owner() const { return owner; }
+    void set_mesh_manager(MeshManager* mm) { mesh_manager = mm; }
+    void set_light_propagator(LightPropagator* lp) { light_propagator = lp; }
+    void set_thread_pool(ThreadPool* tp) { thread_pool = tp; }
+
+    bool generate_chunk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch, const TerrainParams& params);
+    int32_t process_completed_chunks(uint64_t epoch, double budget_ms, int32_t max_installs, int32_t max_lighting, int32_t max_dirties, int32_t player_cx, int32_t player_cy, int32_t player_cz);
+    void save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);
+    void save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, ChunkData* chunk_data);
+    void mark_chunk_dirty(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);
+    void flush_dirty_chunks();
+    bool is_chunk_dirty(uint64_t key) const;
+    bool load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, ChunkData& out_chunk_data);
+    void free_loaded_chunks();
+    bool try_unload_chunk(uint64_t key, MeshManager* mesh_mgr);
+    void clear();
+    void queue_pending_placement(int32_t world_x, int32_t world_y, int32_t world_z, int block_id);
+    void apply_pending_placements(uint64_t key, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, ChunkRenderData& render_data);
+
+    ChunkMap& get_chunk_map() { return chunk_map; }
+    ChunkMap* get_chunk_map_ptr() { return &chunk_map; }
+    ChunkScheduler& get_scheduler() { return chunk_scheduler; }
+
+    uint64_t get_epoch() const { return async_epoch.load(std::memory_order_acquire); }
+    std::atomic<uint64_t>* get_epoch_ptr() { return &async_epoch; }
+    uint64_t increment_epoch() { return async_epoch.fetch_add(1, std::memory_order_acq_rel); }
+
+    ChunkData* get_chunk_data(int32_t cx, int32_t cy, int32_t cz) { return chunk_map.get_chunk_data(cx, cy, cz); }
+    ChunkRenderData* get_chunk_render_data(int32_t cx, int32_t cy, int32_t cz) { return chunk_map.get_chunk_render_data(cx, cy, cz); }
+    bool has_loaded_chunk(int32_t cx, int32_t cy, int32_t cz) const { return chunk_map.has_loaded_chunk(cx, cy, cz); }
+    bool is_block_solid(int32_t world_x, int32_t world_y, int32_t world_z) { return chunk_map.is_block_solid(world_x, world_y, world_z); }
+    int get_block_world(int32_t wx, int32_t wy, int32_t wz) { return chunk_map.get_block_world(wx, wy, wz); }
+
+private:
+    godot::Node* owner = nullptr;
+    MeshManager* mesh_manager = nullptr;
+    LightPropagator* light_propagator = nullptr;
+    ThreadPool* thread_pool = nullptr;
+    ChunkMap chunk_map;
+    ChunkScheduler chunk_scheduler;
+    std::deque<CompletedChunk> pending_chunk_installs;
+    std::deque<PendingChunkStage> pending_chunk_lighting;
+    std::deque<PendingChunkStage> pending_chunk_dirty_mesh;
+    std::unordered_set<uint64_t> light_propagated_chunks;
+    std::unordered_map<uint64_t, std::vector<PendingBlockPlacement>> pending_block_placements;
+    std::mutex pending_placement_mutex;
+    std::mutex file_access_mutex;
+    std::atomic<uint64_t> async_epoch{0};
+
+    std::unordered_set<uint64_t> dirty_chunks;
+    mutable std::mutex dirty_chunks_mutex;
+};
+
+} // namespace VoxelEngine
+
+#endif // FUK_MINECRAFT_CHUNK_WORLD_HPP
