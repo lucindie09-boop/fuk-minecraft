@@ -1,0 +1,47 @@
+[gd_scene format=3 uid="uid://d0f2kff4camjn"]
+
+[ext_resource type="Script" uid="uid://njnux4jnnpxf" path="res://player.gd" id="1_glv2v"]
+[ext_resource type="Script" uid="uid://dgq4fssxi3fg3" path="res://fps_counter.gd" id="2_uu6xs"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_glv2v"]
+
+[sub_resource type="Environment" id="Environment_uu6xs"]
+background_mode = 1
+background_color = Color(0.67800003, 0.60800004, 0.56949997, 1)
+ambient_light_source = 1
+ambient_light_color = Color(0.609, 0.52400005, 0.47724998, 1)
+reflected_light_source = 1
+fog_mode = 1
+fog_light_color = Color(0.586, 0.49600002, 0.4465, 1)
+fog_light_energy = 0.5
+fog_density = 0.015
+fog_depth_begin = 128.0
+fog_depth_end = 1024.0
+
+[node name="Main" type="Node3D" unique_id=294280302]
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=584275560]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 180, 0)
+script = ExtResource("1_glv2v")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=623630723]
+shape = SubResource("BoxShape3D_glv2v")
+
+[node name="Camera3D" type="Camera3D" parent="Player" unique_id=539519829]
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=386916972]
+
+[node name="FPSCounter" type="Label" parent="HUD" unique_id=572272974]
+offset_right = 40.0
+offset_bottom = 23.0
+theme_override_font_sizes/font_size = 24
+script = ExtResource("2_uu6xs")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1600923077]
+environment = SubResource("Environment_uu6xs")
+
+[node name="ChunkManager" type="ChunkManager" parent="." unique_id=318602554]
+render_distance = 32
+player_position = Vector3(0, 180, 0)
+debug_enabled = false
+editor_enabled = true

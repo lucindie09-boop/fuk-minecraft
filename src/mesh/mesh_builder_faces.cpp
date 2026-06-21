@@ -1,0 +1,270 @@
+#include "mesh/mesh_builder.hpp"
+
+namespace VoxelEngine {
+
+// -------------------------------------------------------------------------
+// Face emission
+// -------------------------------------------------------------------------
+void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+                           int32_t x, int32_t y, int32_t z,
+                           FaceDirection direction, BlockID block_id) {
+    uint32_t vertex_count = vertices.size();
+    int dir_index = static_cast<int>(direction);
+
+    const BlockRegistry& registry = BlockRegistry::get_instance();
+    const BlockType& block_type = registry.get_block(block_id);
+    int texture_idx = 0;
+
+    switch (direction) {
+        case FaceDirection::Right:  texture_idx = block_type.texture_indices[0]; break;
+        case FaceDirection::Left:   texture_idx = block_type.texture_indices[1]; break;
+        case FaceDirection::Top:    texture_idx = block_type.texture_indices[2]; break;
+        case FaceDirection::Bottom: texture_idx = block_type.texture_indices[3]; break;
+        case FaceDirection::Front:  texture_idx = block_type.texture_indices[4]; break;
+        case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; break;
+    }
+
+    float ao[4];
+    if (!HasProperty(block_type.properties, BlockProperty::Liquid)) {
+        compute_face_ao(accessor, x, y, z, direction, ao);
+    } else {
+        ao[0] = ao[1] = ao[2] = ao[3] = 1.0f;
+    }
+
+    uint16_t light_key;
+    float side_lowered_offset = 0.0f;
+    if (is_side_face(direction)) {
+        int32_t nx = x + kDirectionOffsets[dir_index][0];
+        int32_t ny = y + kDirectionOffsets[dir_index][1];
+        int32_t nz = z + kDirectionOffsets[dir_index][2];
+        bool use_self_light = false;
+        if (ny >= 0 && ny < CHUNK_HEIGHT) {
+            BlockID neighbor_id = BlockIDs::AIR;
+            if (nx >= 0 && nx < CHUNK_WIDTH && nz >= 0 && nz < CHUNK_DEPTH) {
+                neighbor_id = chunk.get_block_unsafe(nx, ny, nz);
+                use_self_light = registry.get_block(neighbor_id).top_face_offset > 0.0f;
+            } else {
+                neighbor_id = accessor.get_block(nx, ny, nz);
+                use_self_light = registry.get_block(neighbor_id).top_face_offset > 0.0f;
+            }
+            if (use_self_light) {
+                side_lowered_offset = registry.get_block(neighbor_id).top_face_offset;
+            }
+        }
+        if (use_self_light) {
+            light_key = 0;
+            for (int32_t sy = y + 1; sy < CHUNK_HEIGHT; sy++) {
+                uint16_t light = accessor.get_light_packed(x, sy, z);
+                if (unpack_sky(light) > 0) {
+                    light_key = light;
+                    break;
+                }
+            }
+            if (light_key == 0) {
+                light_key = accessor.get_light_packed(x, y, z);
+            }
+        } else {
+            const int32_t dir_idx = static_cast<int32_t>(direction);
+            const int32_t dx = kDirectionOffsets[dir_idx][0];
+            const int32_t dy = kDirectionOffsets[dir_idx][1];
+            const int32_t dz = kDirectionOffsets[dir_idx][2];
+            light_key = accessor.get_light_packed(x + dx, y + dy, z + dz);
+        }
+    } else {
+        const int32_t dir_idx = static_cast<int32_t>(direction);
+        const int32_t dx = kDirectionOffsets[dir_idx][0];
+        const int32_t dy = kDirectionOffsets[dir_idx][1];
+        const int32_t dz = kDirectionOffsets[dir_idx][2];
+        light_key = accessor.get_light_packed(x + dx, y + dy, z + dz);
+    }
+    const float light_r_level = kBlockBrightness[unpack_r(light_key)];
+    const float light_g_level = kBlockBrightness[unpack_g(light_key)];
+    const float light_b_level = kBlockBrightness[unpack_b(light_key)];
+    const float sky_light_level = kBlockBrightness[unpack_sky(light_key)];
+
+    bool flip = (ao[0] + ao[2]) < (ao[1] + ao[3]);
+
+    int surface_rotation = get_face_rotation(block_id, x, y, z, direction, dir_index);
+
+    float corners[4][3];
+    for (int i = 0; i < 4; i++) {
+        corners[i][0] = x + kFaceVertices[dir_index][i][0];
+        corners[i][1] = y + kFaceVertices[dir_index][i][1];
+        corners[i][2] = z + kFaceVertices[dir_index][i][2];
+    }
+    apply_special_block_offsets(corners, block_id, direction);
+
+    if (side_lowered_offset > 0.0f) {
+        float top_y = corners[2][1];
+        float new_bottom_y = top_y - side_lowered_offset;
+        corners[0][1] = new_bottom_y;
+        corners[1][1] = new_bottom_y;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        Vertex v;
+        v.x = corners[i][0];
+        v.y = corners[i][1];
+        v.z = corners[i][2];
+        v.nx = static_cast<int8_t>(kFaceNormals[dir_index][0] * 127.0f);
+        v.ny = static_cast<int8_t>(kFaceNormals[dir_index][1] * 127.0f);
+        v.nz = static_cast<int8_t>(kFaceNormals[dir_index][2] * 127.0f);
+        v.u = kFaceUVs[i][0];
+        v.v = kFaceUVs[i][1];
+        if (side_lowered_offset > 0.0f && i < 2 && surface_rotation == 0) {
+            v.v = side_lowered_offset;
+        }
+        if (surface_rotation != 0) {
+            apply_uv_rotation(v.u, v.v, surface_rotation);
+        }
+        v.texture_index = static_cast<uint16_t>(texture_idx);
+        v.ao = static_cast<uint8_t>(ao[i] * get_face_shade(direction) * 255.0f);
+        v.light_r = static_cast<uint8_t>(light_r_level * 255.0f);
+        v.light_g = static_cast<uint8_t>(light_g_level * 255.0f);
+        v.light_b = static_cast<uint8_t>(light_b_level * 255.0f);
+        v.sky_light = static_cast<uint8_t>(sky_light_level * 255.0f);
+        vertices.push_back(v);
+    }
+
+    if (!flip) {
+        indices.push_back(vertex_count + 0);
+        indices.push_back(vertex_count + 1);
+        indices.push_back(vertex_count + 2);
+        indices.push_back(vertex_count + 0);
+        indices.push_back(vertex_count + 2);
+        indices.push_back(vertex_count + 3);
+    } else {
+        indices.push_back(vertex_count + 1);
+        indices.push_back(vertex_count + 2);
+        indices.push_back(vertex_count + 3);
+        indices.push_back(vertex_count + 1);
+        indices.push_back(vertex_count + 3);
+        indices.push_back(vertex_count + 0);
+    }
+}
+
+void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+                                  const Face& face, uint16_t face_light_key, int rotation) {
+    uint32_t vertex_count = vertices.size();
+    int dir_index = static_cast<int>(face.direction);
+
+    int32_t u_size = face.u_max + 1;
+    int32_t v_size = face.v_max + 1;
+
+    const BlockRegistry& registry = BlockRegistry::get_instance();
+    const BlockType& block_type = registry.get_block(face.block_id);
+    int texture_idx = 0;
+    switch (face.direction) {
+        case FaceDirection::Right:  texture_idx = block_type.texture_indices[0]; break;
+        case FaceDirection::Left:   texture_idx = block_type.texture_indices[1]; break;
+        case FaceDirection::Top:    texture_idx = block_type.texture_indices[2]; break;
+        case FaceDirection::Bottom: texture_idx = block_type.texture_indices[3]; break;
+        case FaceDirection::Front:  texture_idx = block_type.texture_indices[4]; break;
+        case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; break;
+    }
+
+    float corners[4][3];
+    switch (face.direction) {
+        case FaceDirection::Top:
+            corners[0][0] = face.x;             corners[0][1] = face.y + 1; corners[0][2] = face.z;
+            corners[1][0] = face.x + u_size;    corners[1][1] = face.y + 1; corners[1][2] = face.z;
+            corners[2][0] = face.x + u_size;    corners[2][1] = face.y + 1; corners[2][2] = face.z + v_size;
+            corners[3][0] = face.x;             corners[3][1] = face.y + 1; corners[3][2] = face.z + v_size;
+            break;
+        case FaceDirection::Bottom:
+            corners[0][0] = face.x;             corners[0][1] = face.y;     corners[0][2] = face.z + v_size;
+            corners[1][0] = face.x + u_size;    corners[1][1] = face.y;     corners[1][2] = face.z + v_size;
+            corners[2][0] = face.x + u_size;    corners[2][1] = face.y;     corners[2][2] = face.z;
+            corners[3][0] = face.x;             corners[3][1] = face.y;     corners[3][2] = face.z;
+            break;
+        case FaceDirection::Right:
+            corners[0][0] = face.x + 1;         corners[0][1] = face.y;             corners[0][2] = face.z + u_size;
+            corners[1][0] = face.x + 1;         corners[1][1] = face.y + v_size;    corners[1][2] = face.z + u_size;
+            corners[2][0] = face.x + 1;         corners[2][1] = face.y + v_size;    corners[2][2] = face.z;
+            corners[3][0] = face.x + 1;         corners[3][1] = face.y;             corners[3][2] = face.z;
+            break;
+        case FaceDirection::Left:
+            corners[0][0] = face.x;             corners[0][1] = face.y;             corners[0][2] = face.z;
+            corners[1][0] = face.x;             corners[1][1] = face.y + v_size;    corners[1][2] = face.z;
+            corners[2][0] = face.x;             corners[2][1] = face.y + v_size;    corners[2][2] = face.z + u_size;
+            corners[3][0] = face.x;             corners[3][1] = face.y;             corners[3][2] = face.z + u_size;
+            break;
+        case FaceDirection::Front:
+            corners[0][0] = face.x;             corners[0][1] = face.y + v_size;    corners[0][2] = face.z + 1;
+            corners[1][0] = face.x + u_size;    corners[1][1] = face.y + v_size;    corners[1][2] = face.z + 1;
+            corners[2][0] = face.x + u_size;    corners[2][1] = face.y;             corners[2][2] = face.z + 1;
+            corners[3][0] = face.x;             corners[3][1] = face.y;             corners[3][2] = face.z + 1;
+            break;
+        case FaceDirection::Back:
+            corners[0][0] = face.x + u_size;    corners[0][1] = face.y;             corners[0][2] = face.z;
+            corners[1][0] = face.x;             corners[1][1] = face.y;             corners[1][2] = face.z;
+            corners[2][0] = face.x;             corners[2][1] = face.y + v_size;    corners[2][2] = face.z;
+            corners[3][0] = face.x + u_size;    corners[3][1] = face.y + v_size;    corners[3][2] = face.z;
+            break;
+    }
+
+    apply_special_block_offsets(corners, face.block_id, face.direction);
+
+    for (int i = 0; i < 4; i++) {
+        Vertex v;
+        v.x = corners[i][0];
+        v.y = corners[i][1];
+        v.z = corners[i][2];
+        v.nx = static_cast<int8_t>(kFaceNormals[dir_index][0] * 127.0f);
+        v.ny = static_cast<int8_t>(kFaceNormals[dir_index][1] * 127.0f);
+        v.nz = static_cast<int8_t>(kFaceNormals[dir_index][2] * 127.0f);
+        {
+            float u = kFaceUVs[i][0];
+            float vt = kFaceUVs[i][1];
+            if (rotation != 0) {
+                apply_uv_rotation(u, vt, rotation);
+            }
+            v.u = u * u_size;
+            v.v = vt * v_size;
+        }
+        v.texture_index = static_cast<uint16_t>(texture_idx);
+        v.ao = static_cast<uint8_t>(get_face_shade(face.direction) * 255.0f);
+        v.light_r = static_cast<uint8_t>(kBlockBrightness[unpack_r(face_light_key)] * 255.0f);
+        v.light_g = static_cast<uint8_t>(kBlockBrightness[unpack_g(face_light_key)] * 255.0f);
+        v.light_b = static_cast<uint8_t>(kBlockBrightness[unpack_b(face_light_key)] * 255.0f);
+        v.sky_light = static_cast<uint8_t>(kBlockBrightness[unpack_sky(face_light_key)] * 255.0f);
+        vertices.push_back(v);
+    }
+
+    indices.push_back(vertex_count + 0);
+    indices.push_back(vertex_count + 1);
+    indices.push_back(vertex_count + 2);
+    indices.push_back(vertex_count + 0);
+    indices.push_back(vertex_count + 2);
+    indices.push_back(vertex_count + 3);
+}
+
+// -------------------------------------------------------------------------
+// Side face emission helper
+// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// Special block offsets
+// -------------------------------------------------------------------------
+void MeshBuilder::apply_special_block_offsets(float corners[4][3], BlockID block_id, FaceDirection dir) {
+    const BlockType& block_type = BlockRegistry::get_instance().get_block(block_id);
+    float offset = block_type.top_face_offset;
+    if (offset <= 0.0f || dir == FaceDirection::Bottom) return;
+
+    if (dir == FaceDirection::Top) {
+        for (int i = 0; i < 4; i++) {
+            corners[i][1] -= offset;
+        }
+    } else {
+        float top_y = corners[0][1];
+        for (int i = 1; i < 4; i++) {
+            top_y = std::max(top_y, corners[i][1]);
+        }
+        for (int i = 0; i < 4; i++) {
+            if (corners[i][1] > top_y - 0.001f) {
+                corners[i][1] -= offset;
+            }
+        }
+    }
+}
+
+} // namespace VoxelEngine
