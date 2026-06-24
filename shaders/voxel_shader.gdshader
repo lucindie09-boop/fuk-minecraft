@@ -16,6 +16,11 @@ uniform float player_light_radius : hint_range(0.0, 64.0) = 8.0;
 uniform float player_light_intensity : hint_range(0.0, 1.0) = 1.0;
 uniform vec3 player_light_color = vec3(1.0, 0.9, 0.7);
 
+// Fog parameters (manual shader fog since render_mode unshaded bypasses Godot fog)
+uniform vec3 fog_color = vec3(0.586, 0.496, 0.446);
+uniform float fog_begin : hint_range(0.0, 2048.0) = 64.0;
+uniform float fog_end : hint_range(0.0, 2048.0) = 896.0;
+
 varying vec3 world_position;
 
 void vertex() {
@@ -49,6 +54,12 @@ vec3 player_contribution = player_light_color * player_light * player_light_inte
 combined_light = max(combined_light, player_contribution);
 
 	// Apply lighting: combined_light * ao (ao includes pre-multiplied face shade)
-	ALBEDO = color.rgb * combined_light * ao;
+	vec3 lit_color = color.rgb * combined_light * ao;
+
+	// Manual fog (render_mode unshaded bypasses Godot's built-in fog)
+	vec3 camera_position = INV_VIEW_MATRIX[3].xyz;
+	float fog_distance = distance(world_position, camera_position);
+	float fog_amount = clamp((fog_end - fog_distance) / (fog_end - fog_begin), 0.0, 1.0);
+	ALBEDO = mix(fog_color, lit_color, fog_amount);
 	ALPHA = 1.0;
 }

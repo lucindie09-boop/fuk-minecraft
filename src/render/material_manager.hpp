@@ -13,6 +13,7 @@ namespace VoxelEngine {
 class MaterialManager {
 public:
     void update_shader_parameters(float sky_intensity, const godot::Color& sky_color);
+    void update_fog_parameters(float fog_begin, float fog_end, const godot::Color& fog_color);
 void update_player_light(const godot::Vector3& position, float radius, float intensity, const godot::Color& color);
     godot::Ref<godot::ShaderMaterial> get_material();
 

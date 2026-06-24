@@ -15,6 +15,15 @@ void MaterialManager::update_shader_parameters(float sky_intensity, const Color&
     }
 }
 
+void MaterialManager::update_fog_parameters(float fog_begin, float fog_end, const Color& fog_color) {
+    Ref<ShaderMaterial> material = get_material();
+    if (material.is_valid()) {
+        material->set_shader_parameter("fog_begin", fog_begin);
+        material->set_shader_parameter("fog_end", fog_end);
+        material->set_shader_parameter("fog_color", fog_color);
+    }
+}
+
 void MaterialManager::update_player_light(const Vector3& position, float radius, float intensity, const Color& color) {
 Ref<ShaderMaterial> material = get_material();
 if (material.is_valid()) {
