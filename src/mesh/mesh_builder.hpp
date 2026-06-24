@@ -7,6 +7,7 @@
 #include "mesh/mesh_types.hpp"
 #include "mesh/chunk_neighbor_accessor.hpp"
 #include "core/performance_timer.hpp"
+#include "mesh/ambient_occlusion.hpp"
 #include <vector>
 #include <array>
 #include <cstdint>
@@ -56,6 +57,18 @@ inline const std::array<float, 16> kBlockBrightness = []() {
 
 class MeshBuilder {
 public:
+
+struct GreedyVerticalStatsSnapshot {
+uint64_t merge_attempts = 0;
+uint64_t merge_successes = 0;
+uint64_t reject_ao_mismatch = 0;
+uint64_t reject_ao_occlusion = 0;
+uint64_t reject_light_mismatch = 0;
+uint64_t reject_rotation_mismatch = 0;
+uint64_t reject_block_mismatch = 0;
+uint64_t reject_distance_limit = 0;
+};
+
     MeshBuilder() {
         vertices.reserve(kVertexReserve);
         indices.reserve(kIndexReserve);
@@ -106,8 +119,17 @@ public:
         total_chunks.store(0, std::memory_order_relaxed);
     }
 
+static GreedyVerticalStatsSnapshot get_greedy_vertical_stats();
+static void reset_greedy_vertical_stats();
+
     void set_greedy_enabled(bool enabled) { passive_greedy_enabled = enabled; }
     bool is_greedy_enabled() const { return passive_greedy_enabled; }
+
+void set_smooth_lighting(bool enabled) {
+smooth_lighting_enabled = enabled;
+if (enabled) passive_greedy_enabled = false;
+}
+bool is_smooth_lighting_enabled() const { return smooth_lighting_enabled; }
 
 private:
     // -------------------------------------------------------------------------
@@ -185,19 +207,31 @@ private:
     // -------------------------------------------------------------------------
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    // Layout is [x][z][y] (not [y][x][z]) so that scans with y as the inner
-    // loop variable — passive_greedy_mesh_vertical and the non-greedy fallback
-    // path — read sequential memory instead of striding by SC_W * SC_D each step.
-    std::array<std::array<std::array<uint8_t, CHUNK_HEIGHT>, SC_D>, SC_W> solid_cache{};
+    // Layout is [y][z][x] (not [x][z][y]) so that scans with x as the inner
+    // loop variable (passive_greedy_mesh_horizontal) read sequential memory
+    // instead of striding by SC_W * SC_D each step
+    std::array<std::array<std::array<uint8_t, SC_W>, SC_D>, CHUNK_HEIGHT> solid_cache{};
 
     // Neighbor chunk accessor for cross-chunk block/light access.
     ChunkNeighborAccessor accessor;
 
+AmbientOcclusion ao;
+
     static PerformanceTimer perf_timer;
     static std::atomic<uint64_t> total_vertices;
     static std::atomic<uint64_t> total_chunks;
+    static std::atomic<uint64_t> greedy_v_merge_attempts;
+    static std::atomic<uint64_t> greedy_v_merge_successes;
+    static std::atomic<uint64_t> greedy_v_reject_ao_mismatch;
+    static std::atomic<uint64_t> greedy_v_reject_ao_occlusion;
+    static std::atomic<uint64_t> greedy_v_reject_light_mismatch;
+    static std::atomic<uint64_t> greedy_v_reject_rotation_mismatch;
+    static std::atomic<uint64_t> greedy_v_reject_block_mismatch;
+    static std::atomic<uint64_t> greedy_v_reject_distance_limit;
 
-    bool passive_greedy_enabled = true;
+    bool passive_greedy_enabled = false;
+bool smooth_lighting_enabled = false;
+GreedyVerticalStatsSnapshot greedy_v_stats_local{};
 
     // -------------------------------------------------------------------------
     // Static helpers (small, keep inline)
@@ -248,43 +282,14 @@ private:
 
     static int get_face_rotation(BlockID block_id, int32_t x, int32_t y, int32_t z,
                                   FaceDirection dir, int dir_index) {
+if (is_side_face(dir)) return 0;
         if (!block_face_rotates(block_id, kDirToTexIdx[dir_index])) return 0;
         return compute_face_rotation(x, y, z, dir);
     }
 
-    static float get_face_shade(FaceDirection direction) {
-        switch (direction) {
-            case FaceDirection::Top:    return 1.00f;
-            case FaceDirection::Bottom: return 0.50f;
-            case FaceDirection::Right:  return 0.75f;
-            case FaceDirection::Left:   return 0.75f;
-            case FaceDirection::Front:  return 0.60f;
-            case FaceDirection::Back:   return 0.60f;
-        }
-        return 1.0f;
-    }
-
     bool should_cull_against_neighbor(const ChunkData& chunk, BlockID current, BlockID neighbor,
-                                       FaceDirection direction, int32_t x, int32_t y, int32_t z) const;
-
-    static int compute_ao(bool side1, bool side2, bool corner) {
-        if (side1 && side2) return 3;
-        return static_cast<int>(side1) + static_cast<int>(side2) + static_cast<int>(corner);
-    }
-
-    static float ao_to_brightness(int level) {
-        static constexpr float table[4] = {1.0f, 0.8f, 0.6f, 0.4f};
-        return table[level < 4 ? level : 3];
-    }
-
-    int vertex_ao_level(const ChunkNeighborAccessor& accessor,
-                        int32_t s1x, int32_t s1y, int32_t s1z,
-                        int32_t s2x, int32_t s2y, int32_t s2z,
-                        int32_t cx, int32_t cy, int32_t cz) const;
-
-    void compute_face_ao(const ChunkNeighborAccessor& accessor, int32_t x, int32_t y, int32_t z,
-                        FaceDirection direction, float ao_out[4]) const;
-
+FaceDirection direction, int32_t x, int32_t y, int32_t z,
+const BlockRegistry& registry) const;
 
     // -------------------------------------------------------------------------
     // Face emission (heavy — defined in .cpp)
@@ -294,7 +299,8 @@ private:
                   FaceDirection direction, BlockID block_id);
 
     void add_greedy_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                         const Face& face, uint16_t face_light_key, int rotation);
+                         const Face& face, uint16_t face_light_key, int rotation,
+const float ao[4]);
 
     // -------------------------------------------------------------------------
     // Passive greedy meshing (heavy — defined in .cpp)

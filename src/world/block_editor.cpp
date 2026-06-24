@@ -3,6 +3,7 @@
 #include "mesh/mesh_manager.hpp"
 #include "lighting/light_propagator.hpp"
 #include "core/block_types.hpp"
+#include <godot_cpp/core/class_db.hpp>
 
 namespace VoxelEngine {
 using namespace godot;
@@ -117,8 +118,12 @@ Dictionary BlockEditor::raycast(godot::Node* chunk_manager, const NodePath& play
     const int32_t max_steps = static_cast<int32_t>(max_distance) * 3;
     int32_t steps = 0;
 
+constexpr int32_t kLockReacquireInterval = 8;
     auto map_lock = chunk_world->get_chunk_map().acquire_shared_lock();
     while (steps < max_steps) {
+if (steps > 0 && steps % kLockReacquireInterval == 0) {
+map_lock = chunk_world->get_chunk_map().acquire_shared_lock();
+}
         int block = chunk_world->get_chunk_map().get_block_world_fast(current_x, current_y, current_z);
         if (block != 0) {
             result["success"] = true;

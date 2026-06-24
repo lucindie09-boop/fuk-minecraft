@@ -28,7 +28,11 @@ namespace VoxelEngine {
     X(WorldUpdate) \
     X(SceneUpdate) \
     X(RenderTime) \
-    X(MeshUploadGpu)
+    X(MeshUploadGpu) \
+X(SolidCachePopulation) \
+X(GreedyMeshHorizontal) \
+X(GreedyMeshVertical) \
+X(Voxelization)
 
 enum class TimerID : size_t {
 #define X(name) name,

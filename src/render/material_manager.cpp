@@ -15,6 +15,16 @@ void MaterialManager::update_shader_parameters(float sky_intensity, const Color&
     }
 }
 
+void MaterialManager::update_player_light(const Vector3& position, float radius, float intensity, const Color& color) {
+Ref<ShaderMaterial> material = get_material();
+if (material.is_valid()) {
+material->set_shader_parameter("player_light_position", position);
+material->set_shader_parameter("player_light_radius", radius);
+material->set_shader_parameter("player_light_intensity", intensity);
+material->set_shader_parameter("player_light_color", color);
+}
+}
+
 Ref<ShaderMaterial> MaterialManager::get_material() {
     if (!cached_material.is_valid()) {
         ResourceLoader* loader = ResourceLoader::get_singleton();

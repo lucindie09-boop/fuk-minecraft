@@ -44,4 +44,4 @@ environment = SubResource("Environment_uu6xs")
 render_distance = 32
 player_position = Vector3(0, 180, 0)
 debug_enabled = false
-editor_enabled = true
+smooth_lighting = true

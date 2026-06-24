@@ -207,7 +207,6 @@ int main() {
                 switch (col.biome) {
                     case VoxelEngine::BiomeType::Ocean: r=20;  g=60;  b=140; break;
                     case VoxelEngine::BiomeType::Land:  r=60;  g=160; b=60;  break;
-                    case VoxelEngine::BiomeType::Lake:  r=40;  g=100; b=180; break;
                     case VoxelEngine::BiomeType::Beach: r=220; g=200; b=140; break;
                     default:                            r=255; g=0;   b=255; break;
                 }
@@ -245,7 +244,6 @@ int main() {
                 switch (col.biome) {
                     case VoxelEngine::BiomeType::Ocean: r=20;  g=60;  b=140; break;
                     case VoxelEngine::BiomeType::Land:  r=60;  g=160; b=60;  break;
-                    case VoxelEngine::BiomeType::Lake:  r=40;  g=100; b=180; break;
                     case VoxelEngine::BiomeType::Beach: r=220; g=200; b=140; break;
                     default:                            r=255; g=0;   b=255; break;
                 }
@@ -271,7 +269,6 @@ int main() {
                 switch (col.biome) {
                     case VoxelEngine::BiomeType::Ocean: r=20;  g=60;  b=140; break;
                     case VoxelEngine::BiomeType::Land:  r=60;  g=160; b=60;  break;
-                    case VoxelEngine::BiomeType::Lake:  r=40;  g=100; b=180; break;
                     case VoxelEngine::BiomeType::Beach: r=220; g=200; b=140; break;
                     default:                            r=255; g=0;   b=255; break;
                 }

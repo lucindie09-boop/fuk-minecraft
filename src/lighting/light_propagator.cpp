@@ -3,6 +3,10 @@
 
 #include "mesh/mesh_manager.hpp"
 #include "core/chunk_data.hpp"
+#include <godot_cpp/core/print_string.hpp>
+#include <godot_cpp/variant/string.hpp>
+
+using namespace godot;
 
 namespace VoxelEngine {
 
@@ -10,7 +14,6 @@ namespace VoxelEngine {
 void LightPropagator::propagate_block_light_region(int32_t cx, int32_t cy, int32_t cz) {
     ChunkData* chunk = chunk_map->get_chunk_data(cx, cy, cz);
     if (!chunk) return;
-    if (chunk->get_emissive_count() == 0) return;
     ChunkData* region_grid[3][3][3] = {};
     auto lock = chunk_map->acquire_shared_lock();
     for (int dz = -1; dz <= 1; dz++) {
@@ -81,7 +84,10 @@ void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, 
             wrap_local_to_world(nx, ny, nz, ncx, ncy, ncz);
 
             ChunkData* dst = chunk_map->get_chunk_data_fast(ncx, ncy, ncz);
-            if (!dst) continue;
+            if (!dst) {
+pending_light_removals_.insert(chunk_map->get_chunk_key(ncx, ncy, ncz));
+continue;
+}
 
             const BlockID neighbor_block = dst->get_block_unsafe(nx, ny, nz);
             const BlockType& neighbor_type = registry.get_block(neighbor_block);
@@ -127,7 +133,10 @@ void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_c
             wrap_local_to_world(nx, ny, nz, ncx, ncy, ncz);
 
             ChunkData* dst = chunk_map->get_chunk_data_fast(ncx, ncy, ncz);
-            if (!dst) continue;
+            if (!dst) {
+pending_light_removals_.insert(chunk_map->get_chunk_key(ncx, ncy, ncz));
+continue;
+}
 
             const uint8_t cur_r = dst->get_light_r(nx, ny, nz);
             const uint8_t cur_g = dst->get_light_g(nx, ny, nz);
@@ -157,6 +166,14 @@ void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_c
             }
         }
     }
+}
+
+
+void LightPropagator::try_fixup_chunk(uint64_t key, int32_t cx, int32_t cy, int32_t cz) {
+auto it = pending_light_removals_.find(key);
+if (it == pending_light_removals_.end()) return;
+pending_light_removals_.erase(it);
+propagate_block_light_region(cx, cy, cz);
 }
 
 void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b) {

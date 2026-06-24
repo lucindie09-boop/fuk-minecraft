@@ -27,14 +27,7 @@ struct TerrainParams {
     float shelf_depth = 18.0f;
     float deep_ocean_depth = 48.0f;
     float beach_width = 0.05f;
-    // Lake generation parameters (noise-based placement)
-    float lake_noise_scale = 0.004f;
-    float lake_detail_scale = 0.02f;
-    float lake_threshold = 0.64f;
-    float lake_max_height_above_sea = 60.0f;
-    float lake_depth = 10.0f;
-    float lake_height_variation_scale = 0.0008f;
-    float lake_min_height_above_sea = -5.0f;
+    int32_t subsurface_cover_depth = 4;
 };
 
 } // namespace VoxelEngine

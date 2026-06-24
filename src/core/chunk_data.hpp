@@ -138,6 +138,20 @@ public:
         set_block(pos.x, pos.y, pos.z, block_id);
     }
 
+//Hot path write for bulk generation
+inline void set_block_raw(int32_t x, int32_t y, int32_t z, BlockID block_id) noexcept {
+    blocks()[index(x, y, z)] = block_id;
+}
+
+inline void finalize_bulk_write(uint32_t total_block_count, uint32_t total_emissive_count,
+                                const uint32_t* section_counts) noexcept {
+block_count = total_block_count;
+emissive_count = total_emissive_count;
+is_empty = (block_count == 0);
+is_fully_solid = false;
+std::memcpy(section_block_count, section_counts, sizeof(section_block_count));
+}
+
     // Fast bulk fill ??? bypasses per-block overhead. Used by fast-path generation.
     void fill_blocks(BlockID block_id) noexcept;
 

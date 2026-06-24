@@ -1,4 +1,5 @@
 #include "mesh/mesh_builder.hpp"
+#include "mesh/smooth_lighting.hpp"
 
 namespace VoxelEngine {
 
@@ -26,7 +27,7 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
 
     float ao[4];
     if (!HasProperty(block_type.properties, BlockProperty::Liquid)) {
-        compute_face_ao(accessor, x, y, z, direction, ao);
+        this->ao.compute_face(accessor, x, y, z, direction, ao);
     } else {
         ao[0] = ao[1] = ao[2] = ao[3] = 1.0f;
     }
@@ -77,10 +78,12 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
         const int32_t dz = kDirectionOffsets[dir_idx][2];
         light_key = accessor.get_light_packed(x + dx, y + dy, z + dz);
     }
-    const float light_r_level = kBlockBrightness[unpack_r(light_key)];
-    const float light_g_level = kBlockBrightness[unpack_g(light_key)];
-    const float light_b_level = kBlockBrightness[unpack_b(light_key)];
-    const float sky_light_level = kBlockBrightness[unpack_sky(light_key)];
+uint16_t light_keys[4];
+if (smooth_lighting_enabled && side_lowered_offset == 0.0f) {
+compute_smooth_light(accessor, x, y, z, direction, light_keys);
+} else {
+light_keys[0] = light_keys[1] = light_keys[2] = light_keys[3] = light_key;
+}
 
     bool flip = (ao[0] + ao[2]) < (ao[1] + ao[3]);
 
@@ -118,11 +121,11 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
             apply_uv_rotation(v.u, v.v, surface_rotation);
         }
         v.texture_index = static_cast<uint16_t>(texture_idx);
-        v.ao = static_cast<uint8_t>(ao[i] * get_face_shade(direction) * 255.0f);
-        v.light_r = static_cast<uint8_t>(light_r_level * 255.0f);
-        v.light_g = static_cast<uint8_t>(light_g_level * 255.0f);
-        v.light_b = static_cast<uint8_t>(light_b_level * 255.0f);
-        v.sky_light = static_cast<uint8_t>(sky_light_level * 255.0f);
+        v.ao = AmbientOcclusion::pack_vertex_ao(ao[i], direction);
+        v.light_r = static_cast<uint8_t>(kBlockBrightness[unpack_r(light_keys[i])] * 255.0f);
+        v.light_g = static_cast<uint8_t>(kBlockBrightness[unpack_g(light_keys[i])] * 255.0f);
+        v.light_b = static_cast<uint8_t>(kBlockBrightness[unpack_b(light_keys[i])] * 255.0f);
+        v.sky_light = static_cast<uint8_t>(kBlockBrightness[unpack_sky(light_keys[i])] * 255.0f);
         vertices.push_back(v);
     }
 
@@ -144,7 +147,7 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
 }
 
 void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                  const Face& face, uint16_t face_light_key, int rotation) {
+                                  const Face& face, uint16_t face_light_key, int rotation, const float ao[4]) {
     uint32_t vertex_count = vertices.size();
     int dir_index = static_cast<int>(face.direction);
 
@@ -162,6 +165,8 @@ void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAcc
         case FaceDirection::Front:  texture_idx = block_type.texture_indices[4]; break;
         case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; break;
     }
+
+bool flip = (ao[0] + ao[0]) < (ao[1] + ao[3]);
 
     float corners[4][3];
     switch (face.direction) {
@@ -223,7 +228,7 @@ void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAcc
             v.v = vt * v_size;
         }
         v.texture_index = static_cast<uint16_t>(texture_idx);
-        v.ao = static_cast<uint8_t>(get_face_shade(face.direction) * 255.0f);
+        v.ao = AmbientOcclusion::pack_vertex_ao(ao[i], face.direction);
         v.light_r = static_cast<uint8_t>(kBlockBrightness[unpack_r(face_light_key)] * 255.0f);
         v.light_g = static_cast<uint8_t>(kBlockBrightness[unpack_g(face_light_key)] * 255.0f);
         v.light_b = static_cast<uint8_t>(kBlockBrightness[unpack_b(face_light_key)] * 255.0f);
@@ -231,12 +236,21 @@ void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAcc
         vertices.push_back(v);
     }
 
-    indices.push_back(vertex_count + 0);
-    indices.push_back(vertex_count + 1);
-    indices.push_back(vertex_count + 2);
-    indices.push_back(vertex_count + 0);
-    indices.push_back(vertex_count + 2);
-    indices.push_back(vertex_count + 3);
+if (!flip) {
+indices.push_back(vertex_count + 0);
+indices.push_back(vertex_count + 1);
+indices.push_back(vertex_count + 2);
+indices.push_back(vertex_count + 0);
+indices.push_back(vertex_count + 2);
+indices.push_back(vertex_count + 3);
+} else {
+indices.push_back(vertex_count + 1);
+indices.push_back(vertex_count + 2);
+indices.push_back(vertex_count + 3);
+indices.push_back(vertex_count + 1);
+indices.push_back(vertex_count + 3);
+indices.push_back(vertex_count + 0);
+    }
 }
 
 // -------------------------------------------------------------------------

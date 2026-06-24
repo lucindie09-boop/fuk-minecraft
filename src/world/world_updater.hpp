@@ -2,6 +2,7 @@
 #define FUK_MINECRAFT_WORLD_UPDATER_HPP
 #include "core/chunk_types.hpp"
 #include "core/terrain_params.hpp"
+#include "core/frame_budgets.hpp"
 #include <godot_cpp/variant/vector3.hpp>
 
 namespace VoxelEngine { class ChunkGenerator; }
@@ -23,37 +24,6 @@ class MeshManager;
 class ThreadPool;
 class PerformanceTimer;
 class MaterialManager;
-
-// -------------------------------------------------------------------------
-// FrameBudgets — tunable per-frame workload limits.
-// -------------------------------------------------------------------------
-struct FrameBudgets {
-    int32_t chunk_generations = 256;
-    int32_t chunk_completions_initial = 128;
-    int32_t chunk_completions_gameplay = 64;
-    int32_t mesh_rebuilds_initial = 32;
-    int32_t mesh_rebuilds_gameplay = 32;
-    int32_t mesh_rebuilds_immediate = 16;
-    int32_t mesh_uploads_initial = 32;
-    int32_t mesh_uploads_gameplay = 32;
-
-    size_t completed_queue_backlog = 512;
-    size_t dirty_mesh_backlog = 512;
-    size_t worker_queue_backlog = 512;
-
-    int32_t max_loaded_chunks = 50000;
-
-    double processing_budget_ms = 2.5;
-    int32_t loading_threshold = 500;
-    double loading_duration = 3.0;
-
-    int32_t unload_checks_per_frame = 500;
-    int32_t unloads_per_frame = 200;
-    int32_t max_generation_checks_per_frame = 100000;
-    int32_t generating_per_worker = 2;
-
-    double flush_interval = 5.0;
-};
 
 // -------------------------------------------------------------------------
 // WorldUpdater — owns the per-frame chunk scheduling logic.
@@ -144,7 +114,7 @@ private:
 
     void initialize_view_distance(int32_t horizontal_rd);
     void update_generation(bool is_editor, int32_t active_render_distance, uint64_t epoch, int32_t pcx, int32_t pcy, int32_t pcz, bool chunk_changed);
-    void update_unload(int32_t active_render_distance, int32_t pcx, int32_t pcz, bool chunk_changed);
+    void update_unload(int32_t active_render_distance, int32_t pcx, int32_t pcy, int32_t pcz, bool chunk_changed);
     void process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t& chunks_processed_total, int32_t active_render_distance, double delta);
     void flush_dirty(double delta);
 };

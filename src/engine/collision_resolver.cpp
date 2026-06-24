@@ -21,10 +21,18 @@ static void resolve_axis(const godot::Vector3& position,
     }
     float direction = motion[axis] > 0.0f ? 1.0f : -1.0f;
     float remaining = std::abs(motion[axis]);
-    const float step = 1.0f;
 
     while (remaining > 0.001f) {
-        float current_step = std::min(step, remaining);
+
+float leading_edge = result[axis] + (direction > 0.0f ? size[axis] : 0.0f);
+float next_boundary = (direction > 0.0f) ? (std::floor(leading_edge) + 1.0f) : std::ceil(leading_edge);
+float dist = std::abs(next_boundary - leading_edge);
+if (dist < 0.001f) {
+dist = 1.0f;
+}
+float current_step
+=
+std::min(dist, remaining);
         Vector3 test_pos = result;
         test_pos[axis] += direction * current_step;
         AABB test_aabb(test_pos, size);
@@ -61,10 +69,14 @@ CollisionResolver::CollisionResult CollisionResolver::resolve(
     Vector3 result = position;
     CollisionResult out;
 
+
+// Acquire the chunk map lock once for the whole resolve pass instead of once per // 1.0f step plus once per binary-search iteration. At ~5 steps x 3 axes, each // potentially followed by a 10-iteration bisection, that was on the order of a // hundred+ lock/unlock cycles per call. is_aabb_solid_fast() below assumes the // caller already holds the lock, matching is_aabb_solid()'s contract.
+auto lock = chunk_map_->acquire_shared_lock();
+
     for (int axis = 0; axis < 3; ++axis) {
         bool collided = false;
         resolve_axis(position, motion, size, axis, result, collided,
-            [this](const AABB& aabb) { return is_aabb_solid(aabb); });
+            [this](const AABB& aabb) { return is_aabb_solid_fast(aabb); });
         if (axis == 0) out.collided_x = collided;
         else if (axis == 1) out.collided_y = collided;
         else out.collided_z = collided;
@@ -74,7 +86,7 @@ CollisionResolver::CollisionResult CollisionResolver::resolve(
 
     AABB floor_aabb(result, size);
     floor_aabb.position.y -= 0.05f;
-    out.on_floor = is_aabb_solid(floor_aabb);
+    out.on_floor = is_aabb_solid_fast(floor_aabb);
 
     return out;
 }

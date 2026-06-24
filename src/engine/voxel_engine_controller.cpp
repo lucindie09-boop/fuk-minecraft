@@ -10,6 +10,8 @@
 #include "debug/perf_report.hpp"
 #include "world/block_editor.hpp"
 #include "core/thread_pool.hpp"
+#include "mesh/mesh_builder.hpp"
+#include "worldgen/chunk_generator.hpp"
 #include <mutex>
 
 namespace VoxelEngine {
@@ -237,6 +239,8 @@ String VoxelEngineController::get_performance_report() {
     frame_count = 0;
     frame_time_accumulator = 0.0;
     perf_timer.reset_all_min_max();
+MeshBuilder::get_perf_timer().reset_all_min_max();
+ChunkGenerator::get_perf_timer().reset_all_min_max();
     return report;
 }
 
@@ -280,6 +284,13 @@ float VoxelEngineController::get_mountain_scale() const { return mountain_scale;
 void VoxelEngineController::set_auto_update(bool enabled) { auto_update = enabled; }
 bool VoxelEngineController::get_auto_update() const { return auto_update; }
 
+void VoxelEngineController::set_smooth_lighting(bool enabled) {
+smooth_lighting = enabled;
+mesh_manager.set_smooth_lighting(enabled);
+mesh_manager.mark_all_chunks_dirty();
+}
+bool VoxelEngineController::get_smooth_lighting() const { return smooth_lighting; }
+
 void VoxelEngineController::set_editor_enabled(bool enabled) { editor_enabled = enabled; }
 bool VoxelEngineController::get_editor_enabled() const { return editor_enabled; }
 
@@ -295,8 +306,15 @@ bool VoxelEngineController::get_player_light_enabled() const { return environmen
 void VoxelEngineController::set_player_light_level(int32_t level) { environment_controller.set_player_light_level(level); }
 int32_t VoxelEngineController::get_player_light_level() const { return environment_controller.get_player_light_level(); }
 
+void VoxelEngineController::set_day_time(double t) { environment_controller.set_day_time(t); }
+double  VoxelEngineController::get_day_time() const { return environment_controller.get_day_time(); }
+
+void VoxelEngineController::set_time(double t) { set_day_time(t); }
+double VoxelEngineController::get_time() const { return get_day_time(); }
+
 void VoxelEngineController::set_day_night_cycle_enabled(bool enabled) { environment_controller.set_day_night_cycle_enabled(enabled); }
 bool VoxelEngineController::get_day_night_cycle_enabled() const { return environment_controller.get_day_night_cycle_enabled(); }
+void VoxelEngineController::toggle_day_night_cycle() {set_day_night_cycle_enabled(!get_day_night_cycle_enabled()); }
 
 void VoxelEngineController::set_day_duration(double duration) { environment_controller.set_day_duration(duration); }
 double VoxelEngineController::get_day_duration() const { return environment_controller.get_day_duration(); }
