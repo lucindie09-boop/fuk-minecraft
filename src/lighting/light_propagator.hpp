@@ -4,6 +4,7 @@
 #include "core/chunk_map.hpp"
 #include "core/block_types.hpp"
 #include <vector>
+#include <unordered_set>
 
 namespace VoxelEngine {
 
@@ -20,9 +21,12 @@ public:
     void light_propagate_remove(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue);
     void update_block_light_incremental(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b);
 
+void try_fixup_chunk(uint64_t key, int32_t cx, int32_t cy, int32_t cz);
+
 private:
     ChunkMap* chunk_map = nullptr;
     MeshManager* mesh_manager = nullptr;
+std::unordered_set<uint64_t> pending_light_removals_;
 };
 
 } // namespace VoxelEngine

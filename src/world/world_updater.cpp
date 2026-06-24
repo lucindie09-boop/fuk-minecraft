@@ -40,7 +40,7 @@ void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_proce
     }
 
     update_generation(is_editor, active_render_distance, epoch, player_chunk_x, player_chunk_y, player_chunk_z, chunk_changed);
-    update_unload(active_render_distance, player_chunk_x, player_chunk_z, chunk_changed);
+    update_unload(active_render_distance, player_chunk_x, player_chunk_y, player_chunk_z, chunk_changed);
     process_mesh_budgets(is_editor, epoch, chunks_processed_total, active_render_distance, delta);
     flush_dirty(delta);
 }
@@ -130,11 +130,12 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
     }
 }
 
-void WorldUpdater::update_unload(int32_t active_render_distance, int32_t pcx, int32_t pcz, bool chunk_changed) {
+void WorldUpdater::update_unload(int32_t active_render_distance, int32_t pcx, int32_t pcy, int32_t pcz, bool chunk_changed) {
     if (chunk_changed || (++unload_scan_skip_counter >= kUnloadScanSkipFrames)) {
         unload_scan_skip_counter = 0;
         int32_t unload_hrd  = active_render_distance + 2;
         int32_t unload_hrd2 = unload_hrd * unload_hrd;
+int32_t unload_vrd = active_render_distance + 2;
 
         chunk_world->get_chunk_map().for_each_limited_resumable([&](uint64_t key, const std::unique_ptr<ChunkRenderData>&) {
             int32_t cx, cy, cz;
@@ -142,7 +143,8 @@ void WorldUpdater::update_unload(int32_t active_render_distance, int32_t pcx, in
             int32_t dx = cx - pcx;
             int32_t dz = cz - pcz;
             int32_t horiz_dist2 = dx * dx + dz * dz;
-            if (horiz_dist2 > unload_hrd2) {
+int32_t dy = cy - pcy;
+            if (horiz_dist2 > unload_hrd2 || std::abs(dy) > unload_vrd) {
                 queue_unload(key);
             } else {
                 unload_pending.erase(key);
@@ -154,6 +156,7 @@ void WorldUpdater::update_unload(int32_t active_render_distance, int32_t pcx, in
         int32_t unload_hrd = active_render_distance + 2;
         int32_t unload_hrd2 = unload_hrd * unload_hrd;
         int32_t unloads_this_frame = 0;
+int32_t unload_vrd = active_render_distance + 2;
         while (!unload_queue.empty() && unloads_this_frame < budgets.unloads_per_frame) {
             uint64_t key = unload_queue.back();
             unload_queue.pop_back();
@@ -163,7 +166,8 @@ void WorldUpdater::update_unload(int32_t active_render_distance, int32_t pcx, in
                 int32_t dx = cx - pcx;
                 int32_t dz = cz - pcz;
                 int32_t horiz_dist2 = dx * dx + dz * dz;
-                if (horiz_dist2 > unload_hrd2) {
+int32_t dy = cy - pcy;
+                if (horiz_dist2 > unload_hrd2 || std::abs(dy) > unload_vrd) {
                     try_unload(key);
                 } else {
                     unload_pending.erase(key);
@@ -178,8 +182,8 @@ void WorldUpdater::update_unload(int32_t active_render_distance, int32_t pcx, in
 
 void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t& chunks_processed_total,
                                         int32_t active_render_distance, double delta) {
-    int32_t scaled_mesh_budget   = std::max(budgets.mesh_rebuilds_gameplay, active_render_distance * 2);
-    int32_t scaled_upload_budget = std::max(budgets.mesh_uploads_gameplay,  active_render_distance * 2);
+    int32_t scaled_mesh_budget   = std::max(32, std::max(budgets.mesh_rebuilds_gameplay, active_render_distance));
+    int32_t scaled_upload_budget = std::max(32, std::max(budgets.mesh_uploads_gameplay, active_render_distance));
 
     {
         ScopedTimer t(*perf_timer, TimerID::ProcessCompletedChunks);

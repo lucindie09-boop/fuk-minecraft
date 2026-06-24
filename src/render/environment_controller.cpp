@@ -13,7 +13,14 @@ void EnvironmentController::update(double delta, double runtime_elapsed, const g
     day_night.update(delta);
     update_shader_parameters();
 
-    update_player_light(player_pos, runtime_elapsed, cw, lp, mm, initial_loading_duration);
+material_manager.update_player_light(
+player_pos,
+8.0f,
+player_light.get_enabled() ? player_light.get_level() / 15.0f : 0.0f,
+godot::Color(1.0f, 0.9f, 0.7f)
+);
+// shader handles the visual
+    //update_player_light(player_pos, runtime_elapsed, cw, lp, mm, initial_loading_duration);
 }
 
 void EnvironmentController::update_environment(godot::Node* parent) {

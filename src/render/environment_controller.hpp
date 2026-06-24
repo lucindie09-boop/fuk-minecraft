@@ -33,6 +33,9 @@ public:
     MaterialManager& get_material_manager() { return material_manager; }
     PlayerLight& get_player_light() { return player_light; }
 
+void set_day_time(double t) { day_night.set_time(t); update_shader_parameters(); }
+double get_day_time() const { return day_night.get_time(); }
+
     void set_player_light_enabled(bool enabled) { player_light.set_enabled(enabled); }
     bool get_player_light_enabled() const { return player_light.get_enabled(); }
     void set_player_light_level(int32_t level) { player_light.set_level(static_cast<uint8_t>(std::clamp(level, 0, 15))); }

@@ -2,9 +2,41 @@
 
 namespace VoxelEngine {
 
+// bru bru bru
+
 PerformanceTimer MeshBuilder::perf_timer;
 std::atomic<uint64_t> MeshBuilder::total_vertices{0};
 std::atomic<uint64_t> MeshBuilder::total_chunks{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_merge_attempts{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_merge_successes{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_reject_ao_mismatch{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_reject_ao_occlusion{0}; 
+std::atomic<uint64_t> MeshBuilder::greedy_v_reject_light_mismatch{0}; 
+std::atomic<uint64_t> MeshBuilder::greedy_v_reject_rotation_mismatch{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_reject_block_mismatch{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_reject_distance_limit{0};
+
+
+MeshBuilder::GreedyVerticalStatsSnapshot MeshBuilder::get_greedy_vertical_stats() {
+    GreedyVerticalStatsSnapshot stats;
+    stats.merge_attempts = greedy_v_merge_attempts.load(std::memory_order_relaxed);
+    stats.merge_successes = greedy_v_merge_successes.load(std::memory_order_relaxed);
+    stats.reject_ao_mismatch = greedy_v_reject_ao_mismatch.load(std::memory_order_relaxed);
+    stats.reject_ao_occlusion = greedy_v_reject_ao_occlusion.load(std::memory_order_relaxed);
+    stats.reject_light_mismatch = greedy_v_reject_light_mismatch.load(std::memory_order_relaxed);
+    stats.reject_rotation_mismatch = greedy_v_reject_rotation_mismatch.load(std::memory_order_relaxed);
+    stats.reject_block_mismatch = greedy_v_reject_block_mismatch.load(std::memory_order_relaxed);
+    stats.reject_distance_limit = greedy_v_reject_distance_limit.load(std::memory_order_relaxed);
+    return stats;
+}
+
+void MeshBuilder::reset_greedy_vertical_stats() {
+greedy_v_merge_attempts.store (0, std::memory_order_relaxed); greedy_v_merge_successes.store (0, std::memory_order_relaxed); greedy_v_reject_ao_mismatch.store (0, std::memory_order_relaxed); greedy_v_reject_ao_occlusion.store (0, std::memory_order_relaxed);
+greedy_v_reject_light_mismatch.store(0, std::memory_order_relaxed);
+greedy_v_reject_rotation_mismatch.store(0, std::memory_order_relaxed);
+greedy_v_reject_block_mismatch.store(0, std::memory_order_relaxed);
+greedy_v_reject_distance_limit.store(0, std::memory_order_relaxed);
+}
 
 BuiltMeshData MeshBuilder::build_mesh_data(
     const ChunkData& chunk_data,
@@ -33,6 +65,7 @@ void MeshBuilder::clear() {
     indices.clear();
     vertices.reserve(kVertexReserve);
     indices.reserve(kIndexReserve);
+greedy_v_stats_local = {};
 }
 
 void MeshBuilder::build_mesh(const ChunkData& chunk,
@@ -46,7 +79,7 @@ void MeshBuilder::build_mesh(const ChunkData& chunk,
                              const ChunkData* neg_x_pos_z,
                              const ChunkData* pos_x_neg_z,
                              const ChunkData* pos_x_pos_z) {
-    auto build_start = std::chrono::high_resolution_clock::now();
+ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
 
     clear();
 
@@ -69,66 +102,86 @@ void MeshBuilder::build_mesh(const ChunkData& chunk,
 
     total_chunks.fetch_add(1, std::memory_order_relaxed);
 
-    // solid_cache is laid out [x][z][y] (see header) so this population pass,
-    // and every read site below, walk it with y as the fastest-varying index.
-    // Populate interior: x and z outer, y inner so y is fastest-varying index
-    for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
-        for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
-            for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
-                solid_cache[x][z][y] = chunk.get_block_unsafe(x - 1, y, z - 1) != BlockIDs::AIR;
+
+    const BlockRegistry& registry = BlockRegistry::get_instance();
+    // solid_cache is laid out [y][z][x] (see header) so this population pass
+    // walks it with x as the fastest-varying index.
+    {
+        ScopedTimer cache_timer(perf_timer, TimerID::SolidCachePopulation);
+        // Populate interior (x: 1..SC_W-2 = CHUNK_WIDTH, z: 1..SC_D-2 = CHUNK_DEPTH)
+        for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
+            for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
+                for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
+                    solid_cache[y][z][x] = chunk.get_block_unsafe(x - 1, y, z - 1) != BlockIDs::AIR;
+                }
             }
         }
-    }
 
-    // X boundaries
-    for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
+        // X boundaries
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
-            solid_cache[0][z][y] = neighbor_x_neg
-                ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - 1, y, z - 1) != BlockIDs::AIR : false;
-            solid_cache[SC_W - 1][z][y] = neighbor_x_pos
-                ? neighbor_x_pos->get_block_unsafe(0, y, z - 1) != BlockIDs::AIR : false;
+            for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
+                solid_cache[y][z][0] = neighbor_x_neg
+                    ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - 1, y, z - 1) != BlockIDs::AIR
+                    : false;
+                solid_cache[y][z][SC_W - 1] = neighbor_x_pos
+                    ? neighbor_x_pos->get_block_unsafe(0, y, z - 1) != BlockIDs::AIR
+                    : false;
+            }
         }
-    }
 
-    // Z boundaries
-    for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
+        // Z boundaries
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
-            solid_cache[x][0][y] = neighbor_z_neg
-                ? neighbor_z_neg->get_block_unsafe(x - 1, y, CHUNK_DEPTH - 1) != BlockIDs::AIR : false;
-            solid_cache[x][SC_D - 1][y] = neighbor_z_pos
-                ? neighbor_z_pos->get_block_unsafe(x - 1, y, 0) != BlockIDs::AIR : false;
+            for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
+                solid_cache[y][0][x] = neighbor_z_neg
+                    ? neighbor_z_neg->get_block_unsafe(x - 1, y, CHUNK_DEPTH - 1) != BlockIDs::AIR
+                    : false;
+                solid_cache[y][SC_D - 1][x] = neighbor_z_pos
+                    ? neighbor_z_pos->get_block_unsafe(x - 1, y, 0) != BlockIDs::AIR
+                    : false;
+            }
         }
-    }
 
-    // Four corner columns (x=0 or SC_W-1, z=0 or SC_D-1)
-    for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
-        solid_cache[0][0][y] = neg_x_neg_z
-            ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - 1, y, CHUNK_DEPTH - 1) != BlockIDs::AIR : false;
-        solid_cache[SC_W - 1][0][y] = pos_x_neg_z
-            ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - 1) != BlockIDs::AIR : false;
-        solid_cache[0][SC_D - 1][y] = neg_x_pos_z
-            ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - 1, y, 0) != BlockIDs::AIR : false;
-        solid_cache[SC_W - 1][SC_D - 1][y] = pos_x_pos_z
-            ? pos_x_pos_z->get_block_unsafe(0, y, 0) != BlockIDs::AIR : false;
+        // Four corner columns (x=0 or SC_W-1, z=0 or SC_D-1)
+        for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
+            solid_cache[y][0][0] = neg_x_neg_z
+                ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - 1, y, CHUNK_DEPTH - 1) != BlockIDs::AIR
+                : false;
+            solid_cache[y][0][SC_W - 1] = pos_x_neg_z
+                ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - 1) != BlockIDs::AIR
+                : false;
+            solid_cache[y][SC_D - 1][0] = neg_x_pos_z
+                ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - 1, y, 0) != BlockIDs::AIR
+                : false;
+            solid_cache[y][SC_D - 1][SC_W - 1] = pos_x_pos_z
+                ? pos_x_pos_z->get_block_unsafe(0, y, 0) != BlockIDs::AIR
+                : false;
+        }
     }
 
     if (passive_greedy_enabled) {
-        passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Top);
-        passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Bottom);
-
-        passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Right);
-        passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Left);
-        passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Front);
-        passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Back);
+        {
+            ScopedTimer greedy_h_timer(perf_timer, TimerID::GreedyMeshHorizontal);
+            passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Top);
+            // Bottom faces are never visible from a ground-level / top-down view.
+            // Skipping them saves ~1/6 of mesh build time and reduces GPU upload bytes.
+            // passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Bottom);
+        }
+        {
+            ScopedTimer greedy_v_timer(perf_timer, TimerID::GreedyMeshVertical);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Right);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Left);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Front);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Back);
+        }
     } else {
         for (int32_t s = 0; s < CHUNK_SECTIONS; s++) {
             if (chunk.is_section_all_air(s)) continue;
             int32_t y0 = s * SECTION_HEIGHT;
             int32_t y1 = y0 + SECTION_HEIGHT;
-            for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-                for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-                    for (int32_t y = y0; y < y1; y++) {
-                        if (!solid_cache[x + 1][z + 1][y]) continue;
+            for (int32_t y = y0; y < y1; y++) {
+                for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
+                    for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
+                        if (!solid_cache[y][z + 1][x + 1]) continue;
                         const BlockID block_id = chunk.get_block_unsafe(x, y, z);
                         bool all_surrounded = true;
                         for (int i = 0; i < 6; i++) {
@@ -141,10 +194,10 @@ void MeshBuilder::build_mesh(const ChunkData& chunk,
                                 all_surrounded = false;
                                 break;
                             }
-                            BlockID neighbor = solid_cache[nx + 1][nz + 1][ny]
+                            BlockID neighbor = solid_cache[ny][nz + 1][nx + 1]
                                 ? chunk.get_block_unsafe(nx, ny, nz)
                                 : BlockIDs::AIR;
-                            if (!should_cull_against_neighbor(chunk, block_id, neighbor, kAllDirections[i], x, y, z)) {
+                            if (!should_cull_against_neighbor(chunk, block_id, neighbor, kAllDirections[i], x, y, z, registry)) {
                                 all_surrounded = false;
                                 break;
                             }
@@ -152,12 +205,13 @@ void MeshBuilder::build_mesh(const ChunkData& chunk,
                         if (all_surrounded) continue;
                         for (int i = 0; i < 6; i++) {
                             FaceDirection dir = kAllDirections[i];
+                            if (dir == FaceDirection::Bottom) continue;
                             int32_t dir_idx = static_cast<int32_t>(dir);
                             int32_t nx = x + kDirectionOffsets[dir_idx][0];
                             int32_t ny = y + kDirectionOffsets[dir_idx][1];
                             int32_t nz = z + kDirectionOffsets[dir_idx][2];
                             BlockID neighbor = accessor.get_block(nx, ny, nz);
-                            if (!should_cull_against_neighbor(chunk, block_id, neighbor, dir, x, y, z)) {
+                            if (!should_cull_against_neighbor(chunk, block_id, neighbor, dir, x, y, z, registry)) {
                                 add_face(chunk, accessor, x, y, z, dir, block_id);
                             }
                         }
@@ -168,140 +222,37 @@ void MeshBuilder::build_mesh(const ChunkData& chunk,
     }
 
     total_vertices.fetch_add(vertices.size(), std::memory_order_relaxed);
+
+    greedy_v_merge_attempts.fetch_add(greedy_v_stats_local.merge_attempts, std::memory_order_relaxed);
+    greedy_v_merge_successes.fetch_add(greedy_v_stats_local.merge_successes, std::memory_order_relaxed);
+    greedy_v_reject_ao_mismatch.fetch_add(greedy_v_stats_local.reject_ao_mismatch, std::memory_order_relaxed);
+    greedy_v_reject_ao_occlusion.fetch_add(greedy_v_stats_local.reject_ao_occlusion, std::memory_order_relaxed);
+    greedy_v_reject_light_mismatch.fetch_add(greedy_v_stats_local.reject_light_mismatch, std::memory_order_relaxed);
+    greedy_v_reject_rotation_mismatch.fetch_add(greedy_v_stats_local.reject_rotation_mismatch, std::memory_order_relaxed);
+    greedy_v_reject_block_mismatch.fetch_add(greedy_v_stats_local.reject_block_mismatch, std::memory_order_relaxed);
+    greedy_v_reject_distance_limit.fetch_add(greedy_v_stats_local.reject_distance_limit, std::memory_order_relaxed);
 }
 
 bool MeshBuilder::should_cull_against_neighbor(const ChunkData& chunk, BlockID current, BlockID neighbor,
-                                                FaceDirection direction, int32_t x, int32_t y, int32_t z) const {
+                                                FaceDirection direction, int32_t x, int32_t y, int32_t z,
+                                                const BlockRegistry& registry) const {
     if (neighbor == BlockIDs::AIR) {
-        if (is_side_face(direction)) {
-            int32_t nx = x + kDirectionOffsets[static_cast<int32_t>(direction)][0];
-            int32_t ny = y + kDirectionOffsets[static_cast<int32_t>(direction)][1];
-            int32_t nz = z + kDirectionOffsets[static_cast<int32_t>(direction)][2];
-            if (nx >= 0 && nx < CHUNK_WIDTH && ny >= 0 && ny < CHUNK_HEIGHT && nz >= 0 && nz < CHUNK_DEPTH) {
-                BlockID actual = chunk.get_block_unsafe(nx, ny, nz);
-                if (actual != BlockIDs::AIR) {
-                    return should_cull_against_neighbor(chunk, current, actual, direction, x, y, z);
-                }
-            }
-        }
-        return false;
+         return false;
     }
-    const BlockRegistry& registry = BlockRegistry::get_instance();
+    const BlockType& neighbor_type = registry.get_block(neighbor);
+    if (HasProperty(neighbor_type.properties, BlockProperty::Transparent)) {
+        if (current != neighbor) return false;
+    }
     const BlockType& current_type = registry.get_block(current);
     if (current == neighbor && current_type.cull_against_same) return true;
     if (is_side_face(direction)) {
         float current_height = 1.0f - current_type.top_face_offset;
-        float neighbor_height = 1.0f - registry.get_block(neighbor).top_face_offset;
+        float neighbor_height = 1.0f - neighbor_type.top_face_offset;
         if (neighbor_height < current_height) return false;
         if (neighbor_height > current_height) return true;
     }
     return true;
 }
 
-// -------------------------------------------------------------------------
-// Ambient occlusion helpers
-// -------------------------------------------------------------------------
-int MeshBuilder::vertex_ao_level(const ChunkNeighborAccessor& accessor,
-                                 int32_t s1x, int32_t s1y, int32_t s1z,
-                                 int32_t s2x, int32_t s2y, int32_t s2z,
-                                 int32_t cx, int32_t cy, int32_t cz) const {
-    bool side1 = accessor.is_occluder(s1x, s1y, s1z);
-    bool side2 = accessor.is_occluder(s2x, s2y, s2z);
-    bool corner = accessor.is_occluder(cx, cy, cz);
-    return compute_ao(side1, side2, corner);
-}
-
-void MeshBuilder::compute_face_ao(const ChunkNeighborAccessor& accessor, int32_t x, int32_t y, int32_t z,
-                                  FaceDirection direction, float ao_out[4]) const {
-    BlockID current_block = accessor.center->get_block(x, y, z);
-    bool is_lowered_block = BlockRegistry::get_instance().get_block(current_block).top_face_offset > 0.0f;
-
-    switch (direction) {
-        case FaceDirection::Top: {
-            int dx[4] = {-1,  1,  1, -1};
-            int dz[4] = {-1, -1,  1,  1};
-            for (int i = 0; i < 4; i++) {
-                if (is_lowered_block) {
-                    int ao_y = vertex_ao_level(accessor, x + dx[i], y,   z,   x, y,   z + dz[i], x + dx[i], y,   z + dz[i]);
-                    int ao_yp1 = vertex_ao_level(accessor, x + dx[i], y + 1, z,   x, y + 1, z + dz[i], x + dx[i], y + 1, z + dz[i]);
-                    ao_out[i] = ao_to_brightness(std::max(ao_y, ao_yp1));
-                } else {
-                    int ao = vertex_ao_level(accessor, x + dx[i], y + 1, z,   x, y + 1, z + dz[i], x + dx[i], y + 1, z + dz[i]);
-                    ao_out[i] = ao_to_brightness(ao);
-                }
-            }
-            break;
-        }
-        case FaceDirection::Bottom: {
-            int dx[4] = {-1,  1,  1, -1};
-            int dz[4] = {-1, -1,  1,  1};
-            for (int i = 0; i < 4; i++) {
-                int ao = vertex_ao_level(accessor, x + dx[i], y - 1, z,   x, y - 1, z + dz[i], x + dx[i], y - 1, z + dz[i]);
-                ao_out[i] = ao_to_brightness(ao);
-            }
-            break;
-        }
-        case FaceDirection::Right: {
-            int dy[4] = {-1, -1,  1,  1};
-            int dz[4] = {-1,  1,  1, -1};
-            for (int i = 0; i < 4; i++) {
-                if (is_lowered_block && dy[i] == 1) {
-                    int ao_y = vertex_ao_level(accessor, x + 1, y + dy[i],     z,   x + 1, y,         z + dz[i], x + 1, y + dy[i],     z + dz[i]);
-                    int ao_yp1 = vertex_ao_level(accessor, x + 1, y + dy[i] + 1, z,   x + 1, y + 1,     z + dz[i], x + 1, y + dy[i] + 1, z + dz[i]);
-                    ao_out[i] = ao_to_brightness(std::max(ao_y, ao_yp1));
-                } else {
-                    int ao = vertex_ao_level(accessor, x + 1, y + dy[i], z,   x + 1, y, z + dz[i], x + 1, y + dy[i], z + dz[i]);
-                    ao_out[i] = ao_to_brightness(ao);
-                }
-            }
-            break;
-        }
-        case FaceDirection::Left: {
-            int dy[4] = {-1, -1,  1,  1};
-            int dz[4] = { 1, -1, -1,  1};
-            for (int i = 0; i < 4; i++) {
-                if (is_lowered_block && dy[i] == 1) {
-                    int ao_y = vertex_ao_level(accessor, x - 1, y + dy[i],     z,   x - 1, y,         z + dz[i], x - 1, y + dy[i],     z + dz[i]);
-                    int ao_yp1 = vertex_ao_level(accessor, x - 1, y + dy[i] + 1, z,   x - 1, y + 1,     z + dz[i], x - 1, y + dy[i] + 1, z + dz[i]);
-                    ao_out[i] = ao_to_brightness(std::max(ao_y, ao_yp1));
-                } else {
-                    int ao = vertex_ao_level(accessor, x - 1, y + dy[i], z,   x - 1, y, z + dz[i], x - 1, y + dy[i], z + dz[i]);
-                    ao_out[i] = ao_to_brightness(ao);
-                }
-            }
-            break;
-        }
-        case FaceDirection::Front: {
-            int dx[4] = { 1, -1, -1,  1};
-            int dy[4] = {-1, -1,  1,  1};
-            for (int i = 0; i < 4; i++) {
-                if (is_lowered_block && dy[i] == 1) {
-                    int ao_y = vertex_ao_level(accessor, x + dx[i], y,         z + 1, x,         y + dy[i],     z + 1, x + dx[i], y + dy[i],     z + 1);
-                    int ao_yp1 = vertex_ao_level(accessor, x + dx[i], y + 1,     z + 1, x,         y + dy[i] + 1, z + 1, x + dx[i], y + dy[i] + 1, z + 1);
-                    ao_out[i] = ao_to_brightness(std::max(ao_y, ao_yp1));
-                } else {
-                    int ao = vertex_ao_level(accessor, x + dx[i], y, z + 1, x, y + dy[i], z + 1, x + dx[i], y + dy[i], z + 1);
-                    ao_out[i] = ao_to_brightness(ao);
-                }
-            }
-            break;
-        }
-        case FaceDirection::Back: {
-            int dx[4] = {-1,  1,  1, -1};
-            int dy[4] = {-1, -1,  1,  1};
-            for (int i = 0; i < 4; i++) {
-                if (is_lowered_block && dy[i] == 1) {
-                    int ao_y = vertex_ao_level(accessor, x + dx[i], y,         z - 1, x,         y + dy[i],     z - 1, x + dx[i], y + dy[i],     z - 1);
-                    int ao_yp1 = vertex_ao_level(accessor, x + dx[i], y + 1,     z - 1, x,         y + dy[i] + 1, z - 1, x + dx[i], y + dy[i] + 1, z - 1);
-                    ao_out[i] = ao_to_brightness(std::max(ao_y, ao_yp1));
-                } else {
-                    int ao = vertex_ao_level(accessor, x + dx[i], y, z - 1, x, y + dy[i], z - 1, x + dx[i], y + dy[i], z - 1);
-                    ao_out[i] = ao_to_brightness(ao);
-                }
-            }
-            break;
-        }
-    }
-}
 
 } // namespace VoxelEngine

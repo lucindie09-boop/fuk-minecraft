@@ -159,64 +159,11 @@ uint8_t ChunkNeighborAccessor::get_sky_light(int32_t x, int32_t y, int32_t z) co
 }
 
 bool ChunkNeighborAccessor::is_occluder(int32_t x, int32_t y, int32_t z) const {
-    const ChunkData* src = center;
-    int32_t sx = x;
-    int32_t sy = y;
-    int32_t sz = z;
-
-    if (y < 0) {
-        src = neg_y;
-        if (!src) return false;
-        sy = y + CHUNK_HEIGHT;
-    } else if (y >= CHUNK_HEIGHT) {
-        src = pos_y;
-        if (!src) return false;
-        sy = y - CHUNK_HEIGHT;
-    }
-
-    BlockID block;
-    if (sx < 0 || sx >= CHUNK_WIDTH || sz < 0 || sz >= CHUNK_DEPTH) {
-        if (src != center) return false;
-        const bool sx_out = (sx < 0 || sx >= CHUNK_WIDTH);
-        const bool sz_out = (sz < 0 || sz >= CHUNK_DEPTH);
-        if (sx_out && sz_out) {
-            const ChunkData* corner = nullptr;
-            int32_t cx, cz;
-            if (sx < 0 && sz < 0) { corner = neg_x_neg_z; cx = CHUNK_WIDTH - 1; cz = CHUNK_DEPTH - 1; }
-            else if (sx < 0 && sz >= CHUNK_DEPTH) { corner = neg_x_pos_z; cx = CHUNK_WIDTH - 1; cz = 0; }
-            else if (sx >= CHUNK_WIDTH && sz < 0) { corner = pos_x_neg_z; cx = 0; cz = CHUNK_DEPTH - 1; }
-            else { corner = pos_x_pos_z; cx = 0; cz = 0; }
-            if (!corner) return false;
-            block = corner->get_block(cx, sy, cz);
-        } else {
-            const ChunkData* neighbor_chunk = nullptr;
-            int32_t neighbor_x = sx;
-            int32_t neighbor_z = sz;
-            if (sx < 0) {
-                neighbor_chunk = neg_x;
-                neighbor_x = CHUNK_WIDTH - 1;
-            } else if (sx >= CHUNK_WIDTH) {
-                neighbor_chunk = pos_x;
-                neighbor_x = 0;
-            }
-            if (sz < 0) {
-                neighbor_chunk = neg_z;
-                neighbor_z = CHUNK_DEPTH - 1;
-            } else if (sz >= CHUNK_DEPTH) {
-                neighbor_chunk = pos_z;
-                neighbor_z = 0;
-            }
-            if (neighbor_chunk) {
-                block = neighbor_chunk->get_block(neighbor_x, sy, neighbor_z);
-            } else {
-                block = BlockIDs::AIR;
-            }
-        }
-    } else {
-        block = src->get_block(sx, sy, sz);
-    }
+BlockID block = get_block(x,y,z);
+if (block == BlockIDs::AIR) return false;
     const BlockType& block_type = BlockRegistry::get_instance().get_block(block);
-    return block_type.top_face_offset <= 0.0f;
+return HasProperty(block_type.properties, BlockProperty::Opaque) ||
+HasProperty(block_type.properties, BlockProperty::Solid);
 }
 
 } // namespace VoxelEngine

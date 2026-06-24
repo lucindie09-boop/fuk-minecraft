@@ -180,14 +180,23 @@ Dictionary ChunkManager::resolve_voxel_collision(const godot::Vector3& position,
     return dict;
 }
 
+void ChunkManager::set_smooth_lighting(bool enabled) { controller->set_smooth_lighting(enabled); }
+bool ChunkManager::get_smooth_lighting() const { return controller->get_smooth_lighting(); }
+
 void ChunkManager::set_player_light_enabled(bool enabled) { controller->set_player_light_enabled(enabled); }
 bool ChunkManager::get_player_light_enabled() const { return controller->get_player_light_enabled(); }
 
 void ChunkManager::set_player_light_level(int32_t level) { controller->set_player_light_level(level); }
 int32_t ChunkManager::get_player_light_level() const { return controller->get_player_light_level(); }
 
+void ChunkManager::set_day_time(double t) { controller->set_day_time(t); }
+double ChunkManager::get_day_time() const { return controller->get_day_time(); }
+void ChunkManager::set_time(double t) { controller->set_time(t); }
+double ChunkManager::get_time() const { return controller->get_time(); }
+
 void ChunkManager::set_day_night_cycle_enabled(bool enabled) { controller->set_day_night_cycle_enabled(enabled); }
 bool ChunkManager::get_day_night_cycle_enabled() const { return controller->get_day_night_cycle_enabled(); }
+void ChunkManager::toggle_day_night_cycle() {controller->toggle_day_night_cycle(); }
 
 void ChunkManager::set_day_duration(double duration) { controller->set_day_duration(duration); }
 double ChunkManager::get_day_duration() const { return controller->get_day_duration(); }
@@ -220,6 +229,10 @@ void ChunkManager::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_block", "world_x", "world_y", "world_z"), &ChunkManager::get_block);
     ClassDB::bind_method(D_METHOD("get_block_name", "block_id"), &ChunkManager::get_block_name);
     ClassDB::bind_method(D_METHOD("resolve_voxel_collision", "position", "motion", "size"), &ChunkManager::resolve_voxel_collision);
+
+ClassDB::bind_method(D_METHOD("set_time", "time"), &ChunkManager::set_time);
+ClassDB::bind_method(D_METHOD("get_time"), &ChunkManager::get_time);
+ClassDB::bind_method(D_METHOD("toggle_day_night_cycle"), &ChunkManager::toggle_day_night_cycle);
 
     // Block ID constants (exposed to GDScript so block types can be referenced without hardcoding)
 #define BIND_BLOCK_CONSTANT(name, id) ClassDB::bind_integer_constant("ChunkManager", "", #name, id)
@@ -265,8 +278,10 @@ void ChunkManager::_bind_methods() {
     BIND_PROP(Variant::FLOAT,   debug_print_interval,      "interval");
     BIND_PROP(Variant::BOOL,    editor_enabled,            "enabled");
     BIND_PROP(Variant::INT,     editor_render_distance,    "distance");
+BIND_PROP(Variant::BOOL, smooth_lighting, "enabled");
     BIND_PROP(Variant::BOOL,    player_light_enabled,      "enabled");
     BIND_PROP(Variant::INT,     player_light_level,        "level");
+BIND_PROP(Variant::FLOAT, day_time, "time");
     BIND_PROP(Variant::BOOL,    day_night_cycle_enabled,   "enabled");
     BIND_PROP(Variant::FLOAT,   day_duration,              "duration");
     BIND_PROP(Variant::FLOAT,   day_sky_intensity,         "intensity");

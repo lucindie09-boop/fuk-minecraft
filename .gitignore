@@ -29,3 +29,4 @@ build/
 *.suo
 *.user
 
+/extension_api.json

@@ -99,14 +99,23 @@ public:
 
     godot::Dictionary resolve_voxel_collision(const godot::Vector3& position, const godot::Vector3& motion, const godot::Vector3& size);
 
+void set_smooth_lighting(bool enabled);
+bool get_smooth_lighting() const;
+
     void set_player_light_enabled(bool enabled);
     bool get_player_light_enabled() const;
 
     void set_player_light_level(int32_t level);
     int32_t get_player_light_level() const;
 
+void set_day_time(double t);
+double get_day_time() const;
+void set_time(double t);
+double get_time() const;
+
     void set_day_night_cycle_enabled(bool enabled);
     bool get_day_night_cycle_enabled() const;
+void toggle_day_night_cycle();
 
     void set_day_duration(double duration);
     double get_day_duration() const;

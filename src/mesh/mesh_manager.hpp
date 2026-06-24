@@ -34,6 +34,8 @@ public:
         last_player_block_z = bz;
     }
 
+void set_mesh_render_distance(int32_t rd) {mesh_render_distance = rd;}
+
     void process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads, const godot::Ref<godot::ShaderMaterial>& material);
     void rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,
                                          ChunkRenderData* render_data,
@@ -55,6 +57,10 @@ public:
     size_t size() const { return mesh_queue.size(); }
     bool erase_urgent(uint64_t key) { return mesh_queue.erase_urgent(key); }
 
+void set_smooth_lighting(bool enabled) { smooth_lighting_enabled = enabled; }
+bool is_smooth_lighting_enabled() const {return smooth_lighting_enabled; }
+void mark_all_chunks_dirty();
+
 private:
     ChunkMap* chunk_map = nullptr;
     ChunkScheduler* chunk_scheduler = nullptr;
@@ -69,6 +75,8 @@ private:
     int32_t last_player_block_x = INT32_MIN;
     int32_t last_player_block_y = INT32_MIN;
     int32_t last_player_block_z = INT32_MIN;
+int32_t mesh_render_distance = 0;
+bool smooth_lighting_enabled = false;
 };
 
 } // namespace VoxelEngine

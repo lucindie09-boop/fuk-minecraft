@@ -26,12 +26,20 @@ bool ChunkWorld::generate_chunk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_
                 int32_t world_y_start = cy * CHUNK_HEIGHT;
                 int32_t world_y_end = world_y_start + CHUNK_HEIGHT;
 
+if (world_y_start >= WORLD_HEIGHT_Y || world_y_end <= 0) {
+chunk_data->clear();
+chunk_data->propagate_sky_light(nullptr);
+chunk_data->compute_fully_solid();
+return chunk_data;
+}
+
                 // Fast estimation: skip chunks that are entirely air or entirely solid
                 auto height_range = generator.get_chunk_height_range(cx, cz);
                 float margin = 3.0f; // safety margin for intra-chunk height variation
+float top_content_h = std::max(height_range.max_h, height_range.max_water_h);
 
                 // Entirely above surface: all air
-                if (world_y_start > static_cast<int32_t>(height_range.max_h + margin)) {
+                if (world_y_start > static_cast<int32_t>(top_content_h + margin)) {
                     chunk_data->clear();
                     chunk_data->propagate_sky_light(nullptr); // sky light = 15 for all air
                     chunk_data->compute_fully_solid();
@@ -190,9 +198,13 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
             // when a chunk actually needs a visible mesh. This avoids creating
             // 83,000+ Godot resources for invisible chunks.
 
+apply_pending_placements(key, completed.chunk_x, completed.chunk_y, completed.chunk_z, *render_data);
+
             chunk_map.insert(key, std::move(render_data));
 
-            apply_pending_placements(key, completed.chunk_x, completed.chunk_y, completed.chunk_z, *render_data);
+if (light_propagator) {
+light_propagator->try_fixup_chunk(key, completed.chunk_x, completed.chunk_y, completed.chunk_z);
+}
 
             const int32_t dx = completed.chunk_x - player_cx;
             const int32_t dy = completed.chunk_y - player_cy;
@@ -381,23 +393,25 @@ void ChunkWorld::free_loaded_chunks() {
 bool ChunkWorld::try_unload_chunk(uint64_t key, MeshManager* mesh_mgr) {
     int32_t cx, cy, cz;
     ChunkMap::decode_chunk_key(key, cx, cy, cz);
-
-    auto render_data = chunk_map.find_and_erase_if(key, [this, key, cx, cy, cz](const ChunkRenderData& rd) {
+bool needs_save = false;
+    auto render_data = chunk_map.find_and_erase_if(key, [this, key, &needs_save](const ChunkRenderData& rd) {
         if (rd.pending_mesh_builds.load(std::memory_order_relaxed) != 0) {
             return false;
         }
         if (rd.pending_mesh_uploads.load(std::memory_order_relaxed) != 0) {
             return false;
         }
-        if (is_chunk_dirty(key)) {
-            save_chunk_to_disk(cx, cy, cz, rd.data.get());
-        }
+needs_save = is_chunk_dirty(key);
         return true;
     });
 
     if (!render_data) {
         return !chunk_map.contains(key);
     }
+
+if (needs_save) {
+save_chunk_to_disk(cx, cy, cz, render_data->data.get());
+}
     if (mesh_mgr) {
         mesh_mgr->erase_urgent(key);
         ChunkRenderData* below = chunk_map.get_chunk_render_data(cx, cy - 1, cz);

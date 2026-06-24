@@ -12,6 +12,7 @@ constexpr int32_t CHUNK_HEIGHT = 32;
 constexpr int32_t CHUNK_DEPTH  = 32;
 constexpr int32_t CHUNK_VOLUME = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 
+constexpr int32_t WORLD_HEIGHT_Y = 1024;
 constexpr int32_t SECTION_HEIGHT = 16;
 constexpr int32_t CHUNK_SECTIONS = CHUNK_HEIGHT / SECTION_HEIGHT; // 32 / 16 = 2
 

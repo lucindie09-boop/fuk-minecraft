@@ -20,7 +20,6 @@ namespace VoxelEngine {
 enum class BiomeType : uint8_t {
     Land,
     Ocean,
-    Lake,
     Beach
 };
 
@@ -32,7 +31,6 @@ private:
     FastNoise terrain_noise;
     FastNoise cave_noise;
     FastNoise continental_noise;
-    FastNoise lake_noise;
 
     TerrainParams params;
     std::mt19937 rng;
@@ -93,7 +91,7 @@ private:
     }
 
     // -------------------------------------------------------------------------
-    // Per-column terrain evaluation (terrain, rivers, lakes)
+    // Per-column terrain evaluation 
     // -------------------------------------------------------------------------
     ColumnSample sample_column(int32_t world_x, int32_t world_z) const;
 
@@ -110,6 +108,7 @@ public:
     struct HeightRange {
         float min_h = 0.0f;
         float max_h = 0.0f;
+float max_water_h = -1.0f;
     };
     HeightRange get_chunk_height_range(int32_t chunk_x, int32_t chunk_z) const;
     BlockID get_chunk_subsurface_block(int32_t chunk_x, int32_t chunk_z) const;
@@ -126,7 +125,6 @@ public:
         : terrain_noise(p.seed)
         , cave_noise(p.seed + 2000)
         , continental_noise(p.seed + 6000)
-        , lake_noise(p.seed + 8000)
         , params(p)
         , rng(p.seed)
     {
@@ -192,7 +190,6 @@ public:
             terrain_noise     = FastNoise(p.seed);
             cave_noise        = FastNoise(p.seed + 2000);
             continental_noise = FastNoise(p.seed + 6000);
-            lake_noise        = FastNoise(p.seed + 8000);
             rng.seed(p.seed);
         }
     }

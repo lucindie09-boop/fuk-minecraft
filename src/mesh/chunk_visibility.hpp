@@ -15,8 +15,7 @@ class ChunkVisibility {
 public:
     static ChunkVisibilityResult evaluate(
         ChunkRenderData* chunk_render_data,
-        ChunkRenderData* neighbor_above,
-        ChunkRenderData* neighbor_below,
+ChunkRenderData* neighbours[6],
         ChunkMap* chunk_map,
         int32_t chunk_x, int32_t chunk_y, int32_t chunk_z
     );

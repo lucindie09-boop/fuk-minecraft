@@ -8,7 +8,6 @@
 #include <unordered_set>
 #include <vector>
 #include <chrono>
-#include <functional>
 
 namespace VoxelEngine {
 
@@ -80,7 +79,8 @@ public:
 
     // Process the mesh queues. Calls the provided callback for each chunk that needs rebuilding.
     // Returns the number of rebuilds processed.
-    int32_t process(const std::function<void(int32_t, int32_t, int32_t)>& rebuild_callback,
+template<typename RebuildCallback>
+    int32_t process(RebuildCallback&& rebuild_callback,
                     int32_t max_immediate_rebuilds,
                     int32_t max_rebuilds,
                     double budget_ms) {

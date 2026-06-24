@@ -87,7 +87,13 @@ String PerfReport::build(
         accounted += perf_timer.get_avg(TimerID::ProcessCompletedMeshes);
         accounted += perf_timer.get_avg(TimerID::UpdateCollision);
         double unaccounted = proc_avg - accounted;
-        report += "  unaccounted:       avg=" + String::num(unaccounted, 3) + "ms\n";
+
+        if (unaccounted < 0.0) {
+            report += "  unaccounted:     avg=" + String::num(unaccounted, 3) +
+                      "ms (NEGATIVE \342\200\224 two timers overlap; see comment in perf_report.cpp)\n";
+        } else {
+            report += "  unaccounted:     avg=" + String::num(unaccounted, 3) + "ms\n";
+        }
     }
 
     report += "--- per-chunk (amortised) ---\n";
@@ -132,6 +138,47 @@ String PerfReport::build(
     double gpu_avg = MeshBuilder::get_perf_timer().get_avg(TimerID::MeshGpuUpload);
     if (MeshBuilder::get_perf_timer().get_count(TimerID::MeshGpuUpload) > 0) {
         report += "    gpu_upload:   avg=" + String::num(gpu_avg, 3) + "ms\n";
+    }
+
+
+    // Mesh building sub-timers
+    double solid_cache_avg = MeshBuilder::get_perf_timer().get_avg(TimerID::SolidCachePopulation);
+    if (MeshBuilder::get_perf_timer().get_count(TimerID::SolidCachePopulation) > 0) {
+        report += "    solid_cache:  avg=" + String::num(solid_cache_avg, 3) + "ms\n";
+    }
+    double greedy_h_avg = MeshBuilder::get_perf_timer().get_avg(TimerID::GreedyMeshHorizontal);
+    if (MeshBuilder::get_perf_timer().get_count(TimerID::GreedyMeshHorizontal) > 0) {
+        report += "    greedy_h:     avg=" + String::num(greedy_h_avg, 3) + "ms\n";
+    }
+    double greedy_v_avg = MeshBuilder::get_perf_timer().get_avg(TimerID::GreedyMeshVertical);
+    if (MeshBuilder::get_perf_timer().get_count(TimerID::GreedyMeshVertical) > 0) {
+        report += "    greedy_v:     avg=" + String::num(greedy_v_avg, 3) + "ms\n";
+    }
+    const auto greedy_v_stats = MeshBuilder::get_greedy_vertical_stats();
+    if (greedy_v_stats.merge_attempts > 0) {
+        const double merge_success_pct =
+            100.0 * static_cast<double>(greedy_v_stats.merge_successes) /
+            static_cast<double>(greedy_v_stats.merge_attempts);
+        report += "    merges:       " + String::num_int64(greedy_v_stats.merge_successes) +
+                  "/" + String::num_int64(greedy_v_stats.merge_attempts) +
+                  " (" + String::num(merge_success_pct, 1) + "%)\n";
+        report += "    ao_reject:    mismatch=" + String::num_int64(greedy_v_stats.reject_ao_mismatch) +
+                  " occlusion=" + String::num_int64(greedy_v_stats.reject_ao_occlusion) + "\n";
+        const uint64_t continuation_rejects =
+            greedy_v_stats.reject_light_mismatch + greedy_v_stats.reject_rotation_mismatch +
+            greedy_v_stats.reject_block_mismatch +
+            greedy_v_stats.reject_distance_limit;
+        if (continuation_rejects > 0) {
+            report += "    split_run:    light=" + String::num_int64(greedy_v_stats.reject_light_mismatch) +
+                      " rotation=" + String::num_int64(greedy_v_stats.reject_rotation_mismatch) +
+                      " block=" + String::num_int64(greedy_v_stats.reject_block_mismatch) +
+                      " distance=" + String::num_int64(greedy_v_stats.reject_distance_limit) + "\n";
+        }
+    }
+    // Chunk generation sub-timers
+    double voxelization_avg = ChunkGenerator::get_perf_timer().get_avg(TimerID::Voxelization);
+    if (ChunkGenerator::get_perf_timer().get_count(TimerID::Voxelization) > 0) {
+        report += "    voxelization: avg=" + String::num(voxelization_avg, 3) + "ms\n";
     }
 
     if (gen_count > 0 && mesh_count > 0) {
