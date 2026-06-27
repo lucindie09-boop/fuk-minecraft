@@ -2,6 +2,7 @@
 #define FUK_MINECRAFT_CHUNK_TYPES_HPP
 #include "core/chunk_data.hpp"
 #include "mesh/mesh_types.hpp"
+#include "mesh/lod_types.hpp"
 #include <godot_cpp/variant/rid.hpp>
 #include <memory>
 #include <atomic>
@@ -19,8 +20,6 @@ struct ChunkRenderData {
     std::atomic<int> pending_mesh_builds{0};
     std::atomic<int> pending_mesh_uploads{0};
     std::atomic<uint64_t> mesh_job_serial{0};
-<<<<<<< Updated upstream
-=======
     ChunkRenderLod render_lod = ChunkRenderLod::Individual;
     LodLevel current_lod = LodLevel::Individual;
     LodLevel effective_lod = LodLevel::Individual;
@@ -36,7 +35,6 @@ struct ChunkRenderData {
 
     // Whether the shader material has been set on this mesh RID (avoids redundant RS calls)
     bool material_set = false;
->>>>>>> Stashed changes
 };
 
 // -------------------------------------------------------------------------
@@ -53,8 +51,6 @@ struct CompletedMesh {
     uint64_t mesh_content_hash = 0;
 };
 
-<<<<<<< Updated upstream
-=======
 struct CompletedGroupMesh {
     int32_t anchor_cx = 0;
     int32_t anchor_cy = 0;
@@ -66,7 +62,6 @@ struct CompletedGroupMesh {
     uint64_t mesh_content_hash = 0;
 };
 
->>>>>>> Stashed changes
 // -------------------------------------------------------------------------
 // Completed chunk from worker thread
 // -------------------------------------------------------------------------

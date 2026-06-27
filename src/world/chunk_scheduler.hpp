@@ -17,13 +17,15 @@ namespace VoxelEngine {
 class ChunkScheduler {
 public:
     void clear() {
-        std::scoped_lock lock(generating_mutex, completed_mutex, completed_mesh_mutex);
+        std::scoped_lock lock(generating_mutex, completed_mutex, completed_mesh_mutex, completed_group_mesh_mutex);
         generating_chunks.clear();
         while (!completed_chunks.empty()) completed_chunks.pop();
         while (!completed_meshes.empty()) completed_meshes.pop();
         while (!completed_meshes_high_priority.empty()) completed_meshes_high_priority.pop();
+        while (!completed_group_meshes.empty()) completed_group_meshes.pop();
         chunk_count_a.store(0, std::memory_order_relaxed);
         mesh_count_a.store(0, std::memory_order_relaxed);
+        group_mesh_count_a.store(0, std::memory_order_relaxed);
     }
 
     // Returns true if the completed queue has room for more chunks.
@@ -138,6 +140,25 @@ public:
         return static_cast<size_t>(std::max(0, mesh_count_a.load(std::memory_order_relaxed)));
     }
 
+    void push_completed_group_mesh(CompletedGroupMesh&& mesh, bool) {
+        std::lock_guard<std::mutex> lock(completed_group_mesh_mutex);
+        completed_group_meshes.push(std::move(mesh));
+        group_mesh_count_a.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    bool poll_completed_group_mesh(CompletedGroupMesh& out, bool&) {
+        std::lock_guard<std::mutex> lock(completed_group_mesh_mutex);
+        if (completed_group_meshes.empty()) return false;
+        out = std::move(completed_group_meshes.front());
+        completed_group_meshes.pop();
+        group_mesh_count_a.fetch_sub(1, std::memory_order_relaxed);
+        return true;
+    }
+
+    [[nodiscard]] size_t completed_group_mesh_count() const noexcept {
+        return static_cast<size_t>(std::max(0, group_mesh_count_a.load(std::memory_order_relaxed)));
+    }
+
 private:
     std::unordered_set<uint64_t> generating_chunks;
     std::queue<CompletedChunk> completed_chunks;
@@ -146,9 +167,12 @@ private:
     mutable std::mutex generating_mutex;
     mutable std::mutex completed_mutex;
     mutable std::mutex completed_mesh_mutex;
+    mutable std::mutex completed_group_mesh_mutex;
     // Atomic counters mirror queue sizes for lock-free fast-path reads.
     std::atomic<int32_t> chunk_count_a{0};
     std::atomic<int32_t> mesh_count_a{0};
+    std::atomic<int32_t> group_mesh_count_a{0};
+    std::queue<CompletedGroupMesh> completed_group_meshes;
 };
 
 } // namespace VoxelEngine

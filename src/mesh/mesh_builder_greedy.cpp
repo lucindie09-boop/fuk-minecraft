@@ -1,7 +1,17 @@
 #include "mesh/mesh_builder.hpp"
+#include "core/light_packing.hpp"
 #include <cstddef>
 
 namespace VoxelEngine {
+
+static constexpr uint8_t kLightMergeThreshold = 2;
+
+static inline bool lights_similar_enough(uint16_t a, uint16_t b) {
+    uint8_t dr = (unpack_r(a) > unpack_r(b)) ? (unpack_r(a) - unpack_r(b)) : (unpack_r(b) - unpack_r(a));
+    uint8_t dg = (unpack_g(a) > unpack_g(b)) ? (unpack_g(a) - unpack_g(b)) : (unpack_g(b) - unpack_g(a));
+    uint8_t db = (unpack_b(a) > unpack_b(b)) ? (unpack_b(a) - unpack_b(b)) : (unpack_b(b) - unpack_b(a));
+    return dr <= kLightMergeThreshold && dg <= kLightMergeThreshold && db <= kLightMergeThreshold;
+}
 
 // -------------------------------------------------------------------------
 // Passive greedy meshing
@@ -93,14 +103,8 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                     int rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
                     const uint16_t light_key = accessor.get_light_packed(x + dx, nybase, z + dz);
 
-<<<<<<< Updated upstream
-
-                    if (merge_start != -1 && block_id == current_block && (x - merge_start) < kMaxGreedyMergeDistance
-                        && light_key == current_light_key && rotation == current_rotation) {
-=======
                     if (merge_start != -1 && block_id == current_block && (z - merge_start) < kMaxGreedyMergeDistance
                         && lights_similar_enough(light_key, current_light_key) && rotation == current_rotation) {
->>>>>>> Stashed changes
                         continue;
                     }
 

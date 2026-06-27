@@ -32,7 +32,10 @@ namespace VoxelEngine {
 X(SolidCachePopulation) \
 X(GreedyMeshHorizontal) \
 X(GreedyMeshVertical) \
-X(Voxelization)
+X(Voxelization) \
+X(LodUpdate) \
+X(GroupMeshBuild) \
+X(GroupMeshUpload)
 
 enum class TimerID : size_t {
 #define X(name) name,
