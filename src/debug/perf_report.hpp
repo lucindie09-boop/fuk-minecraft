@@ -20,7 +20,12 @@ public:
         size_t thread_pool_queue_size,
         size_t generating_count,
         size_t completed_chunk_count,
+<<<<<<< Updated upstream
         size_t loaded_chunk_count
+=======
+        size_t loaded_chunk_count,
+        const WorldRenderStats& render_stats
+>>>>>>> Stashed changes
     );
 };
 

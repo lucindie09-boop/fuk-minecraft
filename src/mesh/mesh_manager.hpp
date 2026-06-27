@@ -34,9 +34,23 @@ public:
         last_player_block_z = bz;
     }
 
+<<<<<<< Updated upstream
 void set_mesh_render_distance(int32_t rd) {mesh_render_distance = rd;}
+=======
+    void set_mesh_render_distance(int32_t rd) { mesh_render_distance = rd; }
+    void set_lod_settings(const LodSettings& settings);
+    const LodSettings& get_lod_settings() const { return lod_controller.get_settings(); }
+    LodController& get_lod_controller() { return lod_controller; }
+    const LodController& get_lod_controller() const { return lod_controller; }
+
+    void update_lod(int32_t render_distance, bool force_rescan = false);
+    void process_lod_transitions(uint64_t epoch);
+    void split_lod_group_for_edit(uint64_t group_key);
+>>>>>>> Stashed changes
 
     void process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads, const godot::Ref<godot::ShaderMaterial>& material);
+    void process_completed_group_meshes_standalone(uint64_t epoch, double budget_ms, int32_t max_uploads,
+                                                   const godot::Ref<godot::ShaderMaterial>& material);
     void rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,
                                          ChunkRenderData* render_data,
                                          ChunkRenderData* d_x_neg,
@@ -57,11 +71,35 @@ void set_mesh_render_distance(int32_t rd) {mesh_render_distance = rd;}
     size_t size() const { return mesh_queue.size(); }
     bool erase_urgent(uint64_t key) { return mesh_queue.erase_urgent(key); }
 
+<<<<<<< Updated upstream
 void set_smooth_lighting(bool enabled) { smooth_lighting_enabled = enabled; }
 bool is_smooth_lighting_enabled() const {return smooth_lighting_enabled; }
 void mark_all_chunks_dirty();
 
 private:
+=======
+    void set_smooth_lighting(bool enabled) { smooth_lighting_enabled = enabled; }
+    bool is_smooth_lighting_enabled() const { return smooth_lighting_enabled; }
+    void mark_all_chunks_dirty();
+    [[nodiscard]] bool has_pending_mesh_work() const;
+    WorldRenderStats gather_render_stats();
+
+private:
+    void process_completed_group_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads,
+                                        const godot::Ref<godot::ShaderMaterial>& material, int32_t& uploads_this_frame,
+                                        double elapsed_budget_ms);
+    void apply_split_transition(const LodTransition& transition, uint64_t epoch);
+    void apply_merge_transition(const LodTransition& transition, uint64_t epoch);
+    void apply_rebuild_transition(const LodTransition& transition, uint64_t epoch);
+    void hide_chunk_instance(ChunkRenderData* render_data);
+    void show_chunk_instance(ChunkRenderData* render_data, int32_t cx, int32_t cy, int32_t cz);
+    void release_group_to_individual(LodGroupRenderData* group);
+    void recover_stuck_lod_chunks();
+    void disable_lod_and_split_all_groups();
+    void free_group_render_data(LodGroupRenderData& group);
+    PackedBuiltMeshData pack_built_mesh(const BuiltMeshData& built_mesh);
+
+>>>>>>> Stashed changes
     ChunkMap* chunk_map = nullptr;
     ChunkScheduler* chunk_scheduler = nullptr;
     ThreadPool* thread_pool = nullptr;
@@ -75,8 +113,15 @@ private:
     int32_t last_player_block_x = INT32_MIN;
     int32_t last_player_block_y = INT32_MIN;
     int32_t last_player_block_z = INT32_MIN;
+<<<<<<< Updated upstream
 int32_t mesh_render_distance = 0;
 bool smooth_lighting_enabled = false;
+=======
+    int32_t mesh_render_distance = 0;
+    bool smooth_lighting_enabled = false;
+    int32_t lod_periodic_rescan_counter = 0;
+    bool needs_stuck_recovery_ = true;
+>>>>>>> Stashed changes
 };
 
 } // namespace VoxelEngine

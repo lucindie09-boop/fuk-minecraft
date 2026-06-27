@@ -62,6 +62,7 @@ void BlockEditor::place_block(int32_t world_x, int32_t world_y, int32_t world_z,
     ChunkRenderData* render_data = chunk_world->get_chunk_render_data(chunk_x, chunk_y, chunk_z);
     if (render_data) {
         render_data->is_mesh_dirty = true;
+        render_data->mesh_version++;
     }
 
     queue_player_edit_chunk_refresh(chunk_x, chunk_y, chunk_z);
@@ -215,7 +216,10 @@ void BlockEditor::set_block_variant(int32_t world_x, int32_t world_y, int32_t wo
     chunk_data->set_block(local_x, local_y, local_z, block_id);
     chunk_world->mark_chunk_dirty(chunk_x, chunk_y, chunk_z);
     ChunkRenderData* render_data = chunk_world->get_chunk_render_data(chunk_x, chunk_y, chunk_z);
-    if (render_data) render_data->is_mesh_dirty = true;
+    if (render_data) {
+        render_data->is_mesh_dirty = true;
+        render_data->mesh_version++;
+    }
     mesh_manager->queue_dirty_chunk(chunk_x, chunk_y, chunk_z);
 }
 

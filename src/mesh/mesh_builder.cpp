@@ -109,10 +109,15 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
     {
         ScopedTimer cache_timer(perf_timer, TimerID::SolidCachePopulation);
         // Populate interior (x: 1..SC_W-2 = CHUNK_WIDTH, z: 1..SC_D-2 = CHUNK_DEPTH)
-        for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
-            for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
-                for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
-                    solid_cache[y][z][x] = chunk.get_block_unsafe(x - 1, y, z - 1) != BlockIDs::AIR;
+        for (int32_t s = 0; s < CHUNK_SECTIONS; s++) {
+            if (chunk.is_section_all_air(s)) continue;
+            int32_t y0 = s * SECTION_HEIGHT;
+            int32_t y1 = y0 + SECTION_HEIGHT;
+            for (int32_t y = y0; y < y1; y++) {
+                for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
+                    for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
+                        solid_cache[y][z][x] = chunk.get_block_unsafe(x - 1, y, z - 1) != BlockIDs::AIR;
+                    }
                 }
             }
         }
@@ -161,17 +166,17 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
     if (passive_greedy_enabled) {
         {
             ScopedTimer greedy_h_timer(perf_timer, TimerID::GreedyMeshHorizontal);
-            passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Top);
+            passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Top, registry);
             // Bottom faces are never visible from a ground-level / top-down view.
             // Skipping them saves ~1/6 of mesh build time and reduces GPU upload bytes.
-            // passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Bottom);
+            // passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Bottom, registry);
         }
         {
             ScopedTimer greedy_v_timer(perf_timer, TimerID::GreedyMeshVertical);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Right);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Left);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Front);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Back);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Right, registry);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Left, registry);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Front, registry);
+            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Back, registry);
         }
     } else {
         for (int32_t s = 0; s < CHUNK_SECTIONS; s++) {
@@ -212,7 +217,7 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
                             int32_t nz = z + kDirectionOffsets[dir_idx][2];
                             BlockID neighbor = accessor.get_block(nx, ny, nz);
                             if (!should_cull_against_neighbor(chunk, block_id, neighbor, dir, x, y, z, registry)) {
-                                add_face(chunk, accessor, x, y, z, dir, block_id);
+                                add_face(chunk, accessor, x, y, z, dir, block_id, registry);
                             }
                         }
                     }

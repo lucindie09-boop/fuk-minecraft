@@ -37,7 +37,12 @@ void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_proce
         last_player_chunk_z = player_chunk_z;
         mesh_manager->reprioritize(player_chunk_x, player_chunk_y, player_chunk_z);
         mesh_manager->set_player_chunk(player_chunk_x, player_chunk_y, player_chunk_z);
+<<<<<<< Updated upstream
+=======
+        mesh_manager->set_mesh_render_distance(active_render_distance);
+>>>>>>> Stashed changes
     }
+    mesh_manager->update_lod(active_render_distance, chunk_changed);
 
     update_generation(is_editor, active_render_distance, epoch, player_chunk_x, player_chunk_y, player_chunk_z, chunk_changed);
     update_unload(active_render_distance, player_chunk_x, player_chunk_y, player_chunk_z, chunk_changed);
@@ -182,15 +187,34 @@ int32_t dy = cy - pcy;
 
 void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t& chunks_processed_total,
                                         int32_t active_render_distance, double delta) {
-    int32_t scaled_mesh_budget   = std::max(32, std::max(budgets.mesh_rebuilds_gameplay, active_render_distance));
-    int32_t scaled_upload_budget = std::max(32, std::max(budgets.mesh_uploads_gameplay, active_render_distance));
+    const int32_t loaded_count_post = static_cast<int32_t>(chunk_world->get_chunk_map().size());
+    const bool is_initial_loading = loaded_count_post < budgets.loading_threshold;
+
+    const size_t worker_queue_size = thread_pool ? thread_pool->get_queue_size() : 0;
+    const size_t generating_count = chunk_world->get_scheduler().generating_count();
+    const bool pipelines_busy =
+        worker_queue_size > 0 ||
+        generating_count > 0 ||
+        chunk_world->get_scheduler().completed_chunk_count() > 0 ||
+        (mesh_manager && mesh_manager->has_pending_mesh_work());
+
+    int32_t mesh_rebuild_budget;
+    int32_t upload_budget;
+    if (is_initial_loading) {
+        mesh_rebuild_budget = budgets.mesh_rebuilds_loading;
+        upload_budget = budgets.mesh_uploads_loading;
+    } else if (pipelines_busy) {
+        mesh_rebuild_budget = budgets.mesh_rebuilds_active;
+        upload_budget = budgets.mesh_uploads_active;
+    } else {
+        mesh_rebuild_budget = budgets.mesh_rebuilds_idle;
+        upload_budget = budgets.mesh_uploads_idle;
+    }
 
     {
         ScopedTimer t(*perf_timer, TimerID::ProcessCompletedChunks);
-        int32_t loaded_count_post = static_cast<int32_t>(chunk_world->get_chunk_map().size());
-        bool is_initial_loading = loaded_count_post < budgets.loading_threshold;
         int32_t active_max = is_initial_loading ? budgets.chunk_completions_initial : budgets.chunk_completions_gameplay;
-        int32_t scaled_completion_budget = std::max(active_max, active_render_distance * 2);
+        int32_t scaled_completion_budget = std::min(active_max + 16, active_render_distance + 16);
         int32_t installed = chunk_world->process_completed_chunks(
             epoch,
             budgets.processing_budget_ms,
@@ -208,16 +232,24 @@ void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t
         mesh_manager->process_completed_meshes(
             epoch,
             budgets.processing_budget_ms,
-            scaled_upload_budget,
+            upload_budget,
             material_manager->get_material()
         );
+        if (mesh_manager->get_lod_settings().enabled) {
+            mesh_manager->process_completed_group_meshes_standalone(
+                epoch,
+                budgets.processing_budget_ms,
+                upload_budget,
+                material_manager->get_material()
+            );
+        }
     }
 
     {
         ScopedTimer t(*perf_timer, TimerID::DirtyMeshQueue);
         mesh_manager->process_queue(
             budgets.mesh_rebuilds_immediate,
-            scaled_mesh_budget,
+            mesh_rebuild_budget,
             budgets.processing_budget_ms
         );
     }

@@ -10,11 +10,13 @@ struct FrameBudgets {
     int32_t chunk_generations = 256;
     int32_t chunk_completions_initial = 128;
     int32_t chunk_completions_gameplay = 64;
-    int32_t mesh_rebuilds_initial = 32;
-    int32_t mesh_rebuilds_gameplay = 32;
     int32_t mesh_rebuilds_immediate = 16;
-    int32_t mesh_uploads_initial = 32;
-    int32_t mesh_uploads_gameplay = 32;
+    int32_t mesh_rebuilds_idle = 4;
+    int32_t mesh_rebuilds_active = 16;
+    int32_t mesh_rebuilds_loading = 64;
+    int32_t mesh_uploads_idle = 2;
+    int32_t mesh_uploads_active = 32;
+    int32_t mesh_uploads_loading = 64;
 
     size_t completed_queue_backlog = 512;
     size_t dirty_mesh_backlog = 512;

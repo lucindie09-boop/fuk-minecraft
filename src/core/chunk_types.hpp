@@ -19,6 +19,24 @@ struct ChunkRenderData {
     std::atomic<int> pending_mesh_builds{0};
     std::atomic<int> pending_mesh_uploads{0};
     std::atomic<uint64_t> mesh_job_serial{0};
+<<<<<<< Updated upstream
+=======
+    ChunkRenderLod render_lod = ChunkRenderLod::Individual;
+    LodLevel current_lod = LodLevel::Individual;
+    LodLevel effective_lod = LodLevel::Individual;
+    uint64_t lod_group_key = 0;
+    
+    // Version stamps for skipping redundant mesh builds
+    uint32_t mesh_version = 1;
+    uint32_t last_built_version = 0;
+    uint32_t last_built_neighbor_versions[6] = {0, 0, 0, 0, 0, 0};
+
+    // Content hash for upload deduplication (0 = unset/first upload)
+    uint64_t mesh_content_hash = 0;
+
+    // Whether the shader material has been set on this mesh RID (avoids redundant RS calls)
+    bool material_set = false;
+>>>>>>> Stashed changes
 };
 
 // -------------------------------------------------------------------------
@@ -32,8 +50,23 @@ struct CompletedMesh {
     uint64_t mesh_job_serial = 0;
     ChunkRenderData* source_chunk = nullptr;
     PackedBuiltMeshData mesh_data;
+    uint64_t mesh_content_hash = 0;
 };
 
+<<<<<<< Updated upstream
+=======
+struct CompletedGroupMesh {
+    int32_t anchor_cx = 0;
+    int32_t anchor_cy = 0;
+    int32_t anchor_cz = 0;
+    uint64_t epoch = 0;
+    uint64_t mesh_job_serial = 0;
+    LodGroupRenderData* source_group = nullptr;
+    PackedBuiltMeshData mesh_data;
+    uint64_t mesh_content_hash = 0;
+};
+
+>>>>>>> Stashed changes
 // -------------------------------------------------------------------------
 // Completed chunk from worker thread
 // -------------------------------------------------------------------------
