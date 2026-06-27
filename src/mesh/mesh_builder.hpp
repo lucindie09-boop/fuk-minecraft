@@ -140,7 +140,7 @@ private:
 
     static constexpr float kWaterSurfaceDrop = 0.12f;
     static constexpr float kLoweredBlockOffset = 0.0625f;  // 1/16
-    static constexpr int   kMaxGreedyMergeDistance = 16;
+    static constexpr int   kMaxGreedyMergeDistance = 32;
     static constexpr size_t kVertexReserve = CHUNK_VOLUME * 2 + 4096;
     static constexpr size_t kIndexReserve  = kVertexReserve * 3 / 2;
 
@@ -296,11 +296,11 @@ const BlockRegistry& registry) const;
     // -------------------------------------------------------------------------
     void add_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                   int32_t x, int32_t y, int32_t z,
-                  FaceDirection direction, BlockID block_id);
+                  FaceDirection direction, BlockID block_id, const BlockRegistry& registry);
 
     void add_greedy_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                          const Face& face, uint16_t face_light_key, int rotation,
-const float ao[4]);
+                         const float ao[4], const BlockRegistry& registry);
 
     // -------------------------------------------------------------------------
     // Passive greedy meshing (heavy — defined in .cpp)
@@ -308,10 +308,10 @@ const float ao[4]);
     void flush_horizontal_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                 int32_t x_start, int32_t x_end,
                                 int32_t y, int32_t z, FaceDirection direction,
-                                BlockID block_id, uint16_t light_key, int rotation);
+                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
 
     void passive_greedy_mesh_horizontal(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                        FaceDirection direction);
+                                        FaceDirection direction, const BlockRegistry& registry);
 
     // -------------------------------------------------------------------------
     // Passive vertical greedy meshing (1D Y-axis merge for side faces)
@@ -319,10 +319,10 @@ const float ao[4]);
     void flush_vertical_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                 int32_t y_start, int32_t y_end,
                                 int32_t x, int32_t z, FaceDirection direction,
-                                BlockID block_id, uint16_t light_key, int rotation);
+                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
 
     void passive_greedy_mesh_vertical(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                        FaceDirection direction);
+                                        FaceDirection direction, const BlockRegistry& registry);
 
 };
 

@@ -8,11 +8,10 @@ namespace VoxelEngine {
 // -------------------------------------------------------------------------
 void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                            int32_t x, int32_t y, int32_t z,
-                           FaceDirection direction, BlockID block_id) {
+                           FaceDirection direction, BlockID block_id, const BlockRegistry& registry) {
     uint32_t vertex_count = vertices.size();
     int dir_index = static_cast<int>(direction);
 
-    const BlockRegistry& registry = BlockRegistry::get_instance();
     const BlockType& block_type = registry.get_block(block_id);
     int texture_idx = 0;
 
@@ -147,14 +146,13 @@ light_keys[0] = light_keys[1] = light_keys[2] = light_keys[3] = light_key;
 }
 
 void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                  const Face& face, uint16_t face_light_key, int rotation, const float ao[4]) {
+                                  const Face& face, uint16_t face_light_key, int rotation, const float ao[4], const BlockRegistry& registry) {
     uint32_t vertex_count = vertices.size();
     int dir_index = static_cast<int>(face.direction);
 
     int32_t u_size = face.u_max + 1;
     int32_t v_size = face.v_max + 1;
 
-    const BlockRegistry& registry = BlockRegistry::get_instance();
     const BlockType& block_type = registry.get_block(face.block_id);
     int texture_idx = 0;
     switch (face.direction) {

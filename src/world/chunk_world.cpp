@@ -5,6 +5,7 @@
 #include "mesh/mesh_manager.hpp"
 #include "lighting/light_propagator.hpp"
 #include "worldgen/chunk_generator.hpp"
+#include "mesh/chunk_boundary_dirty.hpp"
 
 namespace VoxelEngine {
 
@@ -139,23 +140,39 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
 
                 if (mesh_manager) {
                     mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y,     stage.chunk_z);
-                    if (chunk_map.contains_fast(chunk_map.get_chunk_key(stage.chunk_x - 1, stage.chunk_y,     stage.chunk_z))) {
-                        mesh_manager->queue_dirty_chunk(stage.chunk_x - 1, stage.chunk_y,     stage.chunk_z);
-                    }
-                    if (chunk_map.contains_fast(chunk_map.get_chunk_key(stage.chunk_x + 1, stage.chunk_y,     stage.chunk_z))) {
-                        mesh_manager->queue_dirty_chunk(stage.chunk_x + 1, stage.chunk_y,     stage.chunk_z);
-                    }
-                    if (chunk_map.contains_fast(chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y,     stage.chunk_z - 1))) {
-                        mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y,     stage.chunk_z - 1);
-                    }
-                    if (chunk_map.contains_fast(chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y,     stage.chunk_z + 1))) {
-                        mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y,     stage.chunk_z + 1);
-                    }
-                    if (chunk_map.contains_fast(chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y - 1, stage.chunk_z))) {
-                        mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y - 1, stage.chunk_z);
-                    }
-                    if (chunk_map.contains_fast(chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y + 1, stage.chunk_z))) {
-                        mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y + 1, stage.chunk_z);
+                    ChunkData* installed_chunk = chunk_map.get_chunk_data_fast(stage.chunk_x, stage.chunk_y, stage.chunk_z);
+                    if (installed_chunk) {
+                        ChunkData* neighbor = nullptr;
+                        
+                        neighbor = chunk_map.get_chunk_data_fast(stage.chunk_x - 1, stage.chunk_y, stage.chunk_z);
+                        if (should_dirty_neighbor(neighbor, FaceDirection::Left, installed_chunk)) {
+                            mesh_manager->queue_dirty_chunk(stage.chunk_x - 1, stage.chunk_y,     stage.chunk_z);
+                        }
+                        
+                        neighbor = chunk_map.get_chunk_data_fast(stage.chunk_x + 1, stage.chunk_y, stage.chunk_z);
+                        if (should_dirty_neighbor(neighbor, FaceDirection::Right, installed_chunk)) {
+                            mesh_manager->queue_dirty_chunk(stage.chunk_x + 1, stage.chunk_y,     stage.chunk_z);
+                        }
+                        
+                        neighbor = chunk_map.get_chunk_data_fast(stage.chunk_x, stage.chunk_y - 1, stage.chunk_z);
+                        if (should_dirty_neighbor(neighbor, FaceDirection::Bottom, installed_chunk)) {
+                            mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y - 1, stage.chunk_z);
+                        }
+                        
+                        neighbor = chunk_map.get_chunk_data_fast(stage.chunk_x, stage.chunk_y + 1, stage.chunk_z);
+                        if (should_dirty_neighbor(neighbor, FaceDirection::Top, installed_chunk)) {
+                            mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y + 1, stage.chunk_z);
+                        }
+                        
+                        neighbor = chunk_map.get_chunk_data_fast(stage.chunk_x, stage.chunk_y, stage.chunk_z - 1);
+                        if (should_dirty_neighbor(neighbor, FaceDirection::Back, installed_chunk)) {
+                            mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y,     stage.chunk_z - 1);
+                        }
+                        
+                        neighbor = chunk_map.get_chunk_data_fast(stage.chunk_x, stage.chunk_y, stage.chunk_z + 1);
+                        if (should_dirty_neighbor(neighbor, FaceDirection::Front, installed_chunk)) {
+                            mesh_manager->queue_dirty_chunk(stage.chunk_x,     stage.chunk_y,     stage.chunk_z + 1);
+                        }
                     }
                 }
             }

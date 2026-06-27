@@ -14,8 +14,8 @@
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
-#include "mesh/chunk_visibility.hpp"
 #include <chrono>
+#include "core/hash_utils.hpp"
 #include <cstring>
 
 namespace VoxelEngine {
@@ -129,6 +129,15 @@ builder.set_smooth_lighting(smooth_lighting);
             std::memcpy(idx_ptr, indices.data(), indices.size() * sizeof(int32_t));
         }
 
+        // 3.1 Content hash for upload deduplication
+        uint64_t content_hash;
+        if (vertices.empty() || indices.empty()) {
+            content_hash = 0;
+        } else {
+            content_hash = fnv1a_hash_bytes(vertices.data(), vertices.size() * sizeof(Vertex));
+            content_hash = fnv1a_hash_bytes(indices.data(), indices.size() * sizeof(uint32_t), content_hash);
+        }
+
         if (async_epoch && epoch != async_epoch->load(std::memory_order_acquire)) {
             render_data->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
             return;
@@ -142,6 +151,7 @@ builder.set_smooth_lighting(smooth_lighting);
         completed.mesh_job_serial = mesh_job_serial;
         completed.source_chunk = render_data;
         completed.mesh_data = std::move(packed_mesh);
+        completed.mesh_content_hash = content_hash;
 
         chunk_scheduler->push_completed_mesh(std::move(completed), high_priority);
 
@@ -153,22 +163,22 @@ builder.set_smooth_lighting(smooth_lighting);
 
 void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads, const Ref<ShaderMaterial>& material) {
     if (!chunk_scheduler || !chunk_map) return;
-    // Fast path: skip the loop entirely if no completed meshes are waiting.
-    if (chunk_scheduler->completed_mesh_count() == 0) return;
-    RenderingServer* rs = RenderingServer::get_singleton();
-    int32_t dynamic_max_uploads = max_uploads;
 
-    auto start_time = std::chrono::high_resolution_clock::now();
+    // 3.2 Scale upload budget by queue depth for faster drain during load
+    const size_t completed_queue_depth = chunk_scheduler->completed_mesh_count();
+    int32_t dynamic_max_uploads = max_uploads;
+    if (completed_queue_depth > static_cast<size_t>(max_uploads)) {
+        dynamic_max_uploads = std::min(static_cast<int32_t>(completed_queue_depth), max_uploads * 4);
+    }
     int32_t uploads_this_frame = 0;
 
     Array arrays;
     arrays.resize(Mesh::ARRAY_MAX);
 
-    while (uploads_this_frame < dynamic_max_uploads) {
-        auto current_time = std::chrono::high_resolution_clock::now();
-        double elapsed_ms = std::chrono::duration<double, std::milli>(current_time - start_time).count();
-        if (elapsed_ms >= budget_ms) break;
+    if (chunk_scheduler->completed_mesh_count() > 0) {
+    RenderingServer* rs = RenderingServer::get_singleton();
 
+    while (uploads_this_frame < dynamic_max_uploads) {
         bool high_priority = false;
         CompletedMesh completed;
         if (!chunk_scheduler->poll_completed_mesh(completed, high_priority)) {
@@ -176,13 +186,13 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
         }
 
         if (completed.epoch != epoch || !completed.source_chunk) {
-            continue;  // do NOT count skipped stale meshes against budget
+            continue;
         }
 
         ChunkRenderData* render_data = completed.source_chunk;
         render_data->pending_mesh_uploads.fetch_sub(1, std::memory_order_relaxed);
         if (render_data->mesh_job_serial.load(std::memory_order_acquire) != completed.mesh_job_serial) {
-            continue;  // do NOT count skipped stale meshes against budget
+            continue;
         }
 
         if (completed.mesh_data.empty) {
@@ -198,28 +208,19 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             continue;
         }
 
-        arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
-        arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
-        arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
-        arrays[Mesh::ARRAY_TEX_UV2] = completed.mesh_data.uv2s;
-        arrays[Mesh::ARRAY_COLOR] = completed.mesh_data.colors;
-        arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
+        // 3.1 Upload deduplication: skip GPU upload if content hash unchanged (first upload always goes through)
+        const bool content_unchanged = render_data->mesh_content_hash != 0 &&
+                                       render_data->mesh_content_hash == completed.mesh_content_hash;
 
-        // Reuse mesh RID instead of creating a new one every frame — eliminates RID churn.
-        if (!render_data->mesh_rid.is_valid()) {
-            render_data->mesh_rid = rs->mesh_create();
-            AABB chunk_aabb(Vector3(0, 0, 0), Vector3(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH));
-            rs->mesh_set_custom_aabb(render_data->mesh_rid, chunk_aabb);
-        } else {
-            rs->mesh_clear(render_data->mesh_rid);
-        }
-        if (perf_timer) {
-            ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
-            rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays);
-        } else {
-            rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays);
-        }
+        if (!content_unchanged) {
+            arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
+            arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
+            arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
+            arrays[Mesh::ARRAY_TEX_UV2] = completed.mesh_data.uv2s;
+            arrays[Mesh::ARRAY_COLOR] = completed.mesh_data.colors;
+            arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
 
+<<<<<<< Updated upstream
         if (material.is_valid()) {
             rs->mesh_surface_set_material(render_data->mesh_rid, 0, material->get_rid());
         }
@@ -228,6 +229,46 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             // Instance already exists, mesh base is already set
         } else {
             // Lazy instance creation: only create when chunk first becomes visible
+=======
+            // Reuse mesh RID instead of creating a new one every frame
+            if (!render_data->mesh_rid.is_valid()) {
+                render_data->mesh_rid = rs->mesh_create();
+                render_data->material_set = false;
+                AABB chunk_aabb(Vector3(0, 0, 0), Vector3(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH));
+                rs->mesh_set_custom_aabb(render_data->mesh_rid, chunk_aabb);
+            } else {
+                rs->mesh_clear(render_data->mesh_rid);
+                render_data->material_set = false;
+            }
+            if (perf_timer) {
+                ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
+                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays);
+            } else {
+                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays);
+            }
+
+            if (material.is_valid() && !render_data->material_set) {
+                rs->mesh_surface_set_material(render_data->mesh_rid, 0, material->get_rid());
+                render_data->material_set = true;
+            }
+
+            render_data->mesh_content_hash = completed.mesh_content_hash;
+        }
+
+        // 4.4 Instance budget cap: don't create instances for chunks beyond render distance
+        // Uses same 2D horizontal distance + vertical buffer logic as the LOD classifier
+        bool within_render_distance = true;
+        if (mesh_render_distance > 0 && last_player_chunk_x != INT32_MIN) {
+            const int32_t dx = completed.chunk_x - last_player_chunk_x;
+            const int32_t dz = completed.chunk_z - last_player_chunk_z;
+            const int32_t dy = std::abs(completed.chunk_y - last_player_chunk_y);
+            within_render_distance = (dx*dx + dz*dz) <= (mesh_render_distance * mesh_render_distance) && dy <= 2;
+        }
+        const bool show_instance = render_data->render_lod != ChunkRenderLod::HiddenInGroup && within_render_distance;
+        if (render_data->instance_rid.is_valid()) {
+            rs->instance_set_visible(render_data->instance_rid, show_instance);
+        } else if (show_instance) {
+>>>>>>> Stashed changes
             render_data->instance_rid = rs->instance_create();
             rs->instance_set_base(render_data->instance_rid, render_data->mesh_rid);
             AABB chunk_aabb(Vector3(0, 0, 0), Vector3(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH));
@@ -240,16 +281,134 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
                 if (owner3d) {
                     Ref<World3D> world = owner3d->get_world_3d();
                     if (world.is_valid()) {
-                        RID scenario = world->get_scenario();
-                        rs->instance_set_scenario(render_data->instance_rid, scenario);
+                        rs->instance_set_scenario(render_data->instance_rid, world->get_scenario());
                     }
+<<<<<<< Updated upstream
                     rs->instance_set_visible(render_data->instance_rid, true);
+=======
+>>>>>>> Stashed changes
                 }
             }
+            rs->instance_set_visible(render_data->instance_rid, true);
+        }
+
+        if (completed.chunk_y > 0) {
+            queue_dirty_chunk(completed.chunk_x, completed.chunk_y - 1, completed.chunk_z);
+        }
 
         uploads_this_frame++;
     }
     }
+<<<<<<< Updated upstream
+=======
+
+    process_completed_group_meshes(epoch, budget_ms, dynamic_max_uploads, material, uploads_this_frame, 0.0);
+}static inline bool should_cull_neighbor(BlockID current, BlockID neighbor, FaceDirection direction, const BlockRegistry& registry) {
+    if (neighbor == BlockIDs::AIR) {
+         return false;
+    }
+    const BlockType& neighbor_type = registry.get_block(neighbor);
+    if (HasProperty(neighbor_type.properties, BlockProperty::Transparent)) {
+        if (current != neighbor) return false;
+    }
+    const BlockType& current_type = registry.get_block(current);
+    if (current == neighbor && current_type.cull_against_same) return true;
+    if (direction == FaceDirection::Right || direction == FaceDirection::Left ||
+        direction == FaceDirection::Front || direction == FaceDirection::Back) {
+        float current_height = 1.0f - current_type.top_face_offset;
+        float neighbor_height = 1.0f - neighbor_type.top_face_offset;
+        if (neighbor_height < current_height) return false;
+        if (neighbor_height > current_height) return true;
+    }
+    return true;
+}
+
+static bool has_no_boundary_faces_produced(const ChunkRenderData* render_data,
+                                            const ChunkRenderData* d_x_neg, const ChunkRenderData* d_x_pos,
+                                            const ChunkRenderData* d_y_neg, const ChunkRenderData* d_y_pos,
+                                            const ChunkRenderData* d_z_neg, const ChunkRenderData* d_z_pos,
+                                            int32_t chunk_y) {
+    if (!render_data || !render_data->data || !render_data->data->fully_solid()) {
+        return false;
+    }
+
+    const BlockRegistry& registry = BlockRegistry::get_instance();
+    const ChunkData& chunk = *render_data->data;
+
+    // Check -X boundary (x = 0) vs d_x_neg (x = CHUNK_WIDTH - 1)
+    {
+        const ChunkData* neighbor = d_x_neg ? d_x_neg->data.get() : nullptr;
+        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
+            for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
+                BlockID current = chunk.get_block_unsafe(0, y, z);
+                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(CHUNK_WIDTH - 1, y, z) : BlockIDs::AIR;
+                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Left, registry)) return false;
+            }
+        }
+    }
+
+    // Check +X boundary (x = CHUNK_WIDTH - 1) vs d_x_pos (x = 0)
+    {
+        const ChunkData* neighbor = d_x_pos ? d_x_pos->data.get() : nullptr;
+        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
+            for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
+                BlockID current = chunk.get_block_unsafe(CHUNK_WIDTH - 1, y, z);
+                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(0, y, z) : BlockIDs::AIR;
+                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Right, registry)) return false;
+            }
+        }
+    }
+
+    // Check -Y boundary (y = 0) vs d_y_neg (y = CHUNK_HEIGHT - 1)
+    if (chunk_y > 0) {
+        const ChunkData* neighbor = d_y_neg ? d_y_neg->data.get() : nullptr;
+        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
+            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
+                BlockID current = chunk.get_block_unsafe(x, 0, z);
+                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, CHUNK_HEIGHT - 1, z) : BlockIDs::AIR;
+                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Bottom, registry)) return false;
+            }
+        }
+    }
+
+    // Check +Y boundary (y = CHUNK_HEIGHT - 1) vs d_y_pos (y = 0)
+    {
+        const ChunkData* neighbor = d_y_pos ? d_y_pos->data.get() : nullptr;
+        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
+            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
+                BlockID current = chunk.get_block_unsafe(x, CHUNK_HEIGHT - 1, z);
+                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, 0, z) : BlockIDs::AIR;
+                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Top, registry)) return false;
+            }
+        }
+    }
+
+    // Check -Z boundary (z = 0) vs d_z_neg (z = CHUNK_DEPTH - 1)
+    {
+        const ChunkData* neighbor = d_z_neg ? d_z_neg->data.get() : nullptr;
+        for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
+            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
+                BlockID current = chunk.get_block_unsafe(x, y, 0);
+                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, y, CHUNK_DEPTH - 1) : BlockIDs::AIR;
+                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Back, registry)) return false;
+            }
+        }
+    }
+
+    // Check +Z boundary (z = CHUNK_DEPTH - 1) vs d_z_pos (z = 0)
+    {
+        const ChunkData* neighbor = d_z_pos ? d_z_pos->data.get() : nullptr;
+        for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
+            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
+                BlockID current = chunk.get_block_unsafe(x, y, CHUNK_DEPTH - 1);
+                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, y, 0) : BlockIDs::AIR;
+                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Front, registry)) return false;
+            }
+        }
+    }
+
+    return true;
+>>>>>>> Stashed changes
 }
 
 void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,
@@ -262,6 +421,26 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
                                                    ChunkRenderData* d_z_pos) {
     if (!render_data || !render_data->is_mesh_dirty) return;
     if (!thread_pool || !chunk_scheduler || !chunk_map) return;
+
+    // 1.5 Version check: skip enqueuing if versions match
+    bool needs_enqueue = false;
+    if (render_data->mesh_version != render_data->last_built_version) {
+        needs_enqueue = true;
+    } else {
+        ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
+        for (int i = 0; i < 6; ++i) {
+            uint32_t n_ver = neighbors[i] ? neighbors[i]->mesh_version : 0;
+            if (n_ver != render_data->last_built_neighbor_versions[i]) {
+                needs_enqueue = true;
+                break;
+            }
+        }
+    }
+
+    if (!needs_enqueue) {
+        render_data->is_mesh_dirty = false;
+        return;
+    }
 
     // Occlusion culling: skip mesh generation for completely invisible chunks
     if (!render_data->data || render_data->data->is_all_air()) {
@@ -277,73 +456,30 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
             render_data->instance_rid = RID();
         }
         render_data->is_mesh_dirty = false;
+
+        render_data->last_built_version = render_data->mesh_version;
+        ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
+        for (int i = 0; i < 6; ++i) {
+            render_data->last_built_neighbor_versions[i] = neighbors[i] ? neighbors[i]->mesh_version : 0;
+        }
         return;
     }
 
     if (render_data->data && render_data->data->fully_solid()) {
-        // Per-face occlusion: check if every axis-aligned face is covered by solid blocks
-        // in the adjacent neighbor (or absent at world boundaries).
-        bool occ = true;
-        constexpr int W = CHUNK_WIDTH, H = CHUNK_HEIGHT, D = CHUNK_DEPTH;
-        // X- face -> d_x_neg's X+ face (x=31)
-        if (d_x_neg && d_x_neg->data) {
-            if (!d_x_neg->data->fully_solid() && !d_x_neg->data->is_all_air()) {
-                const BlockID* b = d_x_neg->data->blocks();
-                for (int y = 0; y < H && occ; ++y)
-                    for (int z = 0; z < D; ++z)
-                        if (b[y * W * H + z * W + 31] == BlockIDs::AIR) { occ = false; break; }
-            }
-        } else occ = false;
-        // X+ face -> d_x_pos's X- face (x=0)
-        if (occ && d_x_pos && d_x_pos->data) {
-            if (!d_x_pos->data->fully_solid() && !d_x_pos->data->is_all_air()) {
-                const BlockID* b = d_x_pos->data->blocks();
-                for (int y = 0; y < H && occ; ++y)
-                    for (int z = 0; z < D; ++z)
-                        if (b[y * W * H + z * W] == BlockIDs::AIR) { occ = false; break; }
-            }
-        } else occ = false;
-        // Y- face -> d_y_neg's Y+ face (y=31)
-        if (occ && d_y_neg && d_y_neg->data) {
-            if (!d_y_neg->data->fully_solid() && !d_y_neg->data->is_all_air()) {
-                const BlockID* b = d_y_neg->data->blocks();
-                for (int x = 0; x < W && occ; ++x)
-                    for (int z = 0; z < D; ++z)
-                        if (b[x + 31 * W + z * W * H] == BlockIDs::AIR) { occ = false; break; }
-            }
-        } else if (!d_y_neg && chunk_y != 0) occ = false;
-        // Y+ face -> d_y_pos's Y- face (y=0)
-        if (occ && d_y_pos && d_y_pos->data) {
-            if (!d_y_pos->data->fully_solid() && !d_y_pos->data->is_all_air()) {
-                const BlockID* b = d_y_pos->data->blocks();
-                for (int x = 0; x < W && occ; ++x)
-                    for (int z = 0; z < D; ++z)
-                        if (b[x + z * W * H] == BlockIDs::AIR) { occ = false; break; }
-            }
-        } else occ = false;
-        // Z- face -> d_z_neg's Z+ face (z=31)
-        if (occ && d_z_neg && d_z_neg->data) {
-            if (!d_z_neg->data->fully_solid() && !d_z_neg->data->is_all_air()) {
-                const BlockID* b = d_z_neg->data->blocks();
-                for (int x = 0; x < W && occ; ++x)
-                    for (int y = 0; y < H; ++y)
-                        if (b[x + y * W + 31 * W * H] == BlockIDs::AIR) { occ = false; break; }
-            }
-        } else occ = false;
-        // Z+ face -> d_z_pos's Z- face (z=0)
-        if (occ && d_z_pos && d_z_pos->data) {
-            if (!d_z_pos->data->fully_solid() && !d_z_pos->data->is_all_air()) {
-                const BlockID* b = d_z_pos->data->blocks();
-                for (int x = 0; x < W && occ; ++x)
-                    for (int y = 0; y < H; ++y)
-                        if (b[x + y * W] == BlockIDs::AIR) { occ = false; break; }
-            }
-        } else occ = false;
-        if (occ) {
+        const auto neighbor_fully_solid = [](ChunkRenderData* n) {
+            return n && n->data && n->data->fully_solid();
+        };
+        const bool buried =
+            neighbor_fully_solid(d_x_neg) &&
+            neighbor_fully_solid(d_x_pos) &&
+            neighbor_fully_solid(d_y_pos) &&
+            neighbor_fully_solid(d_z_neg) &&
+            neighbor_fully_solid(d_z_pos) &&
+            (neighbor_fully_solid(d_y_neg) || chunk_y == 0);
+        if (buried) {
             if (render_data->mesh_rid.is_valid()) {
                 RenderingServer* rs = RenderingServer::get_singleton();
-                RID old_mesh = render_data->mesh_rid;
-                rs->free_rid(old_mesh);
+                rs->free_rid(render_data->mesh_rid);
                 render_data->mesh_rid = RID();
             }
             if (render_data->instance_rid.is_valid()) {
@@ -352,6 +488,34 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
                 render_data->instance_rid = RID();
             }
             render_data->is_mesh_dirty = false;
+
+            render_data->last_built_version = render_data->mesh_version;
+            ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
+            for (int i = 0; i < 6; ++i) {
+                render_data->last_built_neighbor_versions[i] = neighbors[i] ? neighbors[i]->mesh_version : 0;
+            }
+            return;
+        }
+
+        // 1.6 Interior fast-path (mixed-interior check)
+        if (has_no_boundary_faces_produced(render_data, d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos, chunk_y)) {
+            if (render_data->mesh_rid.is_valid()) {
+                RenderingServer* rs = RenderingServer::get_singleton();
+                rs->free_rid(render_data->mesh_rid);
+                render_data->mesh_rid = RID();
+            }
+            if (render_data->instance_rid.is_valid()) {
+                RenderingServer* rs = RenderingServer::get_singleton();
+                rs->free_rid(render_data->instance_rid);
+                render_data->instance_rid = RID();
+            }
+            render_data->is_mesh_dirty = false;
+
+            render_data->last_built_version = render_data->mesh_version;
+            ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
+            for (int i = 0; i < 6; ++i) {
+                render_data->last_built_neighbor_versions[i] = neighbors[i] ? neighbors[i]->mesh_version : 0;
+            }
             return;
         }
     }
@@ -366,6 +530,13 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
     const uint64_t mesh_job_serial = render_data->mesh_job_serial.fetch_add(1, std::memory_order_acq_rel) + 1;
     uint64_t key = chunk_map->get_chunk_key(chunk_x, chunk_y, chunk_z);
     const bool high_priority = mesh_queue.erase_urgent(key);
+
+    // Update last built versions
+    render_data->last_built_version = render_data->mesh_version;
+    ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
+    for (int i = 0; i < 6; ++i) {
+        render_data->last_built_neighbor_versions[i] = neighbors[i] ? neighbors[i]->mesh_version : 0;
+    }
 
     const int32_t player_bx = last_player_block_x;
     const int32_t player_by = last_player_block_y;
@@ -388,7 +559,7 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
     mesh_task->player_by = player_by;
     mesh_task->player_bz = player_bz;
     mesh_task->high_priority = high_priority;
-mesh_task->smooth_lighting = smooth_lighting_enabled;
+    mesh_task->smooth_lighting = smooth_lighting_enabled;
 
     thread_pool->enqueue_task(std::move(mesh_task), high_priority);
 }
@@ -401,33 +572,6 @@ void MeshManager::rebuild_chunk_mesh(int32_t chunk_x, int32_t chunk_y, int32_t c
 
     ChunkRenderData* neighbors[6] = {};
     chunk_map->get_neighbors(chunk_x, chunk_y, chunk_z, neighbors);
-
-    auto visibility = ChunkVisibility::evaluate(
-        chunk_render_data, neighbors, chunk_map,
-        chunk_x, chunk_y, chunk_z
-    );
-
-    if (!visibility.is_visible) {
-        chunk_render_data->is_mesh_dirty = false;
-        chunk_render_data->mesh_job_serial.fetch_add(1, std::memory_order_acq_rel);
-        RenderingServer* rs = RenderingServer::get_singleton();
-        if (chunk_render_data->mesh_rid.is_valid()) {
-            rs->free_rid(chunk_render_data->mesh_rid);
-            chunk_render_data->mesh_rid = RID();
-        }
-        if (chunk_render_data->instance_rid.is_valid()) {
-            rs->free_rid(chunk_render_data->instance_rid);
-            chunk_render_data->instance_rid = RID();
-        }
-        if (visibility.should_dirty_below) {
-            queue_dirty_chunk(chunk_x, chunk_y - 1, chunk_z);
-        }
-        return;
-    }
-
-    if (visibility.should_dirty_below) {
-        queue_dirty_chunk(chunk_x, chunk_y - 1, chunk_z);
-    }
 
     rebuild_rendering_server_mesh(chunk_x, chunk_y, chunk_z, epoch, chunk_render_data,
                                   neighbors[0], neighbors[1],
@@ -499,6 +643,7 @@ void MeshManager::mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_
                 ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, cy, cz);
                 if (render_data) {
                     render_data->is_mesh_dirty = true;
+                    render_data->mesh_version++;
                 }
                 queue_dirty_chunk(cx, cy, cz);
             }
@@ -548,6 +693,48 @@ int32_t cx, cy, cz;
 ChunkMap::decode_chunk_key(key, cx, cy, cz);
 queue_dirty_chunk(cx, cy, cz);
 });
+}
+
+bool MeshManager::has_pending_mesh_work() const {
+    if (!chunk_scheduler) {
+        return mesh_queue.size() > 0 || mesh_queue.immediate_size() > 0;
+    }
+    return chunk_scheduler->completed_mesh_count() > 0 ||
+           chunk_scheduler->completed_group_mesh_count() > 0 ||
+           mesh_queue.size() > 0 ||
+           mesh_queue.immediate_size() > 0;
+}
+
+WorldRenderStats MeshManager::gather_render_stats() {
+    WorldRenderStats stats;
+    if (!chunk_map) {
+        return stats;
+    }
+
+    chunk_map->for_each([&](uint64_t /*key*/, const std::unique_ptr<ChunkRenderData>& render_data) {
+        if (render_data->mesh_rid.is_valid()) {
+            ++stats.mesh_rids;
+        }
+        if (!render_data->instance_rid.is_valid()) {
+            return;
+        }
+        if (render_data->render_lod == ChunkRenderLod::HiddenInGroup) {
+            ++stats.hidden_instances;
+        } else {
+            ++stats.visible_instances;
+        }
+    });
+
+    if (lod_controller.get_settings().enabled) {
+        stats.lod = lod_controller.get_ring_stats();
+        lod_controller.for_each_group([&](uint64_t /*key*/, const LodGroupRenderData& group) {
+            if (group.instance_rid.is_valid()) {
+                ++stats.lod.group_instances;
+            }
+        });
+    }
+
+    return stats;
 }
 
 } // namespace VoxelEngine
