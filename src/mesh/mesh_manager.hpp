@@ -8,6 +8,8 @@
 #include "core/thread_pool.hpp"
 #include "core/performance_timer.hpp"
 #include <godot_cpp/classes/shader_material.hpp>
+#include "mesh/lod_types.hpp"
+#include "mesh/lod_controller.hpp"
 #include <memory>
 #include <cstdint>
 
@@ -15,10 +17,10 @@ namespace VoxelEngine {
 
 class MeshManager {
 public:
-    void set_chunk_map(ChunkMap* cm) { chunk_map = cm; }
+    void set_chunk_map(ChunkMap* cm) { chunk_map = cm; lod_controller.set_chunk_map(cm); }
     void set_chunk_scheduler(ChunkScheduler* cs) { chunk_scheduler = cs; }
     void set_thread_pool(ThreadPool* tp) { thread_pool = tp; }
-    void set_performance_timer(PerformanceTimer* pt) { perf_timer = pt; }
+    void set_performance_timer(PerformanceTimer* pt) { perf_timer = pt; lod_controller.set_performance_timer(pt); }
     void set_async_epoch(std::atomic<uint64_t>* ae) { async_epoch = ae; }
     void set_owner(godot::Node* node) { owner = node; }
 
@@ -34,9 +36,6 @@ public:
         last_player_block_z = bz;
     }
 
-<<<<<<< Updated upstream
-void set_mesh_render_distance(int32_t rd) {mesh_render_distance = rd;}
-=======
     void set_mesh_render_distance(int32_t rd) { mesh_render_distance = rd; }
     void set_lod_settings(const LodSettings& settings);
     const LodSettings& get_lod_settings() const { return lod_controller.get_settings(); }
@@ -46,7 +45,6 @@ void set_mesh_render_distance(int32_t rd) {mesh_render_distance = rd;}
     void update_lod(int32_t render_distance, bool force_rescan = false);
     void process_lod_transitions(uint64_t epoch);
     void split_lod_group_for_edit(uint64_t group_key);
->>>>>>> Stashed changes
 
     void process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads, const godot::Ref<godot::ShaderMaterial>& material);
     void process_completed_group_meshes_standalone(uint64_t epoch, double budget_ms, int32_t max_uploads,
@@ -71,13 +69,6 @@ void set_mesh_render_distance(int32_t rd) {mesh_render_distance = rd;}
     size_t size() const { return mesh_queue.size(); }
     bool erase_urgent(uint64_t key) { return mesh_queue.erase_urgent(key); }
 
-<<<<<<< Updated upstream
-void set_smooth_lighting(bool enabled) { smooth_lighting_enabled = enabled; }
-bool is_smooth_lighting_enabled() const {return smooth_lighting_enabled; }
-void mark_all_chunks_dirty();
-
-private:
-=======
     void set_smooth_lighting(bool enabled) { smooth_lighting_enabled = enabled; }
     bool is_smooth_lighting_enabled() const { return smooth_lighting_enabled; }
     void mark_all_chunks_dirty();
@@ -99,7 +90,6 @@ private:
     void free_group_render_data(LodGroupRenderData& group);
     PackedBuiltMeshData pack_built_mesh(const BuiltMeshData& built_mesh);
 
->>>>>>> Stashed changes
     ChunkMap* chunk_map = nullptr;
     ChunkScheduler* chunk_scheduler = nullptr;
     ThreadPool* thread_pool = nullptr;
@@ -113,15 +103,11 @@ private:
     int32_t last_player_block_x = INT32_MIN;
     int32_t last_player_block_y = INT32_MIN;
     int32_t last_player_block_z = INT32_MIN;
-<<<<<<< Updated upstream
-int32_t mesh_render_distance = 0;
-bool smooth_lighting_enabled = false;
-=======
     int32_t mesh_render_distance = 0;
     bool smooth_lighting_enabled = false;
     int32_t lod_periodic_rescan_counter = 0;
     bool needs_stuck_recovery_ = true;
->>>>>>> Stashed changes
+    LodController lod_controller;
 };
 
 } // namespace VoxelEngine

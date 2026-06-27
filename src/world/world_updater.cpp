@@ -37,10 +37,7 @@ void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_proce
         last_player_chunk_z = player_chunk_z;
         mesh_manager->reprioritize(player_chunk_x, player_chunk_y, player_chunk_z);
         mesh_manager->set_player_chunk(player_chunk_x, player_chunk_y, player_chunk_z);
-<<<<<<< Updated upstream
-=======
         mesh_manager->set_mesh_render_distance(active_render_distance);
->>>>>>> Stashed changes
     }
     mesh_manager->update_lod(active_render_distance, chunk_changed);
 

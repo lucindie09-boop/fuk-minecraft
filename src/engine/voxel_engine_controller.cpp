@@ -56,15 +56,12 @@ VoxelEngineController::VoxelEngineController()
     world_updater.set_mountain_scale(mountain_scale);
     world_updater.set_render_distance(render_distance);
     world_updater.set_editor_render_distance(editor_render_distance);
-<<<<<<< Updated upstream
-=======
     mesh_manager.set_mesh_render_distance(render_distance);
     LodSettings lod_settings;
     lod_settings.lod0_radius = 8;
     lod_settings.lod1_radius = 24;
     lod_settings.enabled = true;
     mesh_manager.set_lod_settings(lod_settings);
->>>>>>> Stashed changes
 }
 
 VoxelEngineController::~VoxelEngineController() {
@@ -242,12 +239,8 @@ String VoxelEngineController::get_performance_report() {
         thread_pool ? thread_pool->get_queue_size() : 0,
         chunk_world.get_scheduler().generating_count(),
         chunk_world.get_scheduler().completed_chunk_count(),
-<<<<<<< Updated upstream
-        chunk_world.get_chunk_map().size()
-=======
         chunk_world.get_chunk_map().size(),
         mesh_manager.gather_render_stats()
->>>>>>> Stashed changes
     );
     chunks_processed_last_interval = chunks_processed_total;
     frame_count = 0;

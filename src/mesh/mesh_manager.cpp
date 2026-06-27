@@ -220,16 +220,6 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             arrays[Mesh::ARRAY_COLOR] = completed.mesh_data.colors;
             arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
 
-<<<<<<< Updated upstream
-        if (material.is_valid()) {
-            rs->mesh_surface_set_material(render_data->mesh_rid, 0, material->get_rid());
-        }
-
-        if (render_data->instance_rid.is_valid()) {
-            // Instance already exists, mesh base is already set
-        } else {
-            // Lazy instance creation: only create when chunk first becomes visible
-=======
             // Reuse mesh RID instead of creating a new one every frame
             if (!render_data->mesh_rid.is_valid()) {
                 render_data->mesh_rid = rs->mesh_create();
@@ -268,7 +258,6 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
         if (render_data->instance_rid.is_valid()) {
             rs->instance_set_visible(render_data->instance_rid, show_instance);
         } else if (show_instance) {
->>>>>>> Stashed changes
             render_data->instance_rid = rs->instance_create();
             rs->instance_set_base(render_data->instance_rid, render_data->mesh_rid);
             AABB chunk_aabb(Vector3(0, 0, 0), Vector3(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH));
@@ -283,10 +272,6 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
                     if (world.is_valid()) {
                         rs->instance_set_scenario(render_data->instance_rid, world->get_scenario());
                     }
-<<<<<<< Updated upstream
-                    rs->instance_set_visible(render_data->instance_rid, true);
-=======
->>>>>>> Stashed changes
                 }
             }
             rs->instance_set_visible(render_data->instance_rid, true);
@@ -299,11 +284,11 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
         uploads_this_frame++;
     }
     }
-<<<<<<< Updated upstream
-=======
 
     process_completed_group_meshes(epoch, budget_ms, dynamic_max_uploads, material, uploads_this_frame, 0.0);
-}static inline bool should_cull_neighbor(BlockID current, BlockID neighbor, FaceDirection direction, const BlockRegistry& registry) {
+}
+
+static inline bool should_cull_neighbor(BlockID current, BlockID neighbor, FaceDirection direction, const BlockRegistry& registry) {
     if (neighbor == BlockIDs::AIR) {
          return false;
     }
@@ -408,7 +393,6 @@ static bool has_no_boundary_faces_produced(const ChunkRenderData* render_data,
     }
 
     return true;
->>>>>>> Stashed changes
 }
 
 void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,

@@ -17,12 +17,8 @@ String PerfReport::build(
     size_t thread_pool_queue_size,
     size_t generating_count,
     size_t completed_chunk_count,
-<<<<<<< Updated upstream
-    size_t loaded_chunk_count
-=======
     size_t loaded_chunk_count,
     const WorldRenderStats& render_stats
->>>>>>> Stashed changes
 ) {
     String report = "=== Performance Report ===\n";
 
@@ -58,8 +54,6 @@ String PerfReport::build(
     report += "Generating: " + String::num_int64(generating_count) + " chunks\n";
     report += "Completed queue: " + String::num_int64(completed_chunk_count) + " chunks\n";
     report += "Loaded chunks: " + String::num_int64(loaded_chunk_count) + "\n";
-<<<<<<< Updated upstream
-=======
     report += "--- Render ---\n";
     report += "  Visible instances: " + String::num_int64(render_stats.visible_instances) +
               "  Hidden: " + String::num_int64(render_stats.hidden_instances) +
@@ -81,7 +75,6 @@ String PerfReport::build(
     if (perf_timer.get_count(TimerID::GroupMeshUpload) > 0) {
         report += "  group_mesh_upload: avg=" + String::num(perf_timer.get_avg(TimerID::GroupMeshUpload), 3) + "ms\n";
     }
->>>>>>> Stashed changes
 
     report += "--- per-frame breakdown ---\n";
     report += "  player_pos_update: avg=" + String::num(perf_timer.get_avg(TimerID::PlayerPosUpdate), 3) + "ms\n";
