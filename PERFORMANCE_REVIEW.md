@@ -26,7 +26,7 @@ Phase 4 (LOD merging) reduced draw calls from ~9645 to ~2278 — an **80% reduct
 8. **Fast-path generation** (`chunk_world.cpp:29-54`) — All-air, all-bedrock, all-solid-subsurface chunks skip the full generator.
 9. **Section-based air skipping** (`mesh_builder.cpp:124-127`) — `is_section_all_air(s)` skips 16-block vertical slabs entirely.
 10. **Shared-lock batching in collision** (`collision_resolver.cpp:69-74`) — One `acquire_shared_lock` for the entire 3-axis resolve.
-11. **Solid cache layout** (`mesh_builder.hpp:191`) — `[x][z][y]` with `y` fastest-varying is correct for vertical scan loops.
+11. **Solid cache layout** (`mesh_builder.hpp:227`) — `[y][z][x]` with `x` fastest-varying for cache-friendly horizontal scans.
 12. **Custom FastNoise** (`noise.hpp`) — No external dependencies, no `std::function` indirection.
 13. **Good test/build hygiene** (`SConstruct:30-48`) — Separate `bench`, `test`, and `debug` targets.
 14. **Upload dedup** (`hash_utils.hpp`) — FNV-1a hash on vertex+index data avoids redundant GPU uploads.
@@ -70,13 +70,9 @@ Implemented 2×2×2 group merging to reduce draw calls:
 
 | Priority | Fix | File | Notes |
 |----------|-----|------|-------|
-| P2 | Fix chunk visibility bug | `mesh/chunk_visibility.cpp` | Broken 6-face occlusion check |
-| P2 | Transpose `solid_cache` to `[y][z][x]` | `mesh/mesh_builder.hpp:191` | 2-4× mesh build speedup potential |
-| P2 | Cache `BlockRegistry*` in `build_mesh` | `mesh/mesh_builder.cpp` | ~10% mesh build speedup |
-| P2 | Add missing `ScopedTimer` to `build_mesh` | `mesh/mesh_builder.cpp:49` | Enables real profiling |
-| P2 | Cap `scaled_mesh/upload_budget` at 32 | `world/world_updater.cpp:181-182` | Prevents 2.8ms spikes |
-| P2 | 4×4×4 LOD groups | `mesh_manager_lod.cpp` | Blocked — 64-member group requires dynamic container |
-| P2 | Deduplicate `FrameBudgets` | `world/world_updater.hpp`, `core/frame_budgets.hpp` | Code hygiene |
+| ~~P2~~ | ~~Cache `BlockRegistry*` in `build_mesh`~~ | ~~`mesh/mesh_builder.cpp`~~ | Done — cached as `registry_` member |
+| ~~P2~~ | ~~Cap `scaled_mesh/upload_budget` at 32 (hard)~~ | ~~`mesh_manager.cpp`, `mesh_manager_lod.cpp`~~ | Done — removed `*4` dynamic scaling |
+| P2 | Move light propagation to worker threads | `world/chunk_world.cpp:101-134` | Frees main thread budget — 15 workers idle during light step |
+| P2 | 4×4×4 LOD groups | `mesh_manager_lod.cpp:413` | Blocked — 64-member group requires dynamic container |
 | P3 | Implement 3D DDA collision | `engine/collision_resolver.cpp` | 10× fewer collision checks |
-| P3 | Move light propagation to worker threads | `world/chunk_world.cpp:92-115` | Frees main thread budget |
-| P3 | Pool `PackedBuiltMeshData` allocations | `mesh/mesh_manager.cpp` | Reduces allocator pressure |
+| P3 | Pool `PackedBuiltMeshData` allocations | `mesh/mesh_manager.cpp` | Reduces allocator pressure — blocked by thread-boundary handoff |

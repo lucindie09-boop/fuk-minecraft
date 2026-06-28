@@ -199,12 +199,7 @@ struct MeshBuildTask : Task {
 void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads, const Ref<ShaderMaterial>& material) {
     if (!chunk_scheduler || !chunk_map) return;
 
-    // 3.2 Scale upload budget by queue depth for faster drain during load
-    const size_t completed_queue_depth = chunk_scheduler->completed_mesh_count();
     int32_t dynamic_max_uploads = max_uploads;
-    if (completed_queue_depth > static_cast<size_t>(max_uploads)) {
-        dynamic_max_uploads = std::min(static_cast<int32_t>(completed_queue_depth), max_uploads * 4);
-    }
     int32_t uploads_this_frame = 0;
 
     Array arrays;
