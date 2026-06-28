@@ -16,6 +16,10 @@ constexpr int32_t WORLD_HEIGHT_Y = 1024;
 constexpr int32_t SECTION_HEIGHT = 16;
 constexpr int32_t CHUNK_SECTIONS = CHUNK_HEIGHT / SECTION_HEIGHT; // 32 / 16 = 2
 
+constexpr int32_t SUBCHUNK_SIZE = 16;
+constexpr int32_t SUBCHUNK_DIM = CHUNK_WIDTH / SUBCHUNK_SIZE; // 2
+constexpr int32_t NUM_SUBCHUNKS = SUBCHUNK_DIM * SUBCHUNK_DIM * SUBCHUNK_DIM; // 8
+
 // -----------------------------------------------------------------------------
 // Position Types
 // -----------------------------------------------------------------------------
@@ -44,6 +48,13 @@ struct BlockPos {
                z >= 0 && z < CHUNK_DEPTH;
     }
 };
+
+// -----------------------------------------------------------------------------
+// Sub-chunk Helpers
+// -----------------------------------------------------------------------------
+[[nodiscard]] inline constexpr int32_t subchunk_index(int32_t lx, int32_t ly, int32_t lz) noexcept {
+    return (lx / SUBCHUNK_SIZE) + (ly / SUBCHUNK_SIZE) * SUBCHUNK_DIM + (lz / SUBCHUNK_SIZE) * SUBCHUNK_DIM * SUBCHUNK_DIM;
+}
 
 // -----------------------------------------------------------------------------
 // World-to-Chunk Coordinate Conversion

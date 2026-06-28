@@ -4,7 +4,7 @@
 #include <vector>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
-#include <godot_cpp/variant/packed_color_array.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 
 namespace VoxelEngine {
@@ -44,9 +44,9 @@ struct BuiltMeshData {
 struct PackedBuiltMeshData {
     godot::PackedVector3Array vertices;
     godot::PackedVector3Array normals;
-    godot::PackedColorArray colors;
+    godot::PackedByteArray custom0;  // RGBA8_UNORM: light_r, light_g, light_b, sky_light
     godot::PackedVector2Array uvs;
-    godot::PackedVector2Array uv2s;
+    godot::PackedByteArray custom1;  // RG_HALF: texture_index, ao
     godot::PackedInt32Array indices;
     bool empty = true;
 };

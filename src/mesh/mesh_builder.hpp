@@ -58,6 +58,17 @@ inline const std::array<float, 16> kBlockBrightness = []() {
 class MeshBuilder {
 public:
 
+// Bounding box for sub-chunk meshing. Only blocks within [x_min, x_max) etc.
+// will be processed. Default is the full chunk.
+struct SubChunkBounds {
+    int32_t x_min = 0;
+    int32_t x_max = CHUNK_WIDTH;
+    int32_t y_min = 0;
+    int32_t y_max = CHUNK_HEIGHT;
+    int32_t z_min = 0;
+    int32_t z_max = CHUNK_DEPTH;
+};
+
 struct GreedyVerticalStatsSnapshot {
 uint64_t merge_attempts = 0;
 uint64_t merge_successes = 0;
@@ -125,11 +136,14 @@ static void reset_greedy_vertical_stats();
     void set_greedy_enabled(bool enabled) { passive_greedy_enabled = enabled; }
     bool is_greedy_enabled() const { return passive_greedy_enabled; }
 
-void set_smooth_lighting(bool enabled) {
+    void set_smooth_lighting(bool enabled) {
 smooth_lighting_enabled = enabled;
 if (enabled) passive_greedy_enabled = false;
 }
 bool is_smooth_lighting_enabled() const { return smooth_lighting_enabled; }
+
+    void set_subchunk_bounds(const SubChunkBounds& bounds) { active_bounds = bounds; }
+    const SubChunkBounds& get_subchunk_bounds() const { return active_bounds; }
 
 private:
     // -------------------------------------------------------------------------
@@ -232,6 +246,8 @@ AmbientOcclusion ao;
     bool passive_greedy_enabled = false;
 bool smooth_lighting_enabled = false;
 GreedyVerticalStatsSnapshot greedy_v_stats_local{};
+
+    SubChunkBounds active_bounds;
 
     // -------------------------------------------------------------------------
     // Static helpers (small, keep inline)

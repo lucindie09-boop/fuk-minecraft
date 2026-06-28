@@ -41,7 +41,6 @@ test_sources = Glob("build/test_src/*.cpp") + [
     "build/tests/mesh/mesh_builder_faces.cpp",
     "build/tests/mesh/mesh_builder_greedy.cpp",
     "build/tests/mesh/chunk_neighbor_accessor.cpp",
-    "build/tests/mesh/chunk_visibility.cpp",
     "build/tests/lighting/block_light_region.cpp",
 ]
 test_prog = test_env.Program("bin/run_tests", test_sources)

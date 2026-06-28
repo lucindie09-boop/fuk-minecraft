@@ -1,6 +1,5 @@
 #include "mesh/mesh_manager.hpp"
 
-#include "mesh/chunk_visibility.hpp"
 #include "mesh/merged_mesh_builder.hpp"
 #include "mesh/lod_mesh_builder.hpp"
 
@@ -16,7 +15,7 @@
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
-#include <godot_cpp/variant/packed_color_array.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 
 #include <chrono>
@@ -68,16 +67,15 @@ struct GroupMeshBuildTask : Task {
             const size_t n = built.vertices.size();
             packed_mesh.vertices.resize(n);
             packed_mesh.normals.resize(n);
-            packed_mesh.colors.resize(n);
+            packed_mesh.custom0.resize(n * 4);
             packed_mesh.uvs.resize(n);
-            packed_mesh.uv2s.resize(n);
+            packed_mesh.custom1.resize(n * 4);
             packed_mesh.indices.resize(built.indices.size());
 
             Vector3* v_ptr = packed_mesh.vertices.ptrw();
             Vector3* n_ptr = packed_mesh.normals.ptrw();
-            Color* c_ptr = packed_mesh.colors.ptrw();
+            uint8_t* c0_ptr = packed_mesh.custom0.ptrw();
             Vector2* uv_ptr = packed_mesh.uvs.ptrw();
-            Vector2* uv2_ptr = packed_mesh.uv2s.ptrw();
             int32_t* idx_ptr = packed_mesh.indices.ptrw();
 
             constexpr float kInv127 = 1.0f / 127.0f;
@@ -87,9 +85,13 @@ struct GroupMeshBuildTask : Task {
                 const Vertex& v = built.vertices[i];
                 v_ptr[i] = Vector3(v.x, v.y, v.z);
                 n_ptr[i] = Vector3(v.nx * kInv127, v.ny * kInv127, v.nz * kInv127);
-                c_ptr[i] = Color(v.light_r * kInv255, v.light_g * kInv255, v.light_b * kInv255, v.sky_light * kInv255);
+                c0_ptr[i * 4 + 0] = v.light_r;
+                c0_ptr[i * 4 + 1] = v.light_g;
+                c0_ptr[i * 4 + 2] = v.light_b;
+                c0_ptr[i * 4 + 3] = v.sky_light;
                 uv_ptr[i] = Vector2(v.u, v.v);
-                uv2_ptr[i] = Vector2(static_cast<float>(v.texture_index), v.ao * kInv255);
+                packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.texture_index));
+                packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.ao * kInv255));
             }
             std::memcpy(idx_ptr, built.indices.data(), built.indices.size() * sizeof(int32_t));
         }
@@ -136,16 +138,15 @@ PackedBuiltMeshData MeshManager::pack_built_mesh(const BuiltMeshData& built_mesh
     const size_t n = built_mesh.vertices.size();
     packed_mesh.vertices.resize(n);
     packed_mesh.normals.resize(n);
-    packed_mesh.colors.resize(n);
+    packed_mesh.custom0.resize(n * 4);
     packed_mesh.uvs.resize(n);
-    packed_mesh.uv2s.resize(n);
+    packed_mesh.custom1.resize(n * 4);
     packed_mesh.indices.resize(built_mesh.indices.size());
 
     Vector3* v_ptr = packed_mesh.vertices.ptrw();
     Vector3* n_ptr = packed_mesh.normals.ptrw();
-    Color* c_ptr = packed_mesh.colors.ptrw();
+    uint8_t* c0_ptr = packed_mesh.custom0.ptrw();
     Vector2* uv_ptr = packed_mesh.uvs.ptrw();
-    Vector2* uv2_ptr = packed_mesh.uv2s.ptrw();
     int32_t* idx_ptr = packed_mesh.indices.ptrw();
 
     constexpr float kInv127 = 1.0f / 127.0f;
@@ -155,9 +156,13 @@ PackedBuiltMeshData MeshManager::pack_built_mesh(const BuiltMeshData& built_mesh
         const Vertex& v = built_mesh.vertices[i];
         v_ptr[i] = Vector3(v.x, v.y, v.z);
         n_ptr[i] = Vector3(v.nx * kInv127, v.ny * kInv127, v.nz * kInv127);
-        c_ptr[i] = Color(v.light_r * kInv255, v.light_g * kInv255, v.light_b * kInv255, v.sky_light * kInv255);
+        c0_ptr[i * 4 + 0] = v.light_r;
+        c0_ptr[i * 4 + 1] = v.light_g;
+        c0_ptr[i * 4 + 2] = v.light_b;
+        c0_ptr[i * 4 + 3] = v.sky_light;
         uv_ptr[i] = Vector2(v.u, v.v);
-        uv2_ptr[i] = Vector2(static_cast<float>(v.texture_index), v.ao * kInv255);
+        packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.texture_index));
+        packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.ao * kInv255));
     }
     std::memcpy(idx_ptr, built_mesh.indices.data(), built_mesh.indices.size() * sizeof(int32_t));
     return packed_mesh;
@@ -556,10 +561,10 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
         if (!content_unchanged) {
             arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
             arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
-            arrays[Mesh::ARRAY_TEX_UV2] = completed.mesh_data.uv2s;
             arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
-            arrays[Mesh::ARRAY_COLOR] = completed.mesh_data.colors;
             arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
+            arrays[Mesh::ARRAY_CUSTOM0] = completed.mesh_data.custom0;
+            arrays[Mesh::ARRAY_CUSTOM1] = completed.mesh_data.custom1;
 
             if (!group->mesh_rid.is_valid()) {
                 group->mesh_rid = rs->mesh_create();
@@ -574,10 +579,12 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
             int64_t fmt = 0;
             fmt |= RenderingServer::ARRAY_FORMAT_VERTEX;
             fmt |= RenderingServer::ARRAY_FORMAT_NORMAL;
-            fmt |= RenderingServer::ARRAY_FORMAT_COLOR;
             fmt |= RenderingServer::ARRAY_FORMAT_TEX_UV;
-            fmt |= RenderingServer::ARRAY_FORMAT_TEX_UV2;
             fmt |= RenderingServer::ARRAY_FORMAT_INDEX;
+            fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM0;
+            fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RGBA8_UNORM) << RenderingServer::ARRAY_FORMAT_CUSTOM0_SHIFT;
+            fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM1;
+            fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RG_HALF) << RenderingServer::ARRAY_FORMAT_CUSTOM1_SHIFT;
             fmt |= RenderingServer::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 
             if (perf_timer) {
