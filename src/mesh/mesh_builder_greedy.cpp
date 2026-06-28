@@ -119,7 +119,6 @@ void MeshBuilder::greedy_2d(
     case FaceDirection::Bottom:
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             int32_t ny = y + dy;
-            if (ny < 0 || ny >= CHUNK_HEIGHT) continue;
 
             greedy_2d_slice(CHUNK_WIDTH, CHUNK_DEPTH,
                 [&](int32_t x, int32_t z, GCell& cell) -> bool {
@@ -192,7 +191,6 @@ void MeshBuilder::greedy_2d(
     case FaceDirection::Left:
         for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
             int32_t nx = x + dx;
-            if (nx < 0 || nx >= CHUNK_WIDTH) continue;
 
             greedy_2d_slice(CHUNK_DEPTH, CHUNK_HEIGHT,
                 [&](int32_t z, int32_t y, GCell& cell) -> bool {
@@ -265,7 +263,6 @@ void MeshBuilder::greedy_2d(
     case FaceDirection::Back:
         for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
             int32_t nz = z + dz;
-            if (nz < 0 || nz >= CHUNK_DEPTH) continue;
 
             greedy_2d_slice(CHUNK_WIDTH, CHUNK_HEIGHT,
                 [&](int32_t x, int32_t y, GCell& cell) -> bool {
