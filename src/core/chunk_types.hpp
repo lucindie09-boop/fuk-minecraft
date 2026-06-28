@@ -30,6 +30,10 @@ struct ChunkRenderData {
     uint32_t last_built_version = 0;
     uint32_t last_built_neighbor_versions[6] = {0, 0, 0, 0, 0, 0};
 
+    // Bitmask of dirty 16³ sub-chunks (bit 0..7, (x*2 + y*2*2 + z*2*2*2) encoding).
+    // 0xFF = all dirty (initial state), 0 = nothing dirty.
+    uint8_t dirty_subchunks = 0xFF;
+
     // Content hash for upload deduplication (0 = unset/first upload)
     uint64_t mesh_content_hash = 0;
 

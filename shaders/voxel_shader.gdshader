@@ -39,6 +39,8 @@ varying vec3 world_position;
 varying vec3 world_normal;
 varying vec3 view_direction;
 varying float fog_distance;
+varying vec4 custom0_attr;
+varying vec4 custom1_attr;
 void vertex(){
 
     world_position=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;
@@ -49,27 +51,29 @@ void vertex(){
     view_direction=normalize(world_position-camera_position);
 
     fog_distance=distance(world_position,camera_position);
+    custom0_attr = CUSTOM0;
+    custom1_attr = CUSTOM1;
 }
 
 void fragment(){
 
-    vec3 tex_coord=vec3(UV,UV2.x);
+    vec3 tex_coord=vec3(UV,custom1_attr.r);
     vec4 color=texture(texture_array,tex_coord,mipmap_bias);
 
-    float ao=UV2.y;
+    float ao=custom1_attr.g;
 
-    float layer=UV2.x;
+    float layer=custom1_attr.r;
 
     bool is_water=(layer>4.5&&layer<6.5);
     bool is_leaves=abs(layer-8.0)<0.5;
 
-    vec3 block_light=COLOR.rgb;
+    vec3 block_light=custom0_attr.rgb;
 
     vec3 sun_dir_norm = normalize(sun_direction);
     float sunFacing=max(dot(world_normal, sun_dir_norm),0.0);
 
     float skyBrightness=
-        COLOR.a*
+        custom0_attr.a*
         sky_light_intensity*
         mix(0.25,1.0,sunFacing);
 

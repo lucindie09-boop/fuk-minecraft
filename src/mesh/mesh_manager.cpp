@@ -12,7 +12,7 @@
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
-#include <godot_cpp/variant/packed_color_array.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <chrono>
 #include "core/hash_utils.hpp"
@@ -35,11 +35,42 @@ struct MeshBuildTask : Task {
     uint64_t epoch;
     uint64_t mesh_job_serial;
     int32_t player_bx, player_by, player_bz;
-bool smooth_lighting;
+    bool smooth_lighting;
+    uint8_t dirty_subchunks = 0xFF;
 
     void execute() override {
         thread_local MeshBuilder builder;
-builder.set_smooth_lighting(smooth_lighting);
+        builder.set_smooth_lighting(smooth_lighting);
+
+        // Narrow work to only dirty sub-chunks
+        if (dirty_subchunks != 0xFF) {
+            int32_t x_min = CHUNK_WIDTH, x_max = 0;
+            int32_t y_min = CHUNK_HEIGHT, y_max = 0;
+            int32_t z_min = CHUNK_DEPTH, z_max = 0;
+            for (int32_t sx = 0; sx < SUBCHUNK_DIM; ++sx) {
+                for (int32_t sy = 0; sy < SUBCHUNK_DIM; ++sy) {
+                    for (int32_t sz = 0; sz < SUBCHUNK_DIM; ++sz) {
+                        const int32_t idx = sx + sy * SUBCHUNK_DIM + sz * SUBCHUNK_DIM * SUBCHUNK_DIM;
+                        if (dirty_subchunks & (1 << idx)) {
+                            if (sx * SUBCHUNK_SIZE < x_min) x_min = sx * SUBCHUNK_SIZE;
+                            if ((sx + 1) * SUBCHUNK_SIZE > x_max) x_max = (sx + 1) * SUBCHUNK_SIZE;
+                            if (sy * SUBCHUNK_SIZE < y_min) y_min = sy * SUBCHUNK_SIZE;
+                            if ((sy + 1) * SUBCHUNK_SIZE > y_max) y_max = (sy + 1) * SUBCHUNK_SIZE;
+                            if (sz * SUBCHUNK_SIZE < z_min) z_min = sz * SUBCHUNK_SIZE;
+                            if ((sz + 1) * SUBCHUNK_SIZE > z_max) z_max = (sz + 1) * SUBCHUNK_SIZE;
+                        }
+                    }
+                }
+            }
+            if (x_min < x_max && y_min < y_max && z_min < z_max) {
+                MeshBuilder::SubChunkBounds bounds;
+                bounds.x_min = x_min; bounds.x_max = x_max;
+                bounds.y_min = y_min; bounds.y_max = y_max;
+                bounds.z_min = z_min; bounds.z_max = z_max;
+                builder.set_subchunk_bounds(bounds);
+            }
+        }
+
         constexpr int32_t CW = CHUNK_WIDTH;
         constexpr int32_t CH = CHUNK_HEIGHT;
         constexpr int32_t CD = CHUNK_DEPTH;
@@ -104,16 +135,15 @@ builder.set_smooth_lighting(smooth_lighting);
             const size_t n = vertices.size();
             packed_mesh.vertices.resize(n);
             packed_mesh.normals.resize(n);
-            packed_mesh.colors.resize(n);
+            packed_mesh.custom0.resize(n * 4);
             packed_mesh.uvs.resize(n);
-            packed_mesh.uv2s.resize(n);
+            packed_mesh.custom1.resize(n * 4);
             packed_mesh.indices.resize(indices.size());
 
             Vector3* v_ptr = packed_mesh.vertices.ptrw();
             Vector3* n_ptr = packed_mesh.normals.ptrw();
-            Color* c_ptr = packed_mesh.colors.ptrw();
+            uint8_t* c0_ptr = packed_mesh.custom0.ptrw();
             Vector2* uv_ptr = packed_mesh.uvs.ptrw();
-            Vector2* uv2_ptr = packed_mesh.uv2s.ptrw();
             int32_t* idx_ptr = packed_mesh.indices.ptrw();
 
             constexpr float kInv127 = 1.0f / 127.0f;
@@ -123,9 +153,13 @@ builder.set_smooth_lighting(smooth_lighting);
                 const Vertex& v = vertices[i];
                 v_ptr[i] = Vector3(v.x, v.y, v.z);
                 n_ptr[i] = Vector3(v.nx * kInv127, v.ny * kInv127, v.nz * kInv127);
-                c_ptr[i] = Color(v.light_r * kInv255, v.light_g * kInv255, v.light_b * kInv255, v.sky_light * kInv255);
+                c0_ptr[i * 4 + 0] = v.light_r;
+                c0_ptr[i * 4 + 1] = v.light_g;
+                c0_ptr[i * 4 + 2] = v.light_b;
+                c0_ptr[i * 4 + 3] = v.sky_light;
                 uv_ptr[i] = Vector2(v.u, v.v);
-                uv2_ptr[i] = Vector2(static_cast<float>(v.texture_index), v.ao * kInv255);
+                packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.texture_index));
+                packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.ao * kInv255));
             }
             std::memcpy(idx_ptr, indices.data(), indices.size() * sizeof(int32_t));
         }
@@ -216,10 +250,10 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
         if (!content_unchanged) {
             arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
             arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
-            arrays[Mesh::ARRAY_TEX_UV2] = completed.mesh_data.uv2s;
             arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
-            arrays[Mesh::ARRAY_COLOR] = completed.mesh_data.colors;
             arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
+            arrays[Mesh::ARRAY_CUSTOM0] = completed.mesh_data.custom0;
+            arrays[Mesh::ARRAY_CUSTOM1] = completed.mesh_data.custom1;
 
             // Reuse mesh RID instead of creating a new one every frame
             if (!render_data->mesh_rid.is_valid()) {
@@ -235,10 +269,12 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             int64_t fmt = 0;
             fmt |= RenderingServer::ARRAY_FORMAT_VERTEX;
             fmt |= RenderingServer::ARRAY_FORMAT_NORMAL;
-            fmt |= RenderingServer::ARRAY_FORMAT_COLOR;
             fmt |= RenderingServer::ARRAY_FORMAT_TEX_UV;
-            fmt |= RenderingServer::ARRAY_FORMAT_TEX_UV2;
             fmt |= RenderingServer::ARRAY_FORMAT_INDEX;
+            fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM0;
+            fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RGBA8_UNORM) << RenderingServer::ARRAY_FORMAT_CUSTOM0_SHIFT;
+            fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM1;
+            fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RG_HALF) << RenderingServer::ARRAY_FORMAT_CUSTOM1_SHIFT;
             fmt |= RenderingServer::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 
             if (perf_timer) {
@@ -434,6 +470,7 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
 
     if (!needs_enqueue) {
         render_data->is_mesh_dirty = false;
+        render_data->dirty_subchunks = 0;
         return;
     }
 
@@ -451,6 +488,7 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
             render_data->instance_rid = RID();
         }
         render_data->is_mesh_dirty = false;
+        render_data->dirty_subchunks = 0;
 
         render_data->last_built_version = render_data->mesh_version;
         ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
@@ -483,6 +521,7 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
                 render_data->instance_rid = RID();
             }
             render_data->is_mesh_dirty = false;
+            render_data->dirty_subchunks = 0;
 
             render_data->last_built_version = render_data->mesh_version;
             ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
@@ -505,6 +544,7 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
                 render_data->instance_rid = RID();
             }
             render_data->is_mesh_dirty = false;
+            render_data->dirty_subchunks = 0;
 
             render_data->last_built_version = render_data->mesh_version;
             ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
@@ -555,6 +595,8 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
     mesh_task->player_bz = player_bz;
     mesh_task->high_priority = high_priority;
     mesh_task->smooth_lighting = smooth_lighting_enabled;
+    mesh_task->dirty_subchunks = render_data->dirty_subchunks;
+    render_data->dirty_subchunks = 0;
 
     thread_pool->enqueue_task(std::move(mesh_task), high_priority);
 }
