@@ -1,65 +1,235 @@
 shader_type spatial;
 render_mode unshaded, cull_back, depth_draw_always;
 
-uniform sampler2DArray texture_array : filter_nearest_mipmap_anisotropic;
+uniform sampler2DArray texture_array : filter_nearest_mipmap;
 
-// Controls how close to the camera mipmapping kicks in.
-uniform float mipmap_bias : hint_range(-4.0, 4.0) = 1;
+uniform float mipmap_bias = 1.0;
 
-// Day/night cycle intensity (0.0 = midnight, 1.0 = noon)
-uniform float sky_light_intensity : hint_range(0.0, 1.0) = 1.0;
-uniform vec3 sky_light_color = vec3(1.0, 1.0, 1.0);
+// Lighting
+uniform float sky_light_intensity : hint_range(0.0,1.0)=1.0;
+uniform vec3 sky_light_color=vec3(1.0);
+uniform vec3 sun_direction=vec3(0.0,1.0,0.0);
 
-// Player dynamic light (per-fragment, updated every frame - no mesh rebuild needed)
-uniform vec3 player_light_position = vec3(0.0);
-uniform float player_light_radius : hint_range(0.0, 64.0) = 8.0;
-uniform float player_light_intensity : hint_range(0.0, 1.0) = 1.0;
-uniform vec3 player_light_color = vec3(1.0, 0.9, 0.7);
+// Player light
+uniform vec3 player_light_position=vec3(0.0);
+uniform float player_light_radius=8.0;
+uniform float player_light_intensity=1.0;
+uniform vec3 player_light_color=vec3(1.0,0.9,0.7);
 
-// Fog parameters (manual shader fog since render_mode unshaded bypasses Godot fog)
-uniform vec3 fog_color = vec3(0.586, 0.496, 0.446);
-uniform float fog_begin : hint_range(0.0, 2048.0) = 64.0;
-uniform float fog_end : hint_range(0.0, 2048.0) = 896.0;
+// Fog
+uniform float fog_begin=64.0;
+uniform float fog_end=896.0;
+uniform float fog_density=0.6;
+uniform float height_fog_density=0.012;
+uniform float sea_level=64.0;
+
+// Atmosphere
+uniform float fog_scatter=0.0;
+uniform vec3 fog_scatter_color=vec3(1.0,0.85,0.55);
+
+uniform vec3 aerial_color=vec3(0.62,0.80,0.96);
+uniform float aerial_strength=0.35;
+
+uniform vec3 sky_light_warmth=vec3(1.0,0.95,0.85);
+
+uniform vec3 horizon_color=vec3(0.30,0.52,0.85);
+uniform vec3 zenith_color=vec3(0.06,0.20,0.85);
 
 varying vec3 world_position;
+varying vec3 world_normal;
+varying vec3 view_direction;
+varying float fog_distance;
 
-void vertex() {
-world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+void vertex(){
+
+    world_position=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;
+    world_normal=normalize((MODEL_MATRIX*vec4(NORMAL,0.0)).xyz);
+
+    vec3 camera_position=INV_VIEW_MATRIX[3].xyz;
+
+    view_direction=normalize(world_position-camera_position);
+
+    fog_distance=distance(world_position,camera_position);
 }
 
-void fragment() {
-	// Sample texture from array using UV for coordinates and UV2.x for layer
-	vec3 tex_coord = vec3(UV, UV2.x);
+void fragment(){
 
-	// FIXED: GDSL uses the standard texture() function, passing mipmap_bias as the 3rd argument
-	vec4 color = texture(texture_array, tex_coord, mipmap_bias);
+    vec3 tex_coord=vec3(UV,UV2.x);
+    vec4 color=texture(texture_array,tex_coord,mipmap_bias);
 
-	// UV2.y carries per-vertex AO brightness multiplied by face shade (pre-computed on CPU).
-	float ao = UV2.y;
+    float ao=UV2.y;
 
-	// COLOR.rgb = pre-computed block light brightness (CPU: light_level_to_brightness), per channel.
-	vec3 block_brightness = COLOR.rgb;
-	// COLOR.a = pre-computed sky light brightness (CPU: light_level_to_brightness, no sky_light_intensity).
-	float sky_brightness = COLOR.a * sky_light_intensity;
-	vec3 sky_contribution = sky_light_color * sky_brightness;
+    float layer=UV2.x;
 
-	// Per-channel max: colored block lights mix naturally, sky fills in white daylight
-	vec3 combined_light = max(block_brightness, sky_contribution);
+    bool is_water=(layer>4.5&&layer<6.5);
+    bool is_leaves=abs(layer-8.0)<0.5;
 
-// Player dynamic light - smooth, sub-block, per-fragment
-float dist = distance(world_position, player_light_position);
-float player_light = 1.0 - clamp(dist / player_light_radius, 0.0, 1.0);
-player_light = player_light * player_light;
-vec3 player_contribution = player_light_color * player_light * player_light_intensity;
-combined_light = max(combined_light, player_contribution);
+    vec3 block_light=COLOR.rgb;
 
-	// Apply lighting: combined_light * ao (ao includes pre-multiplied face shade)
-	vec3 lit_color = color.rgb * combined_light * ao;
+    vec3 sun_dir_norm = normalize(sun_direction);
+    float sunFacing=max(dot(world_normal, sun_dir_norm),0.0);
 
-	// Manual fog (render_mode unshaded bypasses Godot's built-in fog)
-	vec3 camera_position = INV_VIEW_MATRIX[3].xyz;
-	float fog_distance = distance(world_position, camera_position);
-	float fog_amount = clamp((fog_end - fog_distance) / (fog_end - fog_begin), 0.0, 1.0);
-	ALBEDO = mix(fog_color, lit_color, fog_amount);
-	ALPHA = 1.0;
+    float skyBrightness=
+        COLOR.a*
+        sky_light_intensity*
+        mix(0.25,1.0,sunFacing);
+
+    vec3 skyTemp=
+        mix(vec3(0.55,0.65,0.85),
+            sky_light_warmth,
+            sky_light_intensity);
+
+    vec3 skyContribution=
+        skyTemp*
+        skyBrightness*
+        sky_light_color;
+
+    vec3 combinedLight=max(block_light,skyContribution);
+
+    float playerDist=
+        distance(world_position,player_light_position);
+
+    float playerLight=
+        1.0-clamp(playerDist/player_light_radius,0.0,1.0);
+
+    playerLight*=playerLight;
+
+    combinedLight=max(
+        combinedLight,
+        player_light_color*
+        playerLight*
+        player_light_intensity
+    );
+
+    vec3 lit_color=color.rgb*combinedLight*ao;
+
+    if(is_leaves){
+
+        float backlit=
+            max(dot(world_normal,-sun_dir_norm),0.0);
+
+        float sss=
+            backlit*
+            backlit*
+            sky_light_intensity*
+            0.6;
+
+        lit_color+=
+            vec3(0.15,0.35,0.05)*
+            sss*
+            color.g;
+    }
+
+    if(is_water){
+
+        float shimmer=
+            sin(world_position.x*12.0+
+            world_position.z*8.0)*0.5+0.5;
+
+        shimmer*=
+            sin(world_position.x*7.0-
+            world_position.z*11.0+
+            1.5)*0.5+0.5;
+
+        lit_color*=1.0+shimmer*0.15;
+
+        lit_color+=
+            sky_light_color*
+            sky_light_intensity*
+            0.08;
+    }
+
+    if(sky_light_intensity>0.1){
+
+    vec3 bounce=
+        vec3(0.35,0.32,0.22)*
+        sky_light_intensity*
+        0.15;
+
+    float bounceAmount=
+        world_normal.y*0.5+0.5;
+    bounceAmount=max(bounceAmount,0.5);
+
+        lit_color+=
+            color.rgb*
+            bounce*
+            bounceAmount*
+            ao;
+    }
+
+    // ========= FOG =========
+	float fog_amount = 0.0;
+	float dist_factor = 0.0;
+
+	if (fog_density > 0.001) {
+    	float dist = max(fog_distance - fog_begin, 0.0);
+    	float fog_range = max(fog_end - fog_begin, 1.0);
+    	float x = clamp(dist / fog_range, 0.0, 1.0);
+    	fog_amount = x * sqrt(x);
+    	fog_amount *= fog_density * 1.5;
+    	fog_amount = clamp(fog_amount, 0.0, 1.0);
+    	dist_factor = smoothstep(fog_begin, fog_end, fog_distance);
+	}
+
+    float belowSea = max(sea_level - world_position.y, 0.0);
+    float hf = belowSea * height_fog_density;
+    float heightFog = hf / (1.0 + hf);
+    heightFog *= dist_factor;
+    fog_amount += heightFog * 0.5;
+
+    float horizon = abs(view_direction.y);
+    float h3 = (1.0 - horizon);
+    h3 = h3 * h3 * h3;
+    fog_amount += h3 * 0.18 * dist_factor;
+    fog_amount = clamp(fog_amount, 0.0, 1.0);
+
+    float fog_seed = dot(floor(world_position.xz * 0.08), vec2(12.9898, 78.233));
+    float fog_noise = fract(sin(fog_seed) * 43758.5453);
+    fog_amount *= 0.97 + fog_noise * 0.06;
+    fog_amount = clamp(fog_amount, 0.0, 1.0);
+
+    // ========= SUN SCATTERING =========
+    vec3 view_norm = normalize(view_direction);
+    float sunDot = max(dot(view_norm, sun_dir_norm), 0.0);
+    float sd2 = sunDot * sunDot;
+    float sd4 = sd2 * sd2;
+    float sd8 = sd4 * sd4;
+    float sd16 = sd8 * sd8;
+    float sd64 = sd16 * sd16;
+    sd64 = sd64 * sd64;
+    float sunGlow = sd4 * 0.25 + sd16 + sd64 * 0.4;
+
+    vec3 scatter = fog_scatter_color * sunGlow * fog_scatter * sky_light_intensity;
+    scatter *= dist_factor;
+
+    // ========= SKY GRADIENT =========
+	float up2 = max(view_direction.y, 0.0);
+	float skyBlend = 1.0 - (1.0 - up2) * sqrt(1.0 - up2);
+	vec3 finalFogColor = mix(horizon_color, zenith_color, skyBlend);
+
+	vec3 warmFog = mix(horizon_color, fog_scatter_color, 0.35);
+	finalFogColor = mix(finalFogColor, warmFog, sd4 * sd2 * 0.4);
+	finalFogColor += scatter * (1.0 - fog_amount);
+
+    // ========= AERIAL PERSPECTIVE =========
+    float aerial = fog_amount * fog_amount * aerial_strength;
+    float luma = dot(lit_color, vec3(0.299, 0.587, 0.114));
+    float tintStrength = aerial * (1.0 - luma * 0.6);
+    float facingSky = clamp(world_normal.y * 0.5 + 0.5, 0.0, 1.0);
+    tintStrength *= mix(1.2, 0.8, facingSky);
+    vec3 sceneColor = mix(lit_color, horizon_color, tintStrength);
+    sceneColor += vec3(0.05, 0.08, 0.12) * fog_amount * (1.0 - sky_light_intensity);
+
+    // ========= FINAL BLEND =========
+    vec3 final_color = mix(sceneColor, finalFogColor, fog_amount);
+    final_color += scatter * fog_amount * 0.20;
+
+    float lum = dot(final_color, vec3(0.299, 0.587, 0.114));
+    final_color = mix(final_color, vec3(lum), fog_amount * 0.12);
+
+    final_color = final_color * (2.51 * final_color + 0.03) / (final_color * (2.43 * final_color + 0.59) + 0.14);
+    final_color = clamp(final_color, 0.0, 1.0);
+
+    ALBEDO = final_color;
+    ALPHA = 1.0;
 }
