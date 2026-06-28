@@ -183,9 +183,6 @@ void fragment(){
     fog_amount += h3 * 0.18 * dist_factor;
     fog_amount = clamp(fog_amount, 0.0, 1.0);
 
-    float fog_seed = dot(floor(world_position.xz * 0.08), vec2(12.9898, 78.233));
-    float fog_noise = fract(sin(fog_seed) * 43758.5453);
-    fog_amount *= 0.97 + fog_noise * 0.06;
     fog_amount = clamp(fog_amount, 0.0, 1.0);
 
     // ========= SUN SCATTERING =========
@@ -202,13 +199,15 @@ void fragment(){
     vec3 scatter = fog_scatter_color * sunGlow * fog_scatter * sky_light_intensity;
     scatter *= dist_factor;
 
-    // ========= SKY GRADIENT =========
+	// ========= SKY GRADIENT =========
 	float up2 = max(view_direction.y, 0.0);
 	float skyBlend = 1.0 - (1.0 - up2) * sqrt(1.0 - up2);
 	vec3 finalFogColor = mix(horizon_color, zenith_color, skyBlend);
 
+	float sun_elevation = sun_dir_norm.y;
+	float sun_vis = smoothstep(-0.08, 0.08, sun_elevation);
 	vec3 warmFog = mix(horizon_color, fog_scatter_color, 0.35);
-	finalFogColor = mix(finalFogColor, warmFog, sd4 * sd2 * 0.4);
+	finalFogColor = mix(finalFogColor, warmFog, sd4 * sd2 * 0.4 * sun_vis);
 	finalFogColor += scatter * (1.0 - fog_amount);
 
     // ========= AERIAL PERSPECTIVE =========
@@ -217,15 +216,16 @@ void fragment(){
     float tintStrength = aerial * (1.0 - luma * 0.6);
     float facingSky = clamp(world_normal.y * 0.5 + 0.5, 0.0, 1.0);
     tintStrength *= mix(1.2, 0.8, facingSky);
-    vec3 sceneColor = mix(lit_color, horizon_color, tintStrength);
+    vec3 sceneColor = mix(lit_color, finalFogColor, tintStrength);
     sceneColor += vec3(0.05, 0.08, 0.12) * fog_amount * (1.0 - sky_light_intensity);
 
     // ========= FINAL BLEND =========
     vec3 final_color = mix(sceneColor, finalFogColor, fog_amount);
     final_color += scatter * fog_amount * 0.20;
 
+    float desat = (1.0 - smoothstep(0.95, 1.0, fog_amount)) * 0.12;
     float lum = dot(final_color, vec3(0.299, 0.587, 0.114));
-    final_color = mix(final_color, vec3(lum), fog_amount * 0.12);
+    final_color = mix(final_color, vec3(lum), desat);
 
     final_color = final_color * (2.51 * final_color + 0.03) / (final_color * (2.43 * final_color + 0.59) + 0.14);
     final_color = clamp(final_color, 0.0, 1.0);

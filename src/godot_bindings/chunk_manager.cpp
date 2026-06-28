@@ -214,6 +214,9 @@ godot::Color ChunkManager::get_day_sky_color() const { return controller->get_da
 void ChunkManager::set_night_sky_color(const godot::Color& color) { controller->set_night_sky_color(color); }
 godot::Color ChunkManager::get_night_sky_color() const { return controller->get_night_sky_color(); }
 
+void ChunkManager::set_fog_density(double density) { controller->set_fog_density(density); }
+double ChunkManager::get_fog_density() const { return controller->get_fog_density(); }
+
 // -------------------------------------------------------------------------
 // _bind_methods
 // -------------------------------------------------------------------------
@@ -289,5 +292,6 @@ BIND_PROP(Variant::FLOAT, day_time, "time");
     BIND_PROP(Variant::FLOAT,   night_sky_intensity,       "intensity");
     BIND_PROP(Variant::COLOR,   day_sky_color,             "color");
     BIND_PROP(Variant::COLOR,   night_sky_color,           "color");
+    BIND_PROP(Variant::FLOAT,   fog_density,               "density");
 #undef BIND_PROP
 }
