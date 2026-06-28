@@ -249,6 +249,8 @@ GreedyVerticalStatsSnapshot greedy_v_stats_local{};
 
     SubChunkBounds active_bounds;
 
+    const BlockRegistry* registry_ = nullptr;
+
     // -------------------------------------------------------------------------
     // Static helpers (small, keep inline)
     // -------------------------------------------------------------------------

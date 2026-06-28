@@ -103,7 +103,8 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
     total_chunks.fetch_add(1, std::memory_order_relaxed);
 
 
-    const BlockRegistry& registry = BlockRegistry::get_instance();
+    if (!registry_) { registry_ = &BlockRegistry::get_instance(); }
+    const BlockRegistry& registry = *registry_;
     // solid_cache is laid out [y][z][x] (see header) so this population pass
     // walks it with x as the fastest-varying index.
     {

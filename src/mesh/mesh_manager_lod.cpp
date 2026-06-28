@@ -503,13 +503,6 @@ void MeshManager::process_lod_transitions(uint64_t epoch) {
 void MeshManager::process_completed_group_meshes_standalone(uint64_t epoch, double budget_ms, int32_t max_uploads,
                                                             const Ref<ShaderMaterial>& material) {
     int32_t uploads_this_frame = 0;
-    // 3.2 Scale upload budget by queue depth for faster drain during load
-    if (chunk_scheduler) {
-        const size_t queue_depth = chunk_scheduler->completed_group_mesh_count();
-        if (queue_depth > static_cast<size_t>(max_uploads)) {
-            max_uploads = std::min(static_cast<int32_t>(queue_depth), max_uploads * 4);
-        }
-    }
     process_completed_group_meshes(epoch, budget_ms, max_uploads, material, uploads_this_frame, 0.0);
 }
 
