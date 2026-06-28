@@ -28,6 +28,9 @@ void LightPropagator::propagate_block_light_region(int32_t cx, int32_t cy, int32
     light_region.collect_emissive_sources(sources);
     light_region.clear_block_light();
     light_region.propagate_additive(sources);
+    if (mesh_manager) {
+        mesh_manager->mark_chunks_dirty_for_light(cx, cy, cz);
+    }
 }
 
 void LightPropagator::propagate_from_existing_light(int32_t cx, int32_t cy, int32_t cz) {
@@ -106,6 +109,9 @@ continue;
             }
         }
     }
+    if (mesh_manager) {
+        mesh_manager->mark_chunks_dirty_for_light(origin_cx, origin_cy, origin_cz);
+    }
 }
 
 void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue) {
@@ -166,6 +172,9 @@ continue;
             }
         }
     }
+    if (mesh_manager) {
+        mesh_manager->mark_chunks_dirty_for_light(origin_cx, origin_cy, origin_cz);
+    }
 }
 
 
@@ -174,6 +183,9 @@ auto it = pending_light_removals_.find(key);
 if (it == pending_light_removals_.end()) return;
 pending_light_removals_.erase(it);
 propagate_block_light_region(cx, cy, cz);
+if (mesh_manager) {
+mesh_manager->mark_chunks_dirty_for_light(cx, cy, cz);
+}
 }
 
 void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b) {
@@ -187,11 +199,22 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
     const bool new_emissive = HasProperty(new_type.properties, BlockProperty::Emissive);
     const bool new_opaque = HasProperty(new_type.properties, BlockProperty::Opaque);
 
-    const uint8_t old_light_level = old_cell_r > old_cell_g ? (old_cell_r > old_cell_b ? old_cell_r : old_cell_b) : (old_cell_g > old_cell_b ? old_cell_g : old_cell_b);
+    const uint8_t old_cell_level = old_cell_r > old_cell_g ? (old_cell_r > old_cell_b ? old_cell_r : old_cell_b) : (old_cell_g > old_cell_b ? old_cell_g : old_cell_b);
+    const uint8_t old_emission_level = old_emissive ? (old_type.light_r > old_type.light_g ? (old_type.light_r > old_type.light_b ? old_type.light_r : old_type.light_b) : (old_type.light_g > old_type.light_b ? old_type.light_g : old_type.light_b)) : 0;
+    const uint8_t old_light_level = std::max(old_cell_level, old_emission_level);
     const uint8_t target_r = new_emissive ? new_type.light_r : 0;
     const uint8_t target_g = new_emissive ? new_type.light_g : 0;
     const uint8_t target_b = new_emissive ? new_type.light_b : 0;
     const uint8_t target_level = target_r > target_g ? (target_r > target_b ? target_r : target_b) : (target_g > target_b ? target_g : target_b);
+
+    uint8_t remove_r = old_cell_r;
+    uint8_t remove_g = old_cell_g;
+    uint8_t remove_b = old_cell_b;
+    if (old_cell_r == 0 && old_cell_g == 0 && old_cell_b == 0 && old_emissive) {
+        remove_r = old_type.light_r;
+        remove_g = old_type.light_g;
+        remove_b = old_type.light_b;
+    }
 
     std::vector<LightNode> remove_queue;
     std::vector<LightNode> add_queue;
@@ -200,7 +223,7 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
 
     if (old_light_level > 0 && old_light_level > target_level) {
         chunk->set_light_rgb(x, y, z, 0, 0, 0);
-        remove_queue.push_back({cx, cy, cz, static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(z), old_cell_r, old_cell_g, old_cell_b});
+        remove_queue.push_back({cx, cy, cz, static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(z), remove_r, remove_g, remove_b});
         light_propagate_remove(cx, cy, cz, remove_queue, add_queue);
     }
 
@@ -240,6 +263,9 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
 
     if (!add_queue.empty()) {
         light_propagate_add(cx, cy, cz, add_queue);
+    }
+    if (mesh_manager) {
+        mesh_manager->mark_chunks_dirty_for_light(cx, cy, cz);
     }
 }
 

@@ -112,9 +112,19 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
                 auto lock = chunk_map.acquire_shared_lock();
                 if (!chunk_map.contains_fast(key)) continue;
                 if (light_propagator && light_propagated_chunks.find(key) == light_propagated_chunks.end()) {
-                    ChunkData* chunk = chunk_map.get_chunk_data_fast(stage.chunk_x, stage.chunk_y, stage.chunk_z);
-                    if (chunk && chunk->get_emissive_count() > 0) {
-                        light_propagator->propagate_from_existing_light(stage.chunk_x, stage.chunk_y, stage.chunk_z);
+                    bool any_emissive = false;
+                    for (int dz = -1; dz <= 1 && !any_emissive; dz++) {
+                        for (int dy = -1; dy <= 1 && !any_emissive; dy++) {
+                            for (int dx = -1; dx <= 1 && !any_emissive; dx++) {
+                                ChunkData* n = chunk_map.get_chunk_data_fast(stage.chunk_x + dx, stage.chunk_y + dy, stage.chunk_z + dz);
+                                if (n && n->get_emissive_count() > 0) {
+                                    any_emissive = true;
+                                }
+                            }
+                        }
+                    }
+                    if (any_emissive) {
+                        light_propagator->propagate_block_light_region(stage.chunk_x, stage.chunk_y, stage.chunk_z);
                     }
                     light_propagated_chunks.insert(key);
                 }

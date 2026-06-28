@@ -36,6 +36,10 @@ public:
     }
 
     [[nodiscard]] float get_fog_density() const {
+        return fog_density;
+    }
+
+    [[nodiscard]] float get_shader_fog_density() const {
         if (fog_density <= 0.0f) return 0.0f;
         return 0.7f;
     }

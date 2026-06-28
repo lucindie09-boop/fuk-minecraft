@@ -104,7 +104,7 @@ void EnvironmentController::update_shader_parameters() {
     const godot::Color fog_scatter_color = sun_color;
 
     material_manager.update_fog_parameters(fog_begin, fog_end, fog_color,
-                                           fog_controller.get_fog_density(), 0.012f, 64.0f, fog_color,
+                                           fog_controller.get_shader_fog_density(), 0.012f, 64.0f, fog_color,
                                            fog_scatter, fog_scatter_color);
 }
 
