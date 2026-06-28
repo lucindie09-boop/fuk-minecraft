@@ -39,7 +39,6 @@ varying vec3 world_position;
 varying vec3 world_normal;
 varying vec3 view_direction;
 varying float fog_distance;
-
 void vertex(){
 
     world_position=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;

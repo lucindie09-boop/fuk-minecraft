@@ -101,30 +101,31 @@ builder.set_smooth_lighting(smooth_lighting);
             packed_mesh.empty = true;
         } else {
             packed_mesh.empty = false;
-            packed_mesh.vertices.resize(vertices.size());
-            packed_mesh.normals.resize(vertices.size());
-            packed_mesh.uvs.resize(vertices.size());
-            packed_mesh.uv2s.resize(vertices.size());
-            packed_mesh.colors.resize(vertices.size());
+            const size_t n = vertices.size();
+            packed_mesh.vertices.resize(n);
+            packed_mesh.normals.resize(n);
+            packed_mesh.colors.resize(n);
+            packed_mesh.uvs.resize(n);
+            packed_mesh.uv2s.resize(n);
             packed_mesh.indices.resize(indices.size());
 
             Vector3* v_ptr = packed_mesh.vertices.ptrw();
             Vector3* n_ptr = packed_mesh.normals.ptrw();
+            Color* c_ptr = packed_mesh.colors.ptrw();
             Vector2* uv_ptr = packed_mesh.uvs.ptrw();
             Vector2* uv2_ptr = packed_mesh.uv2s.ptrw();
-            Color* c_ptr = packed_mesh.colors.ptrw();
             int32_t* idx_ptr = packed_mesh.indices.ptrw();
 
             constexpr float kInv127 = 1.0f / 127.0f;
             constexpr float kInv255 = 1.0f / 255.0f;
 
-            for (size_t i = 0; i < vertices.size(); i++) {
+            for (size_t i = 0; i < n; i++) {
                 const Vertex& v = vertices[i];
                 v_ptr[i] = Vector3(v.x, v.y, v.z);
                 n_ptr[i] = Vector3(v.nx * kInv127, v.ny * kInv127, v.nz * kInv127);
+                c_ptr[i] = Color(v.light_r * kInv255, v.light_g * kInv255, v.light_b * kInv255, v.sky_light * kInv255);
                 uv_ptr[i] = Vector2(v.u, v.v);
                 uv2_ptr[i] = Vector2(static_cast<float>(v.texture_index), v.ao * kInv255);
-                c_ptr[i] = Color(v.light_r * kInv255, v.light_g * kInv255, v.light_b * kInv255, v.sky_light * kInv255);
             }
             std::memcpy(idx_ptr, indices.data(), indices.size() * sizeof(int32_t));
         }
@@ -214,9 +215,9 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
 
         if (!content_unchanged) {
             arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
-            arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
             arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
             arrays[Mesh::ARRAY_TEX_UV2] = completed.mesh_data.uv2s;
+            arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
             arrays[Mesh::ARRAY_COLOR] = completed.mesh_data.colors;
             arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
 
@@ -230,11 +231,21 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
                 rs->mesh_clear(render_data->mesh_rid);
                 render_data->material_set = false;
             }
+
+            int64_t fmt = 0;
+            fmt |= RenderingServer::ARRAY_FORMAT_VERTEX;
+            fmt |= RenderingServer::ARRAY_FORMAT_NORMAL;
+            fmt |= RenderingServer::ARRAY_FORMAT_COLOR;
+            fmt |= RenderingServer::ARRAY_FORMAT_TEX_UV;
+            fmt |= RenderingServer::ARRAY_FORMAT_TEX_UV2;
+            fmt |= RenderingServer::ARRAY_FORMAT_INDEX;
+            fmt |= RenderingServer::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
+
             if (perf_timer) {
                 ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
-                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays);
+                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
             } else {
-                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays);
+                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
             }
 
             if (material.is_valid() && !render_data->material_set) {
