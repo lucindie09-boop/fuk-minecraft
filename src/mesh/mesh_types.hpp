@@ -44,9 +44,9 @@ struct BuiltMeshData {
 struct PackedBuiltMeshData {
     godot::PackedVector3Array vertices;
     godot::PackedVector3Array normals;
+    godot::PackedColorArray colors;
     godot::PackedVector2Array uvs;
     godot::PackedVector2Array uv2s;
-    godot::PackedColorArray colors;
     godot::PackedInt32Array indices;
     bool empty = true;
 };
