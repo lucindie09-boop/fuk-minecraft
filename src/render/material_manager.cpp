@@ -7,20 +7,30 @@
 using namespace godot;
 using namespace VoxelEngine;
 
-void MaterialManager::update_shader_parameters(float sky_intensity, const Color& sky_color) {
+void MaterialManager::update_shader_parameters(float sky_intensity, const Color& sky_color, const Vector3& sun_direction, const Color& sky_light_warmth, const Vector3& horizon_color, const Vector3& zenith_color) {
     Ref<ShaderMaterial> material = get_material();
     if (material.is_valid()) {
         material->set_shader_parameter("sky_light_intensity", sky_intensity);
         material->set_shader_parameter("sky_light_color", sky_color);
+        material->set_shader_parameter("sun_direction", sun_direction);
+        material->set_shader_parameter("sky_light_warmth", sky_light_warmth);
+        material->set_shader_parameter("horizon_color", horizon_color);
+        material->set_shader_parameter("zenith_color", zenith_color);
     }
 }
 
-void MaterialManager::update_fog_parameters(float fog_begin, float fog_end, const Color& fog_color) {
+void MaterialManager::update_fog_parameters(float fog_begin, float fog_end, const Color& fog_color,
+                                            float fog_density, float height_fog_density, float sea_level,
+                                            const Color& aerial_color, float fog_scatter, const Color& fog_scatter_color) {
     Ref<ShaderMaterial> material = get_material();
     if (material.is_valid()) {
         material->set_shader_parameter("fog_begin", fog_begin);
         material->set_shader_parameter("fog_end", fog_end);
-        material->set_shader_parameter("fog_color", fog_color);
+        material->set_shader_parameter("fog_density", fog_density);
+        material->set_shader_parameter("height_fog_density", height_fog_density);
+        material->set_shader_parameter("sea_level", sea_level);
+        material->set_shader_parameter("fog_scatter", fog_scatter);
+        material->set_shader_parameter("fog_scatter_color", fog_scatter_color);
     }
 }
 

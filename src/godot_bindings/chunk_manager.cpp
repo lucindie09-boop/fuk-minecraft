@@ -81,6 +81,7 @@ void ChunkManager::_process(double delta) {
     }
 
     controller->update(delta, is_editor, player_pos, this);
+    controller->get_environment_controller().update_environment(get_parent());
 }
 
 void ChunkManager::_exit_tree() {

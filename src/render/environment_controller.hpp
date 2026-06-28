@@ -4,10 +4,14 @@
 
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/classes/world_environment.hpp>
+#include <godot_cpp/classes/directional_light3d.hpp>
 
 #include "world/day_night_cycle.hpp"
 #include "world/player_light.hpp"
 #include "render/material_manager.hpp"
+#include "render/sky_controller.hpp"
+#include "render/fog_controller.hpp"
 
 namespace godot {
 class Node;
@@ -54,10 +58,21 @@ double get_day_time() const { return day_night.get_time(); }
     void set_night_sky_color(const godot::Color& color) { day_night.set_night_color(color); update_shader_parameters(); }
     godot::Color get_night_sky_color() const { return day_night.get_night_color(); }
 
+    void set_fog_density(double density) { fog_controller.set_fog_density(static_cast<float>(density)); update_shader_parameters(); }
+    double get_fog_density() const { return static_cast<double>(fog_controller.get_fog_density()); }
+    void set_render_distance_blocks(float blocks) { fog_controller.set_render_distance_blocks(blocks); update_shader_parameters(); }
+    float get_render_distance_blocks() const { return fog_controller.get_render_distance_blocks(); }
+
 private:
     DayNightCycle day_night;
     PlayerLight player_light;
     MaterialManager material_manager;
+    SkyController sky_controller;
+    FogController fog_controller;
+
+    godot::Node* cached_parent = nullptr;
+    godot::WorldEnvironment* cached_world_env = nullptr;
+    godot::DirectionalLight3D* cached_sun_light = nullptr;
 
     void update_shader_parameters();
     void update_player_light(const godot::Vector3& player_pos, double runtime_elapsed,
