@@ -116,6 +116,11 @@ void toggle_day_night_cycle();
     void set_night_sky_color(const godot::Color& color);
     godot::Color get_night_sky_color() const;
 
+    void set_fog_density(double density);
+    double get_fog_density() const;
+    void set_render_distance_blocks(float blocks);
+    float get_render_distance_blocks() const;
+
     ChunkWorld& get_chunk_world() { return chunk_world; }
     MeshManager& get_mesh_manager() { return mesh_manager; }
     WorldUpdater& get_world_updater() { return world_updater; }

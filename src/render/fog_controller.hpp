@@ -26,11 +26,19 @@ public:
     }
 
     [[nodiscard]] float get_fog_end() const {
-        if (fog_density <= 0.0f) return render_distance_blocks * 2.5f;
-        return render_distance_blocks * 0.99f;
+        if (fog_density <= 0.0f) return 0.0f;
+        static constexpr float chunk_size = 32.0f;
+        // density 0.1 → full fog at rd_blocks - chunk_size  (one chunk before edge)
+        // density 1.0 → full fog at chunk_size              (one chunk from camera)
+        float t = std::max((fog_density - 0.1f) / 0.9f, 0.0f);
+        float end = (render_distance_blocks - chunk_size) - t * (render_distance_blocks - chunk_size - chunk_size);
+        return std::max(end, chunk_size);
     }
 
-    [[nodiscard]] float get_fog_density() const { return fog_density; }
+    [[nodiscard]] float get_fog_density() const {
+        if (fog_density <= 0.0f) return 0.0f;
+        return 0.7f;
+    }
 
     [[nodiscard]] godot::Color get_fog_color(float blend, const godot::Color& horizon_color, float sun_elevation) const {
         if (!enabled) return fog_color_day;

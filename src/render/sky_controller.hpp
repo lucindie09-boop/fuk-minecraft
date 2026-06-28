@@ -52,37 +52,10 @@ void sky() {
     float sun_dot = max(dot(dir, sun_fwd), 0.0);
 
     float gradient = 1.0 - (1.0 - up) * sqrt(1.0 - up);
-    vec3 day_sky = mix(horizon_color, zenith_color, gradient);
-
-    float ng = pow(up, 1.2);
-    vec3 night_zenith_c = vec3(0.001, 0.004, 0.015);
-    vec3 night_horizon_c = vec3(0.025, 0.045, 0.090);
-    vec3 night_mid_c = vec3(0.008, 0.018, 0.050);
-    vec3 night_sky = mix(night_horizon_c, night_mid_c, smoothstep(0.0, 0.5, ng));
-    night_sky = mix(night_sky, night_zenith_c, smoothstep(0.5, 1.0, ng));
-
-    float dither = fract(sin(dot(dir * 1000.0, vec3(12.9898, 78.233, 45.543))) * 43758.5453) * 0.003;
-    night_sky += dither;
-
-    float sunset_fade = 1.0 - smoothstep(0.0, 0.20, abs(sun_elevation));
-    vec3 sunset_color = mix(
-        vec3(1.00, 0.28, 0.06),
-        vec3(0.95, 0.45, 0.15),
-        smoothstep(0.0, 0.5, up)
-    );
-    sunset_color = mix(sunset_color, vec3(0.70, 0.30, 0.50), smoothstep(0.5, 1.0, up));
-
-    vec3 base_sky = mix(night_sky, day_sky, blend);
-    base_sky += (sunset_color - day_sky) * sunset_fade * blend;
+    vec3 base_sky = mix(horizon_color, zenith_color, gradient);
 
     float sun_glow = pow(sun_dot, 20.0) * 0.3 + pow(sun_dot, 60.0) * 0.6;
     base_sky += sun_color * sun_glow * smoothstep(-0.08, 0.08, sun_elevation);
-
-    float hg = 1.0 - up;
-    hg = hg * hg;
-    hg = hg * hg;
-    float horizon_glow = hg * hg;
-    base_sky += horizon_color * horizon_glow * 0.15 * blend;
 
     // Sun using texture
     vec3 sun_right = normalize(cross(vec3(0.0, 1.0, 0.0), sun_fwd + vec3(0.001, 0.0, 0.0)));
@@ -177,7 +150,7 @@ private:
         godot::Vector3 sunset_horizon(0.95f, 0.70f, 0.40f);
 
         godot::Vector3 base_color = night_horizon.lerp(day_horizon, blend);
-        return base_color.lerp(sunset_horizon, (1.0f - sunset_factor) * 0.5f);
+        return base_color.lerp(sunset_horizon, (1.0f - sunset_factor) * 0.5f * blend);
     }
 
     godot::Vector3 compute_zenith_color(float blend) const {

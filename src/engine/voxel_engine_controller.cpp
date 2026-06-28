@@ -12,6 +12,7 @@
 #include "core/thread_pool.hpp"
 #include "mesh/mesh_builder.hpp"
 #include "worldgen/chunk_generator.hpp"
+#include "core/chunk_coords.hpp"
 #include <mutex>
 
 namespace VoxelEngine {
@@ -69,6 +70,7 @@ VoxelEngineController::~VoxelEngineController() {
 }
 
 void VoxelEngineController::initialize() {
+    set_render_distance(render_distance);
 }
 
 void VoxelEngineController::shutdown(godot::Node* parent) {
@@ -269,7 +271,7 @@ void VoxelEngineController::print_debug_info(double delta) {
 void VoxelEngineController::set_seed(int32_t s) { seed = s; world_updater.set_seed(seed); }
 int32_t VoxelEngineController::get_seed() const { return seed; }
 
-void VoxelEngineController::set_render_distance(int32_t rd) { render_distance = rd; world_updater.set_render_distance(render_distance); }
+void VoxelEngineController::set_render_distance(int32_t rd) { render_distance = rd; world_updater.set_render_distance(render_distance); environment_controller.set_render_distance_blocks(static_cast<float>(rd * CHUNK_WIDTH)); }
 int32_t VoxelEngineController::get_render_distance() const { return render_distance; }
 
 void VoxelEngineController::set_editor_render_distance(int32_t rd) { editor_render_distance = rd; world_updater.set_editor_render_distance(editor_render_distance); }
@@ -339,5 +341,10 @@ godot::Color VoxelEngineController::get_day_sky_color() const { return environme
 
 void VoxelEngineController::set_night_sky_color(const godot::Color& color) { environment_controller.set_night_sky_color(color); }
 godot::Color VoxelEngineController::get_night_sky_color() const { return environment_controller.get_night_sky_color(); }
+
+void VoxelEngineController::set_fog_density(double density) { environment_controller.set_fog_density(density); }
+double VoxelEngineController::get_fog_density() const { return environment_controller.get_fog_density(); }
+void VoxelEngineController::set_render_distance_blocks(float blocks) { environment_controller.set_render_distance_blocks(blocks); }
+float VoxelEngineController::get_render_distance_blocks() const { return environment_controller.get_render_distance_blocks(); }
 
 } // namespace VoxelEngine
