@@ -79,6 +79,16 @@ struct CompletedChunk {
 };
 
 // -------------------------------------------------------------------------
+// Completed light propagation from worker thread
+// -------------------------------------------------------------------------
+struct CompletedLightPropagation {
+    int32_t chunk_x = 0;
+    int32_t chunk_y = 0;
+    int32_t chunk_z = 0;
+    uint64_t epoch = 0;
+};
+
+// -------------------------------------------------------------------------
 // Pending chunk stage (for staged install: chunk ??? light ??? mesh)
 // -------------------------------------------------------------------------
 struct PendingChunkStage {
