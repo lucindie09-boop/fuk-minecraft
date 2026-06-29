@@ -4,6 +4,7 @@
 
 #include "mesh/mesh_manager.hpp"
 #include "lighting/light_propagator.hpp"
+#include "lighting/block_light_region.hpp"
 #include "worldgen/chunk_generator.hpp"
 #include "mesh/chunk_boundary_dirty.hpp"
 
@@ -98,6 +99,18 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
         double elapsed_ms = std::chrono::duration<double, std::milli>(current_time - start_time).count();
         if (elapsed_ms >= budget_ms) break;
 
+        // Poll completed light propagations (fire-and-forget worker results)
+        {
+            CompletedLightPropagation completed;
+            while (chunk_scheduler.poll_completed_light_propagation(completed)) {
+                if (completed.epoch != epoch) continue;
+                if (mesh_manager) {
+                    mesh_manager->mark_chunks_dirty_for_light(completed.chunk_x, completed.chunk_y, completed.chunk_z);
+                }
+                pending_chunk_dirty_mesh.push_back({completed.chunk_x, completed.chunk_y, completed.chunk_z, completed.epoch});
+            }
+        }
+
         if (lights_this_frame < dynamic_max_lighting && !pending_chunk_lighting.empty()) {
             PendingChunkStage stage = pending_chunk_lighting.front();
             pending_chunk_lighting.pop_front();
@@ -111,26 +124,55 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
             {
                 auto lock = chunk_map.acquire_shared_lock();
                 if (!chunk_map.contains_fast(key)) continue;
-                if (light_propagator && light_propagated_chunks.find(key) == light_propagated_chunks.end()) {
-                    bool any_emissive = false;
-                    for (int dz = -1; dz <= 1 && !any_emissive; dz++) {
-                        for (int dy = -1; dy <= 1 && !any_emissive; dy++) {
-                            for (int dx = -1; dx <= 1 && !any_emissive; dx++) {
-                                ChunkData* n = chunk_map.get_chunk_data_fast(stage.chunk_x + dx, stage.chunk_y + dy, stage.chunk_z + dz);
-                                if (n && n->get_emissive_count() > 0) {
-                                    any_emissive = true;
-                                }
+
+                if (light_propagated_chunks.find(key) != light_propagated_chunks.end()) {
+                    continue;
+                }
+                light_propagated_chunks.insert(key);
+
+                bool any_emissive = false;
+                for (int dz = -1; dz <= 1 && !any_emissive; dz++) {
+                    for (int dy = -1; dy <= 1 && !any_emissive; dy++) {
+                        for (int dx = -1; dx <= 1 && !any_emissive; dx++) {
+                            ChunkData* n = chunk_map.get_chunk_data_fast(stage.chunk_x + dx, stage.chunk_y + dy, stage.chunk_z + dz);
+                            if (n && n->get_emissive_count() > 0) {
+                                any_emissive = true;
                             }
                         }
                     }
-                    if (any_emissive) {
+                }
+
+                if (any_emissive && thread_pool) {
+                    int32_t cx = stage.chunk_x;
+                    int32_t cy = stage.chunk_y;
+                    int32_t cz = stage.chunk_z;
+                    thread_pool->fire_and_forget([this, cx, cy, cz, epoch]() {
+                        {
+                            auto wlock = chunk_map.acquire_shared_lock();
+                            ChunkData* region_grid[3][3][3] = {};
+                            for (int dz = -1; dz <= 1; dz++) {
+                                for (int dy = -1; dy <= 1; dy++) {
+                                    for (int dx = -1; dx <= 1; dx++) {
+                                        region_grid[dx + 1][dy + 1][dz + 1] = chunk_map.get_chunk_data_fast(cx + dx, cy + dy, cz + dz);
+                                    }
+                                }
+                            }
+                            BlockLightRegion light_region(region_grid);
+                            std::vector<EmissiveSource> sources;
+                            light_region.collect_emissive_sources(sources);
+                            light_region.clear_block_light();
+                            light_region.propagate_additive(sources);
+                        }
+                        chunk_scheduler.push_completed_light_propagation({cx, cy, cz, epoch});
+                    });
+                } else {
+                    if (any_emissive && light_propagator) {
                         light_propagator->propagate_block_light_region(stage.chunk_x, stage.chunk_y, stage.chunk_z);
                     }
-                    light_propagated_chunks.insert(key);
+                    pending_chunk_dirty_mesh.push_back({stage.chunk_x, stage.chunk_y, stage.chunk_z, stage.epoch});
                 }
             }
 
-            pending_chunk_dirty_mesh.push_back({stage.chunk_x, stage.chunk_y, stage.chunk_z, stage.epoch});
             continue;
         }
 
