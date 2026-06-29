@@ -40,6 +40,7 @@ struct MeshBuildTask : Task {
 
     void execute() override {
         thread_local MeshBuilder builder;
+        builder.set_smooth_lighting(smooth_lighting);
 
         // Narrow work to only dirty sub-chunks
         if (dirty_subchunks != 0xFF) {
@@ -91,7 +92,6 @@ struct MeshBuildTask : Task {
         } else {
             builder.set_greedy_enabled(true);
         }
-        builder.set_smooth_lighting(smooth_lighting);
 
         ChunkRenderData* neighbors[6] = {};
         ChunkRenderData* diag[4] = {};
