@@ -19,11 +19,10 @@ struct GCell {
     bool visible = false;
 };
 
-static bool cells_mergeable(const GCell& a, const GCell& b) {
-    return a.visible && b.visible &&
-           a.block_id == b.block_id &&
-           a.rotation == b.rotation &&
-           lights_similar_enough(a.light_key, b.light_key);
+static bool cells_mergeable(const GCell& a, const GCell& b, bool exact_light_match) {
+    if (!a.visible || !b.visible || a.block_id != b.block_id || a.rotation != b.rotation) return false;
+    if (exact_light_match) return a.light_key == b.light_key;
+    return lights_similar_enough(a.light_key, b.light_key);
 }
 
 // Build a 2D grid of visible faces for one slice and emit greedy rectangles.
@@ -34,6 +33,7 @@ static bool cells_mergeable(const GCell& a, const GCell& b) {
 template<typename FGetCell, typename FEmit>
 static void greedy_2d_slice(
     int32_t dim_u, int32_t dim_v,
+    bool exact_light_match,
     FGetCell&& get_cell,
     FEmit&& emit_face
 ) {
@@ -69,7 +69,7 @@ static void greedy_2d_slice(
             int32_t w = 1;
             while (u + w < dim_u) {
                 size_t nidx = static_cast<size_t>((u + w) * dim_v + v);
-                if (!cells_mergeable(first, grid[nidx]) || covered[nidx]) break;
+                if (!cells_mergeable(first, grid[nidx], exact_light_match) || covered[nidx]) break;
                 w++;
             }
 
@@ -79,7 +79,7 @@ static void greedy_2d_slice(
             while (v + h < dim_v && can_extend) {
                 for (int32_t du = 0; du < w; du++) {
                     size_t nidx = static_cast<size_t>((u + du) * dim_v + (v + h));
-                    if (!cells_mergeable(first, grid[nidx]) || covered[nidx]) {
+                    if (!cells_mergeable(first, grid[nidx], exact_light_match) || covered[nidx]) {
                         can_extend = false;
                         break;
                     }
@@ -101,7 +101,8 @@ static void greedy_2d_slice(
 
 void MeshBuilder::greedy_2d(
     const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-    FaceDirection direction, const BlockRegistry& registry
+    FaceDirection direction, const BlockRegistry& registry,
+    bool exact_light_match
 ) {
     const int dir_idx = static_cast<int>(direction);
     const int32_t dx = kDirectionOffsets[dir_idx][0];
@@ -120,7 +121,7 @@ void MeshBuilder::greedy_2d(
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             int32_t ny = y + dy;
 
-            greedy_2d_slice(CHUNK_WIDTH, CHUNK_DEPTH,
+            greedy_2d_slice(CHUNK_WIDTH, CHUNK_DEPTH, exact_light_match,
                 [&](int32_t x, int32_t z, GCell& cell) -> bool {
                     BlockID block_id = chunk.get_block_unsafe(x, y, z);
                     if (block_id == BlockIDs::AIR) return false;
@@ -192,7 +193,7 @@ void MeshBuilder::greedy_2d(
         for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
             int32_t nx = x + dx;
 
-            greedy_2d_slice(CHUNK_DEPTH, CHUNK_HEIGHT,
+            greedy_2d_slice(CHUNK_DEPTH, CHUNK_HEIGHT, exact_light_match,
                 [&](int32_t z, int32_t y, GCell& cell) -> bool {
                     BlockID block_id = chunk.get_block_unsafe(x, y, z);
                     if (block_id == BlockIDs::AIR) return false;
@@ -264,7 +265,7 @@ void MeshBuilder::greedy_2d(
         for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
             int32_t nz = z + dz;
 
-            greedy_2d_slice(CHUNK_WIDTH, CHUNK_HEIGHT,
+            greedy_2d_slice(CHUNK_WIDTH, CHUNK_HEIGHT, exact_light_match,
                 [&](int32_t x, int32_t y, GCell& cell) -> bool {
                     BlockID block_id = chunk.get_block_unsafe(x, y, z);
                     if (block_id == BlockIDs::AIR) return false;

@@ -136,10 +136,7 @@ static void reset_greedy_vertical_stats();
     void set_greedy_enabled(bool enabled) { passive_greedy_enabled = enabled; }
     bool is_greedy_enabled() const { return passive_greedy_enabled; }
 
-    void set_smooth_lighting(bool enabled) {
-smooth_lighting_enabled = enabled;
-if (enabled) passive_greedy_enabled = false;
-}
+    void set_smooth_lighting(bool enabled) { smooth_lighting_enabled = enabled; }
 bool is_smooth_lighting_enabled() const { return smooth_lighting_enabled; }
 
     void set_subchunk_bounds(const SubChunkBounds& bounds) { active_bounds = bounds; }
@@ -324,7 +321,8 @@ const BlockRegistry& registry) const;
     // 2D greedy meshing (heavy — defined in .cpp)
     // -------------------------------------------------------------------------
     void greedy_2d(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                   FaceDirection direction, const BlockRegistry& registry);
+                   FaceDirection direction, const BlockRegistry& registry,
+                   bool exact_light_match);
 
 };
 
