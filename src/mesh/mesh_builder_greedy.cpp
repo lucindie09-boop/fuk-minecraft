@@ -3,8 +3,13 @@
 
 namespace VoxelEngine {
 
+static constexpr uint8_t kLightMergeThreshold = 2;
+
 static inline bool lights_similar_enough(uint16_t a, uint16_t b) {
-    return a == b;
+    uint8_t dr = (unpack_r(a) > unpack_r(b)) ? (unpack_r(a) - unpack_r(b)) : (unpack_r(b) - unpack_r(a));
+    uint8_t dg = (unpack_g(a) > unpack_g(b)) ? (unpack_g(a) - unpack_g(b)) : (unpack_g(b) - unpack_g(a));
+    uint8_t db = (unpack_b(a) > unpack_b(b)) ? (unpack_b(a) - unpack_b(b)) : (unpack_b(b) - unpack_b(a));
+    return dr <= kLightMergeThreshold && dg <= kLightMergeThreshold && db <= kLightMergeThreshold;
 }
 
 struct GCell {
