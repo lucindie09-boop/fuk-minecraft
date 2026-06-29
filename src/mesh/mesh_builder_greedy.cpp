@@ -1,345 +1,325 @@
 #include "mesh/mesh_builder.hpp"
 #include "core/light_packing.hpp"
-#include <cstddef>
 
 namespace VoxelEngine {
 
-static constexpr uint8_t kLightMergeThreshold = 2;
-
 static inline bool lights_similar_enough(uint16_t a, uint16_t b) {
-    uint8_t dr = (unpack_r(a) > unpack_r(b)) ? (unpack_r(a) - unpack_r(b)) : (unpack_r(b) - unpack_r(a));
-    uint8_t dg = (unpack_g(a) > unpack_g(b)) ? (unpack_g(a) - unpack_g(b)) : (unpack_g(b) - unpack_g(a));
-    uint8_t db = (unpack_b(a) > unpack_b(b)) ? (unpack_b(a) - unpack_b(b)) : (unpack_b(b) - unpack_b(a));
-    return dr <= kLightMergeThreshold && dg <= kLightMergeThreshold && db <= kLightMergeThreshold;
+    return a == b;
 }
 
-// -------------------------------------------------------------------------
-// Passive greedy meshing
-// -------------------------------------------------------------------------
-void MeshBuilder::flush_horizontal_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                          int32_t z_start, int32_t z_end,
-                                          int32_t y, int32_t x, FaceDirection direction,
-                                          BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry) {
-    if (z_start < 0 || z_end <= z_start) return;
+struct GCell {
+    BlockID block_id = BlockIDs::AIR;
+    int rotation = 0;
+    uint16_t light_key = 0;
+    bool visible = false;
+};
 
-    if (z_end - z_start > 1) {
-        float first_ao[4];
-        ao.compute_face(accessor, x, y, z_start, direction, first_ao);
-        bool has_occlusion = (first_ao[0] < 1.0f || first_ao[1] < 1.0f || first_ao[2] < 1.0f || first_ao[3] < 1.0f);
-        bool uniform = true;
-        for (int32_t cz = z_start + 1; cz < z_end; ++cz) {
-            float block_ao[4];
-            this->ao.compute_face(accessor, x, y, cz, direction, block_ao);
-            if (block_ao[0] != first_ao[0] || block_ao[1] != first_ao[1] || block_ao[2] != first_ao[2] || block_ao[3] != first_ao[3]) {
-                uniform = false;
-                break;
+static bool cells_mergeable(const GCell& a, const GCell& b) {
+    return a.visible && b.visible &&
+           a.block_id == b.block_id &&
+           a.rotation == b.rotation &&
+           lights_similar_enough(a.light_key, b.light_key);
+}
+
+// Build a 2D grid of visible faces for one slice and emit greedy rectangles.
+// dim_u, dim_v: grid dimensions (u = first tangent axis, v = second)
+// get_cell: fills GCell at grid position (u, v) — returns true if the cell should be considered
+// grid_u_to_xxx, grid_v_to_xxx: map grid coords to face origin coords
+// emit_face: called with each rectangle (origin_u, origin_v, extent_u, extent_v) + first cell data
+template<typename FGetCell, typename FEmit>
+static void greedy_2d_slice(
+    int32_t dim_u, int32_t dim_v,
+    FGetCell&& get_cell,
+    FEmit&& emit_face
+) {
+    // Allocate grids on the stack (max 34×34 for top/bottom, 32×256 for sides — ok on stack)
+    // We use a flat array indexed [u * dim_v + v]
+    int32_t grid_size = dim_u * dim_v;
+
+    // For small grids, stack-allocate. For side faces (32×256), use heap to be safe.
+    // But 32*256 = 8192 which is fine for stack.
+    // Use variable-length array or std::vector. Let's use vector for safety.
+    std::vector<GCell> grid(static_cast<size_t>(grid_size));
+    std::vector<bool> covered(static_cast<size_t>(grid_size), false);
+
+    // Fill the grid
+    for (int32_t u = 0; u < dim_u; u++) {
+        for (int32_t v = 0; v < dim_v; v++) {
+            GCell cell;
+            if (get_cell(u, v, cell)) {
+                grid[static_cast<size_t>(u * dim_v + v)] = cell;
             }
         }
+    }
 
-        if (uniform && !has_occlusion) {
-            Face face;
-            face.x = x;
-            face.y = y;
-            face.z = z_start;
-            face.direction = direction;
-            face.block_id = block_id;
-            face.u_max = 0;
-            face.v_max = (z_end - 1) - z_start;
-            add_greedy_face(chunk, accessor, face, light_key, rotation, first_ao, registry);
-        } else {
-            for (int32_t cz = z_start; cz < z_end; ++cz) {
-                add_face(chunk, accessor, x, y, cz, direction, block_id, registry);
+    // Scan and expand rectangles
+    for (int32_t u = 0; u < dim_u; u++) {
+        for (int32_t v = 0; v < dim_v; v++) {
+            size_t idx = static_cast<size_t>(u * dim_v + v);
+            if (!grid[idx].visible || covered[idx]) continue;
+
+            const GCell& first = grid[idx];
+
+            // Expand right (increasing u)
+            int32_t w = 1;
+            while (u + w < dim_u) {
+                size_t nidx = static_cast<size_t>((u + w) * dim_v + v);
+                if (!cells_mergeable(first, grid[nidx]) || covered[nidx]) break;
+                w++;
             }
+
+            // Expand down (increasing v)
+            int32_t h = 1;
+            bool can_extend = true;
+            while (v + h < dim_v && can_extend) {
+                for (int32_t du = 0; du < w; du++) {
+                    size_t nidx = static_cast<size_t>((u + du) * dim_v + (v + h));
+                    if (!cells_mergeable(first, grid[nidx]) || covered[nidx]) {
+                        can_extend = false;
+                        break;
+                    }
+                }
+                if (can_extend) h++;
+            }
+
+            // Mark covered
+            for (int32_t du = 0; du < w; du++) {
+                for (int32_t dv = 0; dv < h; dv++) {
+                    covered[static_cast<size_t>((u + du) * dim_v + (v + dv))] = true;
+                }
+            }
+
+            emit_face(u, v, w, h, first);
         }
-    } else {
-        add_face(chunk, accessor, x, y, z_start, direction, block_id, registry);
     }
 }
 
-void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                                 FaceDirection direction, const BlockRegistry& registry) {
-    if (direction != FaceDirection::Top && direction != FaceDirection::Bottom) {
-        return;
-    }
-
+void MeshBuilder::greedy_2d(
+    const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+    FaceDirection direction, const BlockRegistry& registry
+) {
     const int dir_idx = static_cast<int>(direction);
-    // Hoist direction offsets once; they are loop-invariant.
     const int32_t dx = kDirectionOffsets[dir_idx][0];
     const int32_t dy = kDirectionOffsets[dir_idx][1];
     const int32_t dz = kDirectionOffsets[dir_idx][2];
 
-    for (int32_t s = 0; s < CHUNK_SECTIONS; s++) {
-        if (chunk.is_section_all_air(s)) continue;
-        int32_t y0 = s * SECTION_HEIGHT;
-        int32_t y1 = y0 + SECTION_HEIGHT;
-        for (int32_t y = y0; y < y1; y++) {
-            const int32_t nybase = y + dy;
-            for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-                int32_t merge_start = -1;
-                BlockID current_block = BlockIDs::AIR;
-                uint16_t current_light_key = 0;
-                int current_rotation = 0;
-
-                for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-                    BlockID block_id = chunk.get_block_unsafe(x, y, z);
-
-                    if (block_id == BlockIDs::AIR) {
-                        flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
-                                               current_block, current_light_key, current_rotation, registry);
-                        merge_start = -1;
-                        continue;
-                    }
-
-                    BlockID neighbor = accessor.get_block(x, nybase, z);
-                    bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
-
-                    if (cull) {
-                        flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
-                                               current_block, current_light_key, current_rotation, registry);
-                        merge_start = -1;
-                        continue;
-                    }
-
-                    int rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
-                    const uint16_t light_key = accessor.get_light_packed(x + dx, nybase, z + dz);
-
-                    if (merge_start != -1 && block_id == current_block && (z - merge_start) < kMaxGreedyMergeDistance
-                        && lights_similar_enough(light_key, current_light_key) && rotation == current_rotation) {
-                        continue;
-                    }
-
-                    if (merge_start != -1) {
-                        flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
-                                               current_block, current_light_key, current_rotation, registry);
-                    }
-
-                    merge_start = z;
-                    current_block = block_id;
-                    current_rotation = rotation;
-                    current_light_key = light_key;
-                }
-
-                if (merge_start != -1) {
-                    flush_horizontal_merge(chunk, accessor, merge_start, CHUNK_DEPTH, y, x, direction,
-                                           current_block, current_light_key, current_rotation, registry);
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------
-// Passive vertical greedy meshing (1D Y-axis merge for side faces)
-// -------------------------------------------------------------------------
-void MeshBuilder::flush_vertical_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                          int32_t y_start, int32_t y_end,
-                                          int32_t x, int32_t z, FaceDirection direction,
-                                          BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry) {
-    if (y_start < 0 || y_end <= y_start) return;
-
-    if (y_end - y_start > 1) {
-
-++greedy_v_stats_local.merge_attempts;
-float first_ao[4];
-ao.compute_face (accessor, x, y_start, z, direction, first_ao);
-bool has_occlusion = (first_ao[0] < 1.0f || first_ao[1] < 1.0f || first_ao[2] < 1.0f || first_ao[3] < 1.0f);
-bool uniform = true;
-for (int32_t cy = y_start + 1; cy < y_end; ++cy) {
-float block_ao[4];
-this->ao.compute_face (accessor, x, cy, z, direction, block_ao); if (block_ao[0] != first_ao[0] || block_ao[1] != first_ao[1] ||
-block_ao [2] != first_ao[2] || block_ao[3] != first_ao[3]) { uniform = false;
-                break;
-            }
-        }
-
-if (uniform && !has_occlusion) {
-++greedy_v_stats_local.merge_successes;
-            Face face;
-            face.x = x;
-            face.y = y_start;
-            face.z = z;
-            face.direction = direction;
-            face.block_id = block_id;
-            face.u_max = 0;
-            face.v_max = (y_end - 1) - y_start;
-add_greedy_face (chunk, accessor, face, light_key, rotation, first_ao, registry);
-} else {
-    if (!uniform) {
-        ++greedy_v_stats_local.reject_ao_mismatch;
-    }
-    if (has_occlusion) {
-        ++greedy_v_stats_local.reject_ao_occlusion;
-    }
-    for (int32_t cy = y_start; cy < y_end; ++cy) {
-        add_face(chunk, accessor, x, cy, z, direction, block_id, registry);
-    }
-}
-    } else {
-        add_face(chunk, accessor, x, y_start, z, direction, block_id, registry);
-    }
-}
-
-void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                                FaceDirection direction, const BlockRegistry& registry) {
-    if (direction == FaceDirection::Top || direction == FaceDirection::Bottom) {
-        return;
-    }
-
-    const int dir_idx = static_cast<int>(direction);
-    const BlockID* center_blocks = chunk.blocks();
-    const uint16_t* center_lights = chunk.get_light_packed_data();
-    constexpr std::size_t kYStride = CHUNK_WIDTH;
-    constexpr std::size_t kZStride = CHUNK_WIDTH * CHUNK_HEIGHT;
-
-    const ChunkData* boundary_chunk = nullptr;
-    const std::ptrdiff_t local_neighbor_offset =
-        direction == FaceDirection::Right ? 1 :
-        direction == FaceDirection::Left ? -1 :
-        direction == FaceDirection::Front ? static_cast<std::ptrdiff_t>(kZStride) : -static_cast<std::ptrdiff_t>(kZStride);
     switch (direction) {
-        case FaceDirection::Right: boundary_chunk = accessor.pos_x; break;
-        case FaceDirection::Left: boundary_chunk = accessor.neg_x; break;
-        case FaceDirection::Front: boundary_chunk = accessor.pos_z; break;
-        case FaceDirection::Back: boundary_chunk = accessor.neg_z; break;
-        default: break;
-    }
 
-    for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-        for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-            int32_t merge_start = -1;
-            BlockID current_block = BlockIDs::AIR;
-            uint16_t current_light_key = 0;
-            int current_rotation = 0;
+    // =====================================================================
+    // Horizontal faces: Top (+Y) and Bottom (-Y)
+    // Face plane is at y+dy. One slice per y.
+    // Grid: [x][z]  →  u maps to X, v maps to Z
+    // =====================================================================
+    case FaceDirection::Top:
+    case FaceDirection::Bottom:
+        for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
+            int32_t ny = y + dy;
 
-            std::size_t current_idx = static_cast<std::size_t>(x) + static_cast<std::size_t>(z) * kZStride;
-            const bool boundary_column =
-                (direction == FaceDirection::Right && x == CHUNK_WIDTH - 1) ||
-                (direction == FaceDirection::Left && x == 0) ||
-                (direction == FaceDirection::Front && z == CHUNK_DEPTH - 1) ||
-                (direction == FaceDirection::Back && z == 0);
+            greedy_2d_slice(CHUNK_WIDTH, CHUNK_DEPTH,
+                [&](int32_t x, int32_t z, GCell& cell) -> bool {
+                    BlockID block_id = chunk.get_block_unsafe(x, y, z);
+                    if (block_id == BlockIDs::AIR) return false;
 
-            const BlockID* boundary_blocks = nullptr;
-            const uint16_t* boundary_lights = nullptr;
-            std::size_t boundary_idx = 0;
-
-            if (boundary_column && boundary_chunk) {
-                boundary_blocks = boundary_chunk->blocks();
-                boundary_lights = boundary_chunk->get_light_packed_data();
-                switch (direction) {
-                    case FaceDirection::Right:
-                        boundary_idx = static_cast<std::size_t>(z) * kZStride;
-                        break;
-                    case FaceDirection::Left:
-                        boundary_idx = static_cast<std::size_t>(CHUNK_WIDTH - 1) + static_cast<std::size_t>(z) * kZStride;
-                        break;
-                    case FaceDirection::Front:
-                        boundary_idx = static_cast<std::size_t>(x);
-                        break;
-                    case FaceDirection::Back:
-                        boundary_idx = static_cast<std::size_t>(x) + static_cast<std::size_t>(CHUNK_DEPTH - 1) * kZStride;
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            for (int32_t s = 0; s < CHUNK_SECTIONS; ++s) {
-                int32_t y0 = s * SECTION_HEIGHT;
-                int32_t y1 = y0 + SECTION_HEIGHT;
-                if (chunk.is_section_all_air(s)) {
-                    flush_vertical_merge(chunk, accessor, merge_start, y0, x, z, direction,
-                                        current_block, current_light_key, current_rotation, registry);
-                    merge_start = -1;
-                    current_idx += static_cast<std::size_t>(SECTION_HEIGHT) * kYStride;
-                    if (boundary_column && boundary_blocks) {
-                        boundary_idx += static_cast<std::size_t>(SECTION_HEIGHT) * kYStride;
-                    }
-                    continue;
-                }
-
-                for (int32_t y = y0; y < y1; y++) {
-                    BlockID block_id = chunk.get_block(x, y, z);
-
-                    if (block_id == BlockIDs::AIR) {
-                        flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
-                                            current_block, current_light_key, current_rotation, registry);
-                        merge_start = -1;
-                        current_idx += kYStride;
-                        if (boundary_column && boundary_blocks) {
-                            boundary_idx += kYStride;
-                        }
-                        continue;
+                    BlockID neighbor = accessor.get_block(x, ny, z);
+                    if (should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry)) {
+                        return false;
                     }
 
-                    BlockID neighbor = BlockIDs::AIR;
-                    uint16_t light_key = 0;
-                    if (boundary_column) {
-                        if (boundary_blocks) {
-                            neighbor = boundary_blocks[boundary_idx];
-                            light_key = boundary_lights[boundary_idx];
-                        }
-                    } else {
-                        const std::size_t local_neighbor_idx = static_cast<std::size_t>(
-                            static_cast<std::ptrdiff_t>(current_idx) + local_neighbor_offset);
-                        neighbor = center_blocks[local_neighbor_idx];
-                        light_key = center_lights[local_neighbor_idx];
-                    }
+                    cell.block_id = block_id;
+                    cell.rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
+                    cell.light_key = accessor.get_light_packed(x + dx, ny, z + dz);
+                    cell.visible = true;
+                    return true;
+                },
+                [&](int32_t u, int32_t v, int32_t w, int32_t h, const GCell& first) {
+                    // Check AO uniformity across the rectangle
+                    float first_ao[4];
+                    ao.compute_face(accessor, u, y, v, direction, first_ao);
+                    bool has_occlusion = (first_ao[0] < 1.0f || first_ao[1] < 1.0f ||
+                                          first_ao[2] < 1.0f || first_ao[3] < 1.0f);
 
-                    bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
-                    if (cull) {
-                        flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
-                                            current_block, current_light_key, current_rotation, registry);
-                        merge_start = -1;
-                        current_idx += kYStride;
-                        if (boundary_column && boundary_blocks) {
-                            boundary_idx += kYStride;
-                        }
-                        continue;
-                    }
-
-                    const int rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
-
-                    if (merge_start != -1) {
-                        const bool same_block = block_id == current_block;
-                        const bool within_distance = (y - merge_start) < kMaxGreedyMergeDistance;
-                        const bool same_light = light_key == current_light_key;
-                        const bool same_rotation = rotation == current_rotation;
-                        if (same_block && within_distance && same_light && same_rotation) {
-                            current_idx += kYStride;
-                            if (boundary_column && boundary_blocks) {
-                                boundary_idx += kYStride;
+                    bool uniform = true;
+                    for (int32_t du = 0; du < w && uniform; du++) {
+                        for (int32_t dv = 0; dv < h && uniform; dv++) {
+                            if (du == 0 && dv == 0) continue;
+                            float cell_ao[4];
+                            ao.compute_face(accessor, u + du, y, v + dv, direction, cell_ao);
+                            if (cell_ao[0] != first_ao[0] || cell_ao[1] != first_ao[1] ||
+                                cell_ao[2] != first_ao[2] || cell_ao[3] != first_ao[3]) {
+                                uniform = false;
                             }
-                            continue;
                         }
-                        if (!same_block) {
-                            ++greedy_v_stats_local.reject_block_mismatch;
-                        } else if (!same_light) {
-                            ++greedy_v_stats_local.reject_light_mismatch;
-                        } else if (!same_rotation) {
-                            ++greedy_v_stats_local.reject_rotation_mismatch;
-                        } else if (!within_distance) {
-                            ++greedy_v_stats_local.reject_distance_limit;
-                        }
-                        flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
-                                            current_block, current_light_key, current_rotation, registry);
                     }
 
-                    merge_start = y;
-                    current_block = block_id;
-                    current_rotation = rotation;
-                    current_light_key = light_key;
-                    current_idx += kYStride;
-                    if (boundary_column && boundary_blocks) {
-                        boundary_idx += kYStride;
+                    if (uniform && !has_occlusion) {
+                        Face face;
+                        face.x = u;
+                        face.y = y;
+                        face.z = v;
+                        face.direction = direction;
+                        face.block_id = first.block_id;
+                        face.u_max = w - 1;  // X extent
+                        face.v_max = h - 1;  // Z extent
+                        add_greedy_face(chunk, accessor, face, first.light_key,
+                                        first.rotation, first_ao, registry);
+                    } else {
+                        for (int32_t du = 0; du < w; du++) {
+                            for (int32_t dv = 0; dv < h; dv++) {
+                                int32_t cx = u + du;
+                                int32_t cz = v + dv;
+                                BlockID bid = chunk.get_block_unsafe(cx, y, cz);
+                                add_face(chunk, accessor, cx, y, cz, direction, bid, registry);
+                            }
+                        }
                     }
                 }
-            }
-
-            if (merge_start != -1) {
-                flush_vertical_merge(chunk, accessor, merge_start, CHUNK_HEIGHT, x, z, direction,
-                                     current_block, current_light_key, current_rotation, registry);
-            }
+            );
         }
+        break;
+
+    // =====================================================================
+    // Side faces: Right (+X) and Left (-X)
+    // Face plane is at x+dx. One slice per x.
+    // Grid: [z][y]  →  u maps to Z, v maps to Y
+    // =====================================================================
+    case FaceDirection::Right:
+    case FaceDirection::Left:
+        for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
+            int32_t nx = x + dx;
+
+            greedy_2d_slice(CHUNK_DEPTH, CHUNK_HEIGHT,
+                [&](int32_t z, int32_t y, GCell& cell) -> bool {
+                    BlockID block_id = chunk.get_block_unsafe(x, y, z);
+                    if (block_id == BlockIDs::AIR) return false;
+
+                    BlockID neighbor = accessor.get_block(nx, y, z);
+                    if (should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry)) {
+                        return false;
+                    }
+
+                    cell.block_id = block_id;
+                    cell.rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
+                    cell.light_key = accessor.get_light_packed(nx, y + dy, z + dz);
+                    cell.visible = true;
+                    return true;
+                },
+                [&](int32_t u, int32_t v, int32_t w, int32_t h, const GCell& first) {
+                    // u maps to z, v maps to y, w is z-extent, h is y-extent
+                    float first_ao[4];
+                    ao.compute_face(accessor, x, v, u, direction, first_ao);
+                    bool has_occlusion = (first_ao[0] < 1.0f || first_ao[1] < 1.0f ||
+                                          first_ao[2] < 1.0f || first_ao[3] < 1.0f);
+
+                    bool uniform = true;
+                    for (int32_t du = 0; du < w && uniform; du++) {
+                        for (int32_t dv = 0; dv < h && uniform; dv++) {
+                            if (du == 0 && dv == 0) continue;
+                            float cell_ao[4];
+                            ao.compute_face(accessor, x, v + dv, u + du, direction, cell_ao);
+                            if (cell_ao[0] != first_ao[0] || cell_ao[1] != first_ao[1] ||
+                                cell_ao[2] != first_ao[2] || cell_ao[3] != first_ao[3]) {
+                                uniform = false;
+                            }
+                        }
+                    }
+
+                    if (uniform && !has_occlusion) {
+                        Face face;
+                        face.x = x;
+                        face.y = v;            // grid v → Y
+                        face.z = u;            // grid u → Z
+                        face.direction = direction;
+                        face.block_id = first.block_id;
+                        face.u_max = w - 1;    // Z extent
+                        face.v_max = h - 1;    // Y extent
+                        add_greedy_face(chunk, accessor, face, first.light_key,
+                                        first.rotation, first_ao, registry);
+                    } else {
+                        for (int32_t du = 0; du < w; du++) {
+                            for (int32_t dv = 0; dv < h; dv++) {
+                                int32_t cz = u + du;
+                                int32_t cy = v + dv;
+                                BlockID bid = chunk.get_block_unsafe(x, cy, cz);
+                                add_face(chunk, accessor, x, cy, cz, direction, bid, registry);
+                            }
+                        }
+                    }
+                }
+            );
+        }
+        break;
+
+    // =====================================================================
+    // Side faces: Front (+Z) and Back (-Z)
+    // Face plane is at z+dz. One slice per z.
+    // Grid: [x][y]  →  u maps to X, v maps to Y
+    // =====================================================================
+    case FaceDirection::Front:
+    case FaceDirection::Back:
+        for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
+            int32_t nz = z + dz;
+
+            greedy_2d_slice(CHUNK_WIDTH, CHUNK_HEIGHT,
+                [&](int32_t x, int32_t y, GCell& cell) -> bool {
+                    BlockID block_id = chunk.get_block_unsafe(x, y, z);
+                    if (block_id == BlockIDs::AIR) return false;
+
+                    BlockID neighbor = accessor.get_block(x, y, nz);
+                    if (should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry)) {
+                        return false;
+                    }
+
+                    cell.block_id = block_id;
+                    cell.rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
+                    cell.light_key = accessor.get_light_packed(x + dx, y + dy, nz);
+                    cell.visible = true;
+                    return true;
+                },
+                [&](int32_t u, int32_t v, int32_t w, int32_t h, const GCell& first) {
+                    // u maps to x, v maps to y, w is x-extent, h is y-extent
+                    float first_ao[4];
+                    ao.compute_face(accessor, u, v, z, direction, first_ao);
+                    bool has_occlusion = (first_ao[0] < 1.0f || first_ao[1] < 1.0f ||
+                                          first_ao[2] < 1.0f || first_ao[3] < 1.0f);
+
+                    bool uniform = true;
+                    for (int32_t du = 0; du < w && uniform; du++) {
+                        for (int32_t dv = 0; dv < h && uniform; dv++) {
+                            if (du == 0 && dv == 0) continue;
+                            float cell_ao[4];
+                            ao.compute_face(accessor, u + du, v + dv, z, direction, cell_ao);
+                            if (cell_ao[0] != first_ao[0] || cell_ao[1] != first_ao[1] ||
+                                cell_ao[2] != first_ao[2] || cell_ao[3] != first_ao[3]) {
+                                uniform = false;
+                            }
+                        }
+                    }
+
+                    if (uniform && !has_occlusion) {
+                        Face face;
+                        face.x = u;            // grid u → X
+                        face.y = v;            // grid v → Y
+                        face.z = z;
+                        face.direction = direction;
+                        face.block_id = first.block_id;
+                        face.u_max = w - 1;    // X extent
+                        face.v_max = h - 1;    // Y extent
+                        add_greedy_face(chunk, accessor, face, first.light_key,
+                                        first.rotation, first_ao, registry);
+                    } else {
+                        for (int32_t du = 0; du < w; du++) {
+                            for (int32_t dv = 0; dv < h; dv++) {
+                                int32_t cx = u + du;
+                                int32_t cy = v + dv;
+                                BlockID bid = chunk.get_block_unsafe(cx, cy, z);
+                                add_face(chunk, accessor, cx, cy, z, direction, bid, registry);
+                            }
+                        }
+                    }
+                }
+            );
+        }
+        break;
     }
 }
 

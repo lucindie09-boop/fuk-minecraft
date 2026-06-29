@@ -167,17 +167,17 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
     if (passive_greedy_enabled) {
         {
             ScopedTimer greedy_h_timer(perf_timer, TimerID::GreedyMeshHorizontal);
-            passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Top, registry);
+            greedy_2d(chunk, accessor, FaceDirection::Top, registry);
             // Bottom faces are never visible from a ground-level / top-down view.
             // Skipping them saves ~1/6 of mesh build time and reduces GPU upload bytes.
-            // passive_greedy_mesh_horizontal(chunk, accessor, FaceDirection::Bottom, registry);
+            // greedy_2d(chunk, accessor, FaceDirection::Bottom, registry);
         }
         {
             ScopedTimer greedy_v_timer(perf_timer, TimerID::GreedyMeshVertical);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Right, registry);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Left, registry);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Front, registry);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Back, registry);
+            greedy_2d(chunk, accessor, FaceDirection::Right, registry);
+            greedy_2d(chunk, accessor, FaceDirection::Left, registry);
+            greedy_2d(chunk, accessor, FaceDirection::Front, registry);
+            greedy_2d(chunk, accessor, FaceDirection::Back, registry);
         }
     } else {
         for (int32_t s = 0; s < CHUNK_SECTIONS; s++) {

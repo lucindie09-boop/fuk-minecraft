@@ -321,26 +321,10 @@ const BlockRegistry& registry) const;
                          const float ao[4], const BlockRegistry& registry);
 
     // -------------------------------------------------------------------------
-    // Passive greedy meshing (heavy — defined in .cpp)
+    // 2D greedy meshing (heavy — defined in .cpp)
     // -------------------------------------------------------------------------
-    void flush_horizontal_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                int32_t x_start, int32_t x_end,
-                                int32_t y, int32_t z, FaceDirection direction,
-                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
-
-    void passive_greedy_mesh_horizontal(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                        FaceDirection direction, const BlockRegistry& registry);
-
-    // -------------------------------------------------------------------------
-    // Passive vertical greedy meshing (1D Y-axis merge for side faces)
-    // -------------------------------------------------------------------------
-    void flush_vertical_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                int32_t y_start, int32_t y_end,
-                                int32_t x, int32_t z, FaceDirection direction,
-                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
-
-    void passive_greedy_mesh_vertical(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                        FaceDirection direction, const BlockRegistry& registry);
+    void greedy_2d(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+                   FaceDirection direction, const BlockRegistry& registry);
 
 };
 
