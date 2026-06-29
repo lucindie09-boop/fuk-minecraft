@@ -136,7 +136,10 @@ static void reset_greedy_vertical_stats();
     void set_greedy_enabled(bool enabled) { passive_greedy_enabled = enabled; }
     bool is_greedy_enabled() const { return passive_greedy_enabled; }
 
-    void set_smooth_lighting(bool enabled) { smooth_lighting_enabled = enabled; }
+    void set_smooth_lighting(bool enabled) {
+smooth_lighting_enabled = enabled;
+if (enabled) passive_greedy_enabled = false;
+}
 bool is_smooth_lighting_enabled() const { return smooth_lighting_enabled; }
 
     void set_subchunk_bounds(const SubChunkBounds& bounds) { active_bounds = bounds; }
@@ -318,11 +321,26 @@ const BlockRegistry& registry) const;
                          const float ao[4], const BlockRegistry& registry);
 
     // -------------------------------------------------------------------------
-    // 2D greedy meshing (heavy — defined in .cpp)
+    // Passive greedy meshing (heavy — defined in .cpp)
     // -------------------------------------------------------------------------
-    void greedy_2d(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                   FaceDirection direction, const BlockRegistry& registry,
-                   bool exact_light_match);
+    void flush_horizontal_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+                                int32_t x_start, int32_t x_end,
+                                int32_t y, int32_t z, FaceDirection direction,
+                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
+
+    void passive_greedy_mesh_horizontal(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+                                        FaceDirection direction, const BlockRegistry& registry);
+
+    // -------------------------------------------------------------------------
+    // Passive vertical greedy meshing (1D Y-axis merge for side faces)
+    // -------------------------------------------------------------------------
+    void flush_vertical_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+                                int32_t y_start, int32_t y_end,
+                                int32_t x, int32_t z, FaceDirection direction,
+                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
+
+    void passive_greedy_mesh_vertical(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
+                                        FaceDirection direction, const BlockRegistry& registry);
 
 };
 
