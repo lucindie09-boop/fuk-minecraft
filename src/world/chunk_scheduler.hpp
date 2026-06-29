@@ -161,6 +161,10 @@ public:
         return static_cast<size_t>(std::max(0, group_mesh_count_a.load(std::memory_order_relaxed)));
     }
 
+    [[nodiscard]] size_t completed_light_count() const noexcept {
+        return static_cast<size_t>(std::max(0, light_count_a.load(std::memory_order_relaxed)));
+    }
+
     void push_completed_light_propagation(CompletedLightPropagation&& prop) {
         std::lock_guard<std::mutex> lock(completed_light_mutex);
         completed_light_propagations.push(std::move(prop));
