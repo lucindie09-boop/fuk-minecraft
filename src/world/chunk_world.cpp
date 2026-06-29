@@ -100,7 +100,8 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
         if (elapsed_ms >= budget_ms) break;
 
         // Poll completed light propagations (fire-and-forget worker results)
-        {
+        // Fast-path: skip mutex entirely when queue is empty (atomic counter check)
+        if (chunk_scheduler.completed_light_count() != 0) {
             CompletedLightPropagation completed;
             while (chunk_scheduler.poll_completed_light_propagation(completed)) {
                 if (completed.epoch != epoch) continue;
