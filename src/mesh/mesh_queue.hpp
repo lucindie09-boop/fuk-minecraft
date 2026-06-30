@@ -2,6 +2,7 @@
 #define FUK_MINECRAFT_MESH_QUEUE_HPP
 #include "core/chunk_types.hpp"
 #include "core/chunk_map.hpp"
+#include "core/frustum.hpp"
 #include <cstdint>
 #include <queue>
 #include <deque>
@@ -54,7 +55,8 @@ public:
         return urgent_mesh_chunks.erase(key) > 0;
     }
 
-    void reprioritize(int32_t player_chunk_x, int32_t player_chunk_y, int32_t player_chunk_z) {
+    void reprioritize(int32_t player_chunk_x, int32_t player_chunk_y, int32_t player_chunk_z,
+                      const Frustum* frustum = nullptr) {
         if (dirty_mesh_queue.empty()) {
             return;
         }
@@ -71,6 +73,7 @@ public:
             const int32_t dz = cz - player_chunk_z;
             entry.dist_sq = dx * dx + dy * dy + dz * dz;
             entry.urgent = entry.urgent || is_urgent(entry.key);
+            entry.in_frustum = frustum ? frustum->is_chunk_visible(cx, cy, cz) : false;
             reprioritized.push(entry);
         }
 

@@ -660,8 +660,8 @@ void MeshManager::mark_chunk_urgent(int32_t cx, int32_t cy, int32_t cz) {
     mesh_queue.mark_urgent(chunk_map->get_chunk_key(cx, cy, cz));
 }
 
-void MeshManager::reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz) {
-    mesh_queue.reprioritize(player_cx, player_cy, player_cz);
+void MeshManager::reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz, const Frustum* frustum) {
+    mesh_queue.reprioritize(player_cx, player_cy, player_cz, frustum);
 }
 
 void MeshManager::mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_cy, int32_t center_cz) {

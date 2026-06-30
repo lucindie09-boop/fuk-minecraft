@@ -160,6 +160,12 @@ void VoxelEngineController::update(double delta, bool is_editor, const godot::Ve
     }
 }
 
+void VoxelEngineController::update_frustum(const std::array<godot::Plane, 6>& planes) {
+    Frustum f;
+    f.update(planes);
+    world_updater.set_frustum(f);
+}
+
 void VoxelEngineController::update_chunks(bool is_editor) {
     world_updater.update(is_editor, chunk_world.get_epoch(), chunks_processed_total, last_delta);
 }

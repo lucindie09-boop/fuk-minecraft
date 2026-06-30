@@ -3,6 +3,7 @@
 #include "core/chunk_types.hpp"
 #include "core/terrain_params.hpp"
 #include "core/frame_budgets.hpp"
+#include "core/frustum.hpp"
 #include <godot_cpp/variant/vector3.hpp>
 
 namespace VoxelEngine { class ChunkGenerator; }
@@ -48,6 +49,12 @@ public:
     void set_render_distance(int32_t rd) { render_distance = rd; }
     void set_editor_render_distance(int32_t rd) { editor_render_distance = rd; }
     void set_player_position(const godot::Vector3& pos) { player_position = pos; }
+    void set_frustum(const Frustum& f) {
+        frustum = f;
+        frustum_cursor = 0;
+        frustum_pass_complete = false;
+    }
+    const Frustum& get_frustum() const { return frustum; }
 
     void update(bool is_editor, uint64_t epoch, uint64_t& chunks_processed_total, double delta);
     bool generate_chunk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch);
@@ -91,6 +98,10 @@ private:
     std::unique_ptr<ChunkGenerator> height_estimator;
     std::unordered_map<uint64_t, float> column_height_cache;
     std::deque<uint64_t> column_height_fifo;
+
+    Frustum frustum;
+    size_t frustum_cursor = 0;
+    bool frustum_pass_complete = false;
 
     // Resumable generation cursor — amortises the pre_sorted_offsets scan across frames.
     // Reset when player changes chunks; set pass_complete when a full sweep finds nothing.

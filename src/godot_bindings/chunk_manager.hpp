@@ -1,6 +1,7 @@
 #ifndef FUK_MINECRAFT_CHUNK_MANAGER_HPP
 #define FUK_MINECRAFT_CHUNK_MANAGER_HPP
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/node_path.hpp>
@@ -144,6 +145,7 @@ private:
     std::unique_ptr<VoxelEngineController> controller;
     godot::NodePath player_path = godot::NodePath("../Player");
     godot::Node3D* cached_player = nullptr;
+    godot::Camera3D* cached_camera = nullptr;
 };
 
 } // namespace VoxelEngine
