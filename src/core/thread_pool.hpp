@@ -1,7 +1,9 @@
 #ifndef FUK_MINECRAFT_VOXEL_ENGINE_THREAD_POOL_HPP
 #define FUK_MINECRAFT_VOXEL_ENGINE_THREAD_POOL_HPP
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <type_traits>
@@ -26,13 +28,14 @@ struct FnTask : Task {
 class ThreadPool {
 public:
     explicit ThreadPool(std::size_t num_threads = default_thread_count())
-        : stop_flag_(false)
+        : stop_flag_(false), next_worker_(0)
     {
         num_threads = std::max(std::size_t(1), num_threads);
         workers_.reserve(num_threads);
 
         for (std::size_t i = 0; i < num_threads; ++i) {
-            workers_.emplace_back([this] { worker_loop(); });
+            queues_.emplace_back();
+            workers_.emplace_back([this, i] { worker_loop(i); });
         }
     }
 
@@ -51,28 +54,37 @@ public:
     }
 
     void enqueue_task(std::unique_ptr<Task> task, bool high_priority = false) {
+        if (stop_flag_.load(std::memory_order_acquire))
+            throw std::runtime_error("enqueue_task on stopped ThreadPool");
+
+        std::size_t idx = next_worker_.fetch_add(1, std::memory_order_relaxed) % queues_.size();
+        auto& q = queues_[idx];
         {
-            std::unique_lock<std::mutex> lock(queue_mutex_);
-            if (stop_flag_) {
-                throw std::runtime_error("enqueue_task on stopped ThreadPool");
-            }
-            if (high_priority) {
-                high_priority_tasks_.emplace(std::move(task));
-            } else {
-                tasks_.emplace(std::move(task));
-            }
+            std::unique_lock<std::mutex> lock(q.mtx);
+            if (high_priority)
+                q.high_pri.emplace(std::move(task));
+            else
+                q.normal.emplace(std::move(task));
         }
-        condition_.notify_one();
+        q.cv.notify_one();
     }
 
     [[nodiscard]] std::size_t get_queue_size() const {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        return tasks_.size() + high_priority_tasks_.size();
+        std::size_t total = 0;
+        for (auto& q : queues_) {
+            std::unique_lock<std::mutex> lock(q.mtx);
+            total += q.high_pri.size() + q.normal.size();
+        }
+        return total;
     }
 
     [[nodiscard]] std::size_t get_high_priority_queue_size() const {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        return high_priority_tasks_.size();
+        std::size_t total = 0;
+        for (auto& q : queues_) {
+            std::unique_lock<std::mutex> lock(q.mtx);
+            total += q.high_pri.size();
+        }
+        return total;
     }
 
     [[nodiscard]] std::size_t get_worker_count() const noexcept {
@@ -80,46 +92,45 @@ public:
     }
 
     void shutdown() {
-        {
-            std::unique_lock<std::mutex> lock(queue_mutex_);
-            if (std::exchange(stop_flag_, true)) {
-                return;
-            }
-        }
-        condition_.notify_all();
-
-        for (auto& worker : workers_) {
-            if (worker.joinable()) {
-                worker.join();
-            }
+        if (stop_flag_.exchange(true))
+            return;
+        for (auto& q : queues_)
+            q.cv.notify_all();
+        for (auto& w : workers_) {
+            if (w.joinable())
+                w.join();
         }
     }
 
 private:
-    void worker_loop() {
+    struct PerWorker {
+        std::queue<std::unique_ptr<Task>> high_pri;
+        std::queue<std::unique_ptr<Task>> normal;
+        mutable std::mutex mtx;
+        std::condition_variable cv;
+    };
+
+    void worker_loop(std::size_t idx) {
+        auto& q = queues_[idx];
         while (true) {
             std::unique_ptr<Task> task;
-
             {
-                std::unique_lock<std::mutex> lock(queue_mutex_);
-                condition_.wait(lock, [this] {
-                    return stop_flag_ || !high_priority_tasks_.empty() || !tasks_.empty();
+                std::unique_lock<std::mutex> lock(q.mtx);
+                q.cv.wait(lock, [this, &q] {
+                    return stop_flag_.load(std::memory_order_acquire) ||
+                           !q.high_pri.empty() || !q.normal.empty();
                 });
-
-                if (stop_flag_ && high_priority_tasks_.empty() && tasks_.empty()) {
+                if (stop_flag_.load(std::memory_order_acquire) &&
+                    q.high_pri.empty() && q.normal.empty())
                     return;
-                }
-
-                // Drain high-priority queue first
-                if (!high_priority_tasks_.empty()) {
-                    task = std::move(high_priority_tasks_.front());
-                    high_priority_tasks_.pop();
+                if (!q.high_pri.empty()) {
+                    task = std::move(q.high_pri.front());
+                    q.high_pri.pop();
                 } else {
-                    task = std::move(tasks_.front());
-                    tasks_.pop();
+                    task = std::move(q.normal.front());
+                    q.normal.pop();
                 }
             }
-
             task->execute();
         }
     }
@@ -130,13 +141,11 @@ private:
     }
 
     std::vector<std::thread> workers_;
-    std::queue<std::unique_ptr<Task>> tasks_;
-    std::queue<std::unique_ptr<Task>> high_priority_tasks_;
-    mutable std::mutex queue_mutex_;
-    std::condition_variable condition_;
-    bool stop_flag_;
+    std::deque<PerWorker> queues_;
+    std::atomic<bool> stop_flag_;
+    std::atomic<std::size_t> next_worker_;
 };
 
 } // namespace VoxelEngine
 
-#endif // FUK_MINECRAFT_VOXEL_ENGINE_THREAD_POOL_HPP
+#endif
