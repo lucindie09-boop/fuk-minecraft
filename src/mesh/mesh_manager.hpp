@@ -39,6 +39,7 @@ public:
 
     void set_mesh_render_distance(int32_t rd) { mesh_render_distance = rd; }
     void set_lod_settings(const LodSettings& settings);
+    void set_frustum(const Frustum* frustum) { lod_controller.set_frustum(frustum); }
     const LodSettings& get_lod_settings() const { return lod_controller.get_settings(); }
     LodController& get_lod_controller() { return lod_controller; }
     const LodController& get_lod_controller() const { return lod_controller; }

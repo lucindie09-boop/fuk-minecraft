@@ -2,6 +2,7 @@
 #define FUK_MINECRAFT_LOD_CONTROLLER_HPP
 
 #include "core/chunk_map.hpp"
+#include "core/frustum.hpp"
 #include "mesh/lod_types.hpp"
 #include "core/performance_timer.hpp"
 #include <functional>
@@ -16,6 +17,7 @@ public:
     void set_chunk_map(ChunkMap* cm) { chunk_map = cm; }
     void set_performance_timer(PerformanceTimer* pt) { perf_timer = pt; }
     void set_settings(const LodSettings& settings) { lod_settings = settings; }
+    void set_frustum(const Frustum* frustum) { frustum_ = frustum; }
     const LodSettings& get_settings() const { return lod_settings; }
 
     void clear();
@@ -48,6 +50,7 @@ public:
 private:
     ChunkMap* chunk_map = nullptr;
     PerformanceTimer* perf_timer = nullptr;
+    const Frustum* frustum_ = nullptr;
     LodSettings lod_settings{};
     std::unordered_map<uint64_t, std::unique_ptr<LodGroupRenderData>> groups;
     std::vector<LodTransition> pending_transitions;
@@ -63,6 +66,7 @@ private:
                               int32_t render_distance) const;
 
     int32_t horizontal_dist_sq(int32_t cx, int32_t cz, int32_t pcx, int32_t pcz) const;
+    int32_t effective_horizontal_dist_sq(int32_t cx, int32_t cz, int32_t pcx, int32_t pcz) const;
     bool in_vertical_range(int32_t cy, int32_t pcy) const;
 
     void queue_transition(LodTransitionKind kind, uint64_t group_key,

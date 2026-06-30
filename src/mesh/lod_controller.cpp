@@ -24,6 +24,17 @@ int32_t LodController::horizontal_dist_sq(int32_t cx, int32_t cz, int32_t pcx, i
     return dx * dx + dz * dz;
 }
 
+int32_t LodController::effective_horizontal_dist_sq(int32_t cx, int32_t cz, int32_t pcx, int32_t pcz) const {
+    const int32_t raw = horizontal_dist_sq(cx, cz, pcx, pcz);
+    if (!frustum_ || !frustum_->is_initialized()) {
+        return raw;
+    }
+    if (frustum_->is_chunk_visible(cx, 0, cz)) {
+        return static_cast<int32_t>(raw * 0.36f);
+    }
+    return raw;
+}
+
 bool LodController::in_vertical_range(int32_t cy, int32_t pcy) const {
     return std::abs(cy - pcy) <= lod_settings.vertical_buffer;
 }
@@ -38,7 +49,7 @@ LodLevel LodController::classify_target_lod(int32_t cx, int32_t cy, int32_t cz,
         return LodLevel::Individual;
     }
 
-    const int32_t horiz_dist2 = horizontal_dist_sq(cx, cz, player_cx, player_cz);
+    const int32_t horiz_dist2 = effective_horizontal_dist_sq(cx, cz, player_cx, player_cz);
     const int32_t rd2 = render_distance * render_distance;
     if (horiz_dist2 > rd2) {
         return LodLevel::Individual;
@@ -63,7 +74,7 @@ LodLevel LodController::apply_hysteresis(LodLevel current, LodLevel target, int3
         return current;
     }
 
-    const int32_t horiz_dist2 = horizontal_dist_sq(cx, cz, player_cx, player_cz);
+    const int32_t horiz_dist2 = effective_horizontal_dist_sq(cx, cz, player_cx, player_cz);
     const int32_t h = lod_settings.hysteresis;
     const int32_t lod0_sq = lod_settings.lod0_radius * lod_settings.lod0_radius;
     const int32_t lod1_sq = lod_settings.lod1_radius * lod_settings.lod1_radius;
