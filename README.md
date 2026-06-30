@@ -9,7 +9,7 @@ A Minecraft-style voxel engine built in Godot 4 with a custom C++ GDExtension. P
 - **ThreadPool** — async chunk generation, mesh building, and light propagation (15 workers)
 - **RenderingServer** — direct GPU mesh upload for zero SceneTree overhead per chunk
 - **LOD mesh merging** — 2×2×2 chunk groups via `MergedMeshBuilder`, periodic group rescan
-- **Frustum prioritization** — camera frustum extracted each frame; visible chunks prioritized for generation, meshing, and retention
+- **Frustum prioritization** — camera frustum extracted each frame; visible chunks prioritized for generation, meshing, retention, LOD detail boost, and dynamic mesh budgets
 
 ## Key Systems
 
@@ -18,7 +18,7 @@ A Minecraft-style voxel engine built in Godot 4 with a custom C++ GDExtension. P
 | Chunk data | `src/core/chunk_data.hpp` | 32×32×32 chunks, packed light (4 bits per channel) |
 | Block types | `src/core/block_types.hpp` | Registry singleton, property flags, per-face textures |
 | Chunk map | `src/core/chunk_map.hpp` | `shared_mutex` reader/writer lock, resumable bucket-cursor iteration |
-| Frustum utility | `src/core/frustum.hpp` | AABB-in-frustum test, used by generation/mesh/unload pipelines |
+| Frustum utility | `src/core/frustum.hpp` | AABB-in-frustum test, used by generation, mesh, unload, LOD, and budget scaling |
 | World updater | `src/world/world_updater.hpp/cpp` | Per-frame budgeted scheduling (generate → light → mesh → upload) |
 | Generation scheduler | `src/world/generation_scheduler.hpp/cpp` | Standalone refactored generation loop (future replacement) |
 | Mesh queue | `src/mesh/mesh_queue.hpp` | Priority queue sorted by urgent > in-frustum > distance |
