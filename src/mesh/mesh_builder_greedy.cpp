@@ -186,8 +186,6 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
     }
 
     const int dir_idx = static_cast<int>(direction);
-    const BlockID* center_blocks = chunk.blocks();
-    const uint16_t* center_lights = chunk.get_light_packed_data();
     constexpr std::size_t kYStride = CHUNK_WIDTH;
     constexpr std::size_t kZStride = CHUNK_WIDTH * CHUNK_HEIGHT;
 
@@ -204,6 +202,16 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
         default: break;
     }
 
+    // Neighbor offset in the same chunk (for non-boundary columns)
+    int center_nx_off = 0, center_nz_off = 0;
+    switch (direction) {
+        case FaceDirection::Right: center_nx_off = 1; break;
+        case FaceDirection::Left:  center_nx_off = -1; break;
+        case FaceDirection::Front: center_nz_off = 1; break;
+        case FaceDirection::Back:  center_nz_off = -1; break;
+        default: break;
+    }
+
     for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
         for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
             int32_t merge_start = -1;
@@ -211,37 +219,11 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
             uint16_t current_light_key = 0;
             int current_rotation = 0;
 
-            std::size_t current_idx = static_cast<std::size_t>(x) + static_cast<std::size_t>(z) * kZStride;
             const bool boundary_column =
                 (direction == FaceDirection::Right && x == CHUNK_WIDTH - 1) ||
                 (direction == FaceDirection::Left && x == 0) ||
                 (direction == FaceDirection::Front && z == CHUNK_DEPTH - 1) ||
                 (direction == FaceDirection::Back && z == 0);
-
-            const BlockID* boundary_blocks = nullptr;
-            const uint16_t* boundary_lights = nullptr;
-            std::size_t boundary_idx = 0;
-
-            if (boundary_column && boundary_chunk) {
-                boundary_blocks = boundary_chunk->blocks();
-                boundary_lights = boundary_chunk->get_light_packed_data();
-                switch (direction) {
-                    case FaceDirection::Right:
-                        boundary_idx = static_cast<std::size_t>(z) * kZStride;
-                        break;
-                    case FaceDirection::Left:
-                        boundary_idx = static_cast<std::size_t>(CHUNK_WIDTH - 1) + static_cast<std::size_t>(z) * kZStride;
-                        break;
-                    case FaceDirection::Front:
-                        boundary_idx = static_cast<std::size_t>(x);
-                        break;
-                    case FaceDirection::Back:
-                        boundary_idx = static_cast<std::size_t>(x) + static_cast<std::size_t>(CHUNK_DEPTH - 1) * kZStride;
-                        break;
-                    default:
-                        break;
-                }
-            }
 
             for (int32_t s = 0; s < CHUNK_SECTIONS; ++s) {
                 int32_t y0 = s * SECTION_HEIGHT;
@@ -250,10 +232,6 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                     flush_vertical_merge(chunk, accessor, merge_start, y0, x, z, direction,
                                         current_block, current_light_key, current_rotation, registry);
                     merge_start = -1;
-                    current_idx += static_cast<std::size_t>(SECTION_HEIGHT) * kYStride;
-                    if (boundary_column && boundary_blocks) {
-                        boundary_idx += static_cast<std::size_t>(SECTION_HEIGHT) * kYStride;
-                    }
                     continue;
                 }
 
@@ -264,25 +242,36 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
                                             current_block, current_light_key, current_rotation, registry);
                         merge_start = -1;
-                        current_idx += kYStride;
-                        if (boundary_column && boundary_blocks) {
-                            boundary_idx += kYStride;
-                        }
                         continue;
                     }
 
                     BlockID neighbor = BlockIDs::AIR;
                     uint16_t light_key = 0;
                     if (boundary_column) {
-                        if (boundary_blocks) {
-                            neighbor = boundary_blocks[boundary_idx];
-                            light_key = boundary_lights[boundary_idx];
+                        if (boundary_chunk) {
+                            switch (direction) {
+                                case FaceDirection::Right:
+                                    neighbor = boundary_chunk->get_block_unsafe(0, y, z);
+                                    light_key = boundary_chunk->get_light_packed_word_unsafe(0, y, z);
+                                    break;
+                                case FaceDirection::Left:
+                                    neighbor = boundary_chunk->get_block_unsafe(31, y, z);
+                                    light_key = boundary_chunk->get_light_packed_word_unsafe(31, y, z);
+                                    break;
+                                case FaceDirection::Front:
+                                    neighbor = boundary_chunk->get_block_unsafe(x, y, 0);
+                                    light_key = boundary_chunk->get_light_packed_word_unsafe(x, y, 0);
+                                    break;
+                                case FaceDirection::Back:
+                                    neighbor = boundary_chunk->get_block_unsafe(x, y, 31);
+                                    light_key = boundary_chunk->get_light_packed_word_unsafe(x, y, 31);
+                                    break;
+                                default: break;
+                            }
                         }
                     } else {
-                        const std::size_t local_neighbor_idx = static_cast<std::size_t>(
-                            static_cast<std::ptrdiff_t>(current_idx) + local_neighbor_offset);
-                        neighbor = center_blocks[local_neighbor_idx];
-                        light_key = center_lights[local_neighbor_idx];
+                        neighbor = chunk.get_block_unsafe(x + center_nx_off, y, z + center_nz_off);
+                        light_key = chunk.get_light_packed_word_unsafe(x + center_nx_off, y, z + center_nz_off);
                     }
 
                     bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
@@ -290,10 +279,6 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
                                             current_block, current_light_key, current_rotation, registry);
                         merge_start = -1;
-                        current_idx += kYStride;
-                        if (boundary_column && boundary_blocks) {
-                            boundary_idx += kYStride;
-                        }
                         continue;
                     }
 
@@ -305,10 +290,6 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         const bool same_light = light_key == current_light_key;
                         const bool same_rotation = rotation == current_rotation;
                         if (same_block && within_distance && same_light && same_rotation) {
-                            current_idx += kYStride;
-                            if (boundary_column && boundary_blocks) {
-                                boundary_idx += kYStride;
-                            }
                             continue;
                         }
                         if (!same_block) {
@@ -328,10 +309,6 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                     current_block = block_id;
                     current_rotation = rotation;
                     current_light_key = light_key;
-                    current_idx += kYStride;
-                    if (boundary_column && boundary_blocks) {
-                        boundary_idx += kYStride;
-                    }
                 }
             }
 
