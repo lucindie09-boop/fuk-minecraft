@@ -60,22 +60,40 @@ ChunkData& ChunkData::operator=(ChunkData&& other) noexcept {
 }
 
 void ChunkData::clear_block_light() noexcept {
-    for (int32_t i = 0; i < CHUNK_VOLUME; ++i)
-        light_packed()[i] &= 0x000F;
+    for (auto& s : storage->light_secs) {
+        if (s.is_uniform()) {
+            s.palette[0] = s.uniform_val() & 0x000F;
+        } else {
+            for (int i = 0; i < PaletteStorage::SEC_VOLUME; ++i) {
+                uint16_t v = PaletteStorage::section_get(s, i);
+                uint16_t nv = v & 0x000F;
+                if (nv != v) PaletteStorage::section_set(s, i, nv);
+            }
+        }
+    }
 }
 
 void ChunkData::clear_sky_light() noexcept {
-    for (int32_t i = 0; i < CHUNK_VOLUME; ++i)
-        light_packed()[i] &= 0xFFF0;
+    for (auto& s : storage->light_secs) {
+        if (s.is_uniform()) {
+            s.palette[0] = s.uniform_val() & 0xFFF0;
+        } else {
+            for (int i = 0; i < PaletteStorage::SEC_VOLUME; ++i) {
+                uint16_t v = PaletteStorage::section_get(s, i);
+                uint16_t nv = v & 0xFFF0;
+                if (nv != v) PaletteStorage::section_set(s, i, nv);
+            }
+        }
+    }
 }
 
 void ChunkData::clear_light() noexcept {
-    std::memset(light_packed(), 0, CHUNK_VOLUME * sizeof(uint16_t));
+    storage->fill_light_uniform(0);
 }
 
 void ChunkData::clear() noexcept {
-    storage->fill_uniform(BlockIDs::AIR);
-    clear_light();
+    storage->fill_blocks_uniform(BlockIDs::AIR);
+    storage->fill_light_uniform(0);
     is_empty       = true;
     is_fully_solid = false;
     block_count    = 0;
@@ -84,7 +102,7 @@ void ChunkData::clear() noexcept {
 }
 
 void ChunkData::fill_blocks(BlockID block_id) noexcept {
-    storage->fill_uniform(block_id);
+    storage->fill_blocks_uniform(block_id);
 
     if (block_id == BlockIDs::AIR) {
         is_empty = true;
@@ -110,7 +128,7 @@ void ChunkData::fill_blocks(BlockID block_id) noexcept {
 }
 
 void ChunkData::set_data(const BlockID* data, uint32_t /*count*/) {
-    storage->fill_from_dense(data);
+    storage->build_from_dense(data);
 
     block_count    = 0;
     emissive_count = 0;
@@ -131,7 +149,7 @@ void ChunkData::set_data(const BlockID* data, uint32_t /*count*/) {
 
 void ChunkData::compute_fully_solid() {
     if (is_empty) { is_fully_solid = false; return; }
-    is_fully_solid = storage->check_fully_solid(BlockRegistry::get_instance());
+    is_fully_solid = storage->check_fully_solid();
 }
 
 void ChunkData::compute_section_flags() {
