@@ -15,7 +15,7 @@ void LightPropagator::propagate_block_light_region(int32_t cx, int32_t cy, int32
     ChunkData* chunk = chunk_map->get_chunk_data(cx, cy, cz);
     if (!chunk) return;
     ChunkData* region_grid[3][3][3] = {};
-    auto lock = chunk_map->acquire_shared_lock();
+    auto lock = chunk_map->lock_all();
     for (int dz = -1; dz <= 1; dz++) {
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
@@ -67,7 +67,7 @@ void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, 
     };
 
     queue.reserve(512);
-    auto lock = chunk_map->acquire_shared_lock();
+    auto lock = chunk_map->lock_all();
     size_t idx = 0;
     while (idx < queue.size()) {
         const LightNode node = queue[idx++];
@@ -123,7 +123,7 @@ void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_c
 
     remove_queue.reserve(512);
     add_queue.reserve(512);
-    auto lock = chunk_map->acquire_shared_lock();
+    auto lock = chunk_map->lock_all();
     size_t idx = 0;
     while (idx < remove_queue.size()) {
         const LightNode node = remove_queue[idx++];
@@ -236,7 +236,7 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
             {0, 1, 0}, {0, -1, 0},
             {0, 0, 1}, {0, 0, -1}
         };
-        auto lock = chunk_map->acquire_shared_lock();
+        auto lock = chunk_map->lock_all();
         for (int i = 0; i < 6; i++) {
             int32_t ncx = cx;
             int32_t ncy = cy;

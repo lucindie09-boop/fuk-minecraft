@@ -123,7 +123,7 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
 
             uint64_t key = chunk_map.get_chunk_key(stage.chunk_x, stage.chunk_y, stage.chunk_z);
             {
-                auto lock = chunk_map.acquire_shared_lock();
+                auto lock = chunk_map.lock_all();
                 if (!chunk_map.contains_fast(key)) continue;
 
                 if (light_propagated_chunks.find(key) != light_propagated_chunks.end()) {
@@ -149,7 +149,7 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
                     int32_t cz = stage.chunk_z;
                     thread_pool->fire_and_forget([this, cx, cy, cz, epoch]() {
                         {
-                            auto wlock = chunk_map.acquire_shared_lock();
+                            auto wlock = chunk_map.lock_all();
                             ChunkData* region_grid[3][3][3] = {};
                             for (int dz = -1; dz <= 1; dz++) {
                                 for (int dy = -1; dy <= 1; dy++) {
@@ -188,7 +188,17 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
 
             uint64_t key = chunk_map.get_chunk_key(stage.chunk_x, stage.chunk_y, stage.chunk_z);
             {
-                auto lock = chunk_map.acquire_shared_lock();
+                // Batch-lock the chunk + its 6 neighbors
+                uint64_t neighbor_keys[7] = {
+                    key,
+                    chunk_map.get_chunk_key(stage.chunk_x - 1, stage.chunk_y,     stage.chunk_z    ),
+                    chunk_map.get_chunk_key(stage.chunk_x + 1, stage.chunk_y,     stage.chunk_z    ),
+                    chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y - 1, stage.chunk_z    ),
+                    chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y + 1, stage.chunk_z    ),
+                    chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y,     stage.chunk_z - 1),
+                    chunk_map.get_chunk_key(stage.chunk_x,     stage.chunk_y,     stage.chunk_z + 1)
+                };
+                auto lock = chunk_map.lock_keys(std::vector<uint64_t>(neighbor_keys, neighbor_keys + 7));
                 if (!chunk_map.contains_fast(key)) continue;
 
                 if (mesh_manager) {
@@ -256,10 +266,7 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
 
             uint64_t key = chunk_map.get_chunk_key(completed.chunk_x, completed.chunk_y, completed.chunk_z);
 
-            {
-                auto lock = chunk_map.acquire_shared_lock();
-                if (chunk_map.contains_fast(key)) continue;
-            }
+            if (chunk_map.contains(key)) continue;
 
             auto render_data = std::make_unique<ChunkRenderData>();
             render_data->data = std::move(completed.chunk_data);
