@@ -3,12 +3,12 @@
 namespace VoxelEngine {
 
 ChunkData::ChunkData()
-    : storage(std::make_unique<ChunkStorage>()) {
+    : storage(std::make_unique<PaletteStorage>()) {
     clear();
 }
 
 ChunkData::ChunkData(const ChunkData& other)
-    : storage(std::make_unique<ChunkStorage>(*other.storage)),
+    : storage(std::make_unique<PaletteStorage>(*other.storage)),
       is_empty(other.is_empty),
       is_fully_solid(other.is_fully_solid),
       block_count(other.block_count),
@@ -60,15 +60,13 @@ ChunkData& ChunkData::operator=(ChunkData&& other) noexcept {
 }
 
 void ChunkData::clear_block_light() noexcept {
-    for (int32_t i = 0; i < CHUNK_VOLUME; ++i) {
+    for (int32_t i = 0; i < CHUNK_VOLUME; ++i)
         light_packed()[i] &= 0x000F;
-    }
 }
 
 void ChunkData::clear_sky_light() noexcept {
-    for (int32_t i = 0; i < CHUNK_VOLUME; ++i) {
+    for (int32_t i = 0; i < CHUNK_VOLUME; ++i)
         light_packed()[i] &= 0xFFF0;
-    }
 }
 
 void ChunkData::clear_light() noexcept {
@@ -76,17 +74,17 @@ void ChunkData::clear_light() noexcept {
 }
 
 void ChunkData::clear() noexcept {
-    std::memset(blocks(), 0, CHUNK_VOLUME * sizeof(BlockID));
+    storage->fill_uniform(BlockIDs::AIR);
     clear_light();
-    is_empty    = true;
+    is_empty       = true;
     is_fully_solid = false;
-    block_count = 0;
+    block_count    = 0;
     emissive_count = 0;
     std::memset(section_block_count, 0, sizeof(section_block_count));
 }
 
 void ChunkData::fill_blocks(BlockID block_id) noexcept {
-    std::fill(blocks(), blocks() + CHUNK_VOLUME, block_id);
+    storage->fill_uniform(block_id);
 
     if (block_id == BlockIDs::AIR) {
         is_empty = true;
@@ -107,30 +105,24 @@ void ChunkData::fill_blocks(BlockID block_id) noexcept {
                      HasProperty(block_type.properties, BlockProperty::Opaque);
 
     const uint32_t blocks_per_section = CHUNK_VOLUME / CHUNK_SECTIONS;
-    for (int32_t s = 0; s < CHUNK_SECTIONS; ++s) {
+    for (int32_t s = 0; s < CHUNK_SECTIONS; ++s)
         section_block_count[s] = blocks_per_section;
-    }
 }
 
 void ChunkData::set_data(const BlockID* data, uint32_t /*count*/) {
-    std::memcpy(blocks(), data, CHUNK_VOLUME * sizeof(BlockID));
+    storage->fill_from_dense(data);
 
     block_count    = 0;
     emissive_count = 0;
     std::memset(section_block_count, 0, sizeof(section_block_count));
 
-    for (std::size_t i = 0; i < CHUNK_VOLUME; ++i) {
-        const BlockID id = blocks()[i];
-        if (id != BlockIDs::AIR) {
+    // Count blocks and emissive from sections
+    for (int si = 0; si < PaletteStorage::NUM_SECTIONS; ++si) {
+        storage->for_each_block(si, [&](int x, int y, int z, BlockID id) {
             ++block_count;
-            if (is_emissive_block(id)) {
-                ++emissive_count;
-            }
-            const int32_t y = static_cast<int32_t>(
-                (i / static_cast<std::size_t>(CHUNK_WIDTH)) % static_cast<std::size_t>(CHUNK_HEIGHT)
-            );
+            if (is_emissive_block(id)) ++emissive_count;
             ++section_block_count[y / SECTION_HEIGHT];
-        }
+        });
     }
 
     is_empty = (block_count == 0);
@@ -138,38 +130,12 @@ void ChunkData::set_data(const BlockID* data, uint32_t /*count*/) {
 }
 
 void ChunkData::compute_fully_solid() {
-    if (is_empty) {
-        is_fully_solid = false;
-        return;
-    }
-    const auto& registry = BlockRegistry::get_instance();
-    for (std::size_t i = 0; i < CHUNK_VOLUME; ++i) {
-        const BlockID id = blocks()[i];
-        if (id == BlockIDs::AIR) {
-            is_fully_solid = false;
-            return;
-        }
-        const auto& block = registry.get_block(id);
-        if (!HasProperty(block.properties, BlockProperty::Solid) ||
-            !HasProperty(block.properties, BlockProperty::Opaque)) {
-            is_fully_solid = false;
-            return;
-        }
-    }
-    is_fully_solid = true;
+    if (is_empty) { is_fully_solid = false; return; }
+    is_fully_solid = storage->check_fully_solid(BlockRegistry::get_instance());
 }
 
 void ChunkData::compute_section_flags() {
-    std::memset(section_block_count, 0, sizeof(section_block_count));
-
-    for (std::size_t i = 0; i < CHUNK_VOLUME; ++i) {
-        if (blocks()[i] != BlockIDs::AIR) {
-            const int32_t y = static_cast<int32_t>(
-                (i / static_cast<std::size_t>(CHUNK_WIDTH)) % static_cast<std::size_t>(CHUNK_HEIGHT)
-            );
-            ++section_block_count[y / SECTION_HEIGHT];
-        }
-    }
+    storage->count_section_blocks(section_block_count);
 }
 
 void ChunkData::propagate_sky_light(const ChunkData* chunk_above) {
@@ -181,9 +147,8 @@ void ChunkData::propagate_sky_light(const ChunkData* chunk_above) {
                 const BlockID block_id = get_block_unsafe(x, y, z);
                 if (block_id != BlockIDs::AIR) {
                     const BlockType& block_type = registry.get_block(block_id);
-                    if (HasProperty(block_type.properties, BlockProperty::Opaque)) {
+                    if (HasProperty(block_type.properties, BlockProperty::Opaque))
                         current_sky_light = 0;
-                    }
                 }
                 set_sky_light_unsafe(x, y, z, current_sky_light);
             }
@@ -198,9 +163,8 @@ void ChunkData::propagate_sky_light_column(int32_t x, int32_t z, const ChunkData
         const BlockID block_id = get_block_unsafe(x, y, z);
         if (block_id != BlockIDs::AIR) {
             const BlockType& block_type = registry.get_block(block_id);
-            if (HasProperty(block_type.properties, BlockProperty::Opaque)) {
+            if (HasProperty(block_type.properties, BlockProperty::Opaque))
                 current_sky_light = 0;
-            }
         }
         set_sky_light_unsafe(x, y, z, current_sky_light);
     }
