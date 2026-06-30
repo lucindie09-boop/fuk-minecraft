@@ -7,88 +7,55 @@ namespace VoxelEngine {
 
 using namespace godot;
 
-// Check only the blocks on the leading face of the AABB in the movement direction,
-// instead of the full AABB volume. This cuts block checks from O(volume) to O(face).
 template<typename Pred>
-static bool is_leading_face_solid(const Vector3& position,
-                                   const Vector3& size,
-                                   int axis, float direction,
-                                   float new_leading,
-                                   Pred is_solid_block) {
-    if (axis == 0) {
-        int32_t fx = static_cast<int32_t>(direction > 0.0f ? new_leading : new_leading - 1.0f);
-        int32_t min_y = static_cast<int32_t>(std::floor(position.y));
-        int32_t max_y = static_cast<int32_t>(std::floor(position.y + size.y));
-        int32_t min_z = static_cast<int32_t>(std::floor(position.z));
-        int32_t max_z = static_cast<int32_t>(std::floor(position.z + size.z));
-        for (int32_t y = min_y; y <= max_y; ++y)
-            for (int32_t z = min_z; z <= max_z; ++z)
-                if (is_solid_block(fx, y, z)) return true;
-    } else if (axis == 1) {
-        int32_t fy = static_cast<int32_t>(direction > 0.0f ? new_leading : new_leading - 1.0f);
-        int32_t min_x = static_cast<int32_t>(std::floor(position.x));
-        int32_t max_x = static_cast<int32_t>(std::floor(position.x + size.x));
-        int32_t min_z = static_cast<int32_t>(std::floor(position.z));
-        int32_t max_z = static_cast<int32_t>(std::floor(position.z + size.z));
-        for (int32_t x = min_x; x <= max_x; ++x)
-            for (int32_t z = min_z; z <= max_z; ++z)
-                if (is_solid_block(x, fy, z)) return true;
-    } else {
-        int32_t fz = static_cast<int32_t>(direction > 0.0f ? new_leading : new_leading - 1.0f);
-        int32_t min_x = static_cast<int32_t>(std::floor(position.x));
-        int32_t max_x = static_cast<int32_t>(std::floor(position.x + size.x));
-        int32_t min_y = static_cast<int32_t>(std::floor(position.y));
-        int32_t max_y = static_cast<int32_t>(std::floor(position.y + size.y));
-        for (int32_t x = min_x; x <= max_x; ++x)
-            for (int32_t y = min_y; y <= max_y; ++y)
-                if (is_solid_block(x, y, fz)) return true;
-    }
-    return false;
-}
-
-template<typename Pred>
-static void resolve_axis(const Vector3& position,
-                         const Vector3& motion,
-                         const Vector3& size,
+static void resolve_axis(const godot::Vector3& position,
+                         const godot::Vector3& motion,
+                         const godot::Vector3& size,
                          int axis,
-                         Vector3& result,
+                         godot::Vector3& result,
                          bool& collided,
-                         Pred is_solid_block) {
+                         Pred is_solid) {
     if (motion[axis] == 0.0f) {
         collided = false;
         return;
     }
-    const float direction = motion[axis] > 0.0f ? 1.0f : -1.0f;
+    float direction = motion[axis] > 0.0f ? 1.0f : -1.0f;
     float remaining = std::abs(motion[axis]);
 
     while (remaining > 0.001f) {
-        const float leading_edge = result[axis] + (direction > 0.0f ? size[axis] : 0.0f);
 
-        // Next grid boundary in the movement direction
-        float next_boundary = direction > 0.0f
-            ? std::floor(leading_edge) + 1.0f
-            : std::floor(leading_edge);
-
-        // If already at boundary, advance one full grid cell
-        float dist = std::abs(next_boundary - leading_edge);
-        if (dist < 0.001f) {
-            next_boundary = leading_edge + direction * 1.0f;
-            dist = 1.0f;
-        }
-
-        const float current_step = std::min(dist, remaining);
-        const float new_leading = leading_edge + direction * current_step;
-
-        // DDA: only check the leading face blocks instead of the full AABB volume.
-        // On collision the exact position is the grid boundary — no binary search.
-        if (is_leading_face_solid(result, size, axis, direction, new_leading, is_solid_block)) {
+float leading_edge = result[axis] + (direction > 0.0f ? size[axis] : 0.0f);
+float next_boundary = (direction > 0.0f) ? (std::floor(leading_edge) + 1.0f) : std::ceil(leading_edge);
+float dist = std::abs(next_boundary - leading_edge);
+if (dist < 0.001f) {
+dist = 1.0f;
+}
+float current_step
+=
+std::min(dist, remaining);
+        Vector3 test_pos = result;
+        test_pos[axis] += direction * current_step;
+        AABB test_aabb(test_pos, size);
+        if (is_solid(test_aabb)) {
             collided = true;
-            result[axis] = direction > 0.0f
-                ? (next_boundary - size[axis])
-                : next_boundary;
-            return;
+            float low = result[axis];
+            float high = test_pos[axis];
+            float best = result[axis];
+            for (int i = 0; i < 10; ++i) {
+                float mid = (low + high) * 0.5f;
+                Vector3 mid_pos = result;
+                mid_pos[axis] = mid;
+                AABB mid_aabb(mid_pos, size);
+                if (is_solid(mid_aabb)) {
+                    high = mid;
+                } else {
+                    best = mid;
+                    low = mid;
+                }
+            }
+            result[axis] = best;
+            break;
         }
-
         result[axis] += direction * current_step;
         remaining -= current_step;
     }
@@ -102,12 +69,14 @@ CollisionResolver::CollisionResult CollisionResolver::resolve(
     Vector3 result = position;
     CollisionResult out;
 
-    auto lock = chunk_map_->acquire_shared_lock();
+
+// Acquire the chunk map lock once for the whole resolve pass instead of once per // 1.0f step plus once per binary-search iteration. At ~5 steps x 3 axes, each // potentially followed by a 10-iteration bisection, that was on the order of a // hundred+ lock/unlock cycles per call. is_aabb_solid_fast() below assumes the // caller already holds the lock, matching is_aabb_solid()'s contract.
+auto lock = chunk_map_->acquire_shared_lock();
 
     for (int axis = 0; axis < 3; ++axis) {
         bool collided = false;
         resolve_axis(position, motion, size, axis, result, collided,
-            [this](int32_t x, int32_t y, int32_t z) { return chunk_map_->is_block_solid_fast(x, y, z); });
+            [this](const AABB& aabb) { return is_aabb_solid_fast(aabb); });
         if (axis == 0) out.collided_x = collided;
         else if (axis == 1) out.collided_y = collided;
         else out.collided_z = collided;
