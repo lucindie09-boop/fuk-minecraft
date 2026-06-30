@@ -43,6 +43,9 @@ Implemented frustum awareness across the entire chunk pipeline (`core/frustum.hp
 - **Unload**: Non-visible chunks beyond render distance are evicted before visible ones
 - **Camera integration**: `Camera3D::get_frustum()` resolves 6 world-space planes each frame via `ChunkManager._process()`
 
+- **Frustum-aware LOD classification**: Visible chunks get a 0.6× distance multiplier, boosting their LOD detail level compared to off-screen chunks at the same distance.
+- **Dynamic mesh budget**: Mesh rebuild and upload budgets scale by visible-chunk ratio (0.5× for empty viewports, 1.0× for fully loaded views).
+
 The frustum is recalculated every frame from the player's Camera3D child. No significant overhead — the AABB-plane test is ~6 dot products.
 
 ---
