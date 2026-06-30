@@ -35,7 +35,8 @@ void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_proce
         last_player_chunk_x = player_chunk_x;
         last_player_chunk_y = player_chunk_y;
         last_player_chunk_z = player_chunk_z;
-        mesh_manager->reprioritize(player_chunk_x, player_chunk_y, player_chunk_z);
+        mesh_manager->reprioritize(player_chunk_x, player_chunk_y, player_chunk_z,
+                                   frustum.is_initialized() ? &frustum : nullptr);
         mesh_manager->set_player_chunk(player_chunk_x, player_chunk_y, player_chunk_z);
         mesh_manager->set_mesh_render_distance(active_render_distance);
     }
@@ -77,10 +78,61 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
         generation_sweep_generated = false;
     }
 
+    const bool frustum_active = frustum.is_initialized();
+    const size_t total_offsets = pre_sorted_offsets.size();
+    const size_t max_checks_per_frame = static_cast<size_t>(
+        std::max(dynamic_max_generations * 2, 512));
+
+    // --- Phase 1: Frustum-priority pass ---
+    // Walk the offset list and generate chunks that are in the camera frustum.
+    // Allocates up to half the generation budget to visible chunks.
+    if (frustum_active && !frustum_pass_complete && total_offsets > 0) {
+        size_t   frustum_checks          = 0;
+        int32_t  frustum_generations     = 0;
+        const size_t max_frustum_checks = std::max(max_checks_per_frame / 2, size_t(64));
+
+        auto lock = chunk_world->get_chunk_map().acquire_shared_lock();
+        while (frustum_checks < max_frustum_checks &&
+               frustum_generations < std::max(dynamic_max_generations / 2, 1) &&
+               chunk_world->get_scheduler().can_enqueue(budgets.completed_queue_backlog)) {
+
+            if (frustum_cursor >= total_offsets) {
+                frustum_pass_complete = true;
+                break;
+            }
+
+            const ChunkPos& offset = pre_sorted_offsets[frustum_cursor++];
+            ++frustum_checks;
+
+            int32_t cx = pcx + offset.x;
+            int32_t cy = pcy + offset.y;
+            int32_t cz = pcz + offset.z;
+
+            if (!frustum.is_chunk_visible(cx, cy, cz)) continue;
+
+            uint64_t key = chunk_world->get_chunk_map().get_chunk_key(cx, cy, cz);
+            if (chunk_world->get_chunk_map().contains_fast(key)) continue;
+
+            int32_t chunk_bottom = cy * CHUNK_HEIGHT;
+            int32_t chunk_top    = (cy + 1) * CHUNK_HEIGHT;
+            float   surface_h    = get_column_surface_height(cx, cz);
+            bool near_player = std::abs(offset.x) <= 1 && std::abs(offset.z) <= 1 && std::abs(offset.y) <= 1;
+            if (!near_player) {
+                if (chunk_top   < surface_h - 32.0f) continue;
+                if (chunk_bottom > surface_h + 32.0f) continue;
+            }
+
+            lock.unlock();
+            if (generate_chunk(cx, cy, cz, epoch)) {
+                ++frustum_generations;
+                generation_sweep_generated = true;
+            }
+            lock.lock();
+        }
+    }
+
+    // --- Phase 2: Normal distance-sorted pass ---
     if (!generation_pass_complete && !pre_sorted_offsets.empty()) {
-        const size_t total_offsets       = pre_sorted_offsets.size();
-        const size_t max_checks_per_frame = static_cast<size_t>(
-            std::max(dynamic_max_generations * 2, 512));
         size_t   checks              = 0;
         int32_t  generations_this_frame = 0;
 
@@ -119,7 +171,6 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
                 if (chunk_bottom > surface_h + 32.0f) continue;
             }
 
-            // Release the lock before calling generate_chunk (may need unique_lock on the map)
             lock.unlock();
 
             if (generate_chunk(cx, cy, cz, epoch)) {
@@ -159,6 +210,10 @@ int32_t dy = cy - pcy;
         int32_t unload_hrd2 = unload_hrd * unload_hrd;
         int32_t unloads_this_frame = 0;
 int32_t unload_vrd = active_render_distance + 2;
+        const bool frustum_active = frustum.is_initialized();
+        // Frustum-aware unload: prefer unloading non-visible chunks first.
+        // Collect visible chunks and defer them, unload non-visible chunks now.
+        std::vector<uint64_t> visible_deferred;
         while (!unload_queue.empty() && unloads_this_frame < budgets.unloads_per_frame) {
             uint64_t key = unload_queue.back();
             unload_queue.pop_back();
@@ -170,6 +225,14 @@ int32_t unload_vrd = active_render_distance + 2;
                 int32_t horiz_dist2 = dx * dx + dz * dz;
 int32_t dy = cy - pcy;
                 if (horiz_dist2 > unload_hrd2 || std::abs(dy) > unload_vrd) {
+                    // Beyond render distance: unload now, non-visible first
+                    if (frustum_active && frustum.is_chunk_visible(cx, cy, cz)) {
+                        // Visible beyond render distance: defer if budget available
+                        if (unloads_this_frame < budgets.unloads_per_frame / 2) {
+                            visible_deferred.push_back(key);
+                            continue;
+                        }
+                    }
                     try_unload(key);
                 } else {
                     unload_pending.erase(key);
@@ -178,6 +241,10 @@ int32_t dy = cy - pcy;
                 unload_pending.erase(key);
             }
             unloads_this_frame++;
+        }
+        // Re-queue deferred visible chunks for next frame
+        for (uint64_t k : visible_deferred) {
+            unload_queue.push_back(k);
         }
     }
 }

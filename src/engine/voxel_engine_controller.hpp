@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <godot_cpp/variant/vector3.hpp>
+#include <godot_cpp/variant/plane.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/aabb.hpp>
@@ -11,6 +12,7 @@
 #include <godot_cpp/variant/node_path.hpp>
 
 #include "core/chunk_types.hpp"
+#include "core/frustum.hpp"
 #include "core/performance_timer.hpp"
 #include "world/world_updater.hpp"
 #include "world/chunk_world.hpp"
@@ -42,6 +44,7 @@ public:
     void set_owner(godot::Node* node);
 
     void update(double delta, bool is_editor, const godot::Vector3& player_position, godot::Node* owner);
+    void update_frustum(const std::array<godot::Plane, 6>& planes);
     void update_chunks(bool is_editor);
 
     void set_block_world(int32_t world_x, int32_t world_y, int32_t world_z, int block_id);

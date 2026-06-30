@@ -2,6 +2,7 @@
 #define FUK_MINECRAFT_MESH_MANAGER_HPP
 #include "core/chunk_map.hpp"
 #include "core/chunk_types.hpp"
+#include "core/frustum.hpp"
 #include "world/chunk_scheduler.hpp"
 #include "mesh/mesh_queue.hpp"
 #include "mesh/mesh_builder.hpp"
@@ -62,7 +63,7 @@ public:
     void queue_dirty_chunk(int32_t cx, int32_t cy, int32_t cz);
     void queue_immediate_dirty_chunk(int32_t cx, int32_t cy, int32_t cz);
     void mark_chunk_urgent(int32_t cx, int32_t cy, int32_t cz);
-    void reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz);
+    void reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz, const Frustum* frustum = nullptr);
     void mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_cy, int32_t center_cz);
     void process_queue(int32_t max_immediate, int32_t max_rebuilds, double budget_ms);
     void clear();

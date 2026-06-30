@@ -80,12 +80,30 @@ void ChunkManager::_process(double delta) {
         }
     }
 
+    // Extract camera frustum planes for frustum-prioritized chunk loading
+    if (cached_player) {
+        if (!cached_camera) {
+            cached_camera = Object::cast_to<Camera3D>(cached_player->get_node_or_null(NodePath("Camera3D")));
+        }
+        if (cached_camera) {
+            godot::TypedArray<godot::Plane> frustum_planes = cached_camera->get_frustum();
+            if (frustum_planes.size() >= 6) {
+                std::array<godot::Plane, 6> planes;
+                for (int i = 0; i < 6; ++i) {
+                    planes[i] = frustum_planes[i];
+                }
+                controller->update_frustum(planes);
+            }
+        }
+    }
+
     controller->update(delta, is_editor, player_pos, this);
     controller->get_environment_controller().update_environment(get_parent());
 }
 
 void ChunkManager::_exit_tree() {
     cached_player = nullptr;
+    cached_camera = nullptr;
 }
 
 // -------------------------------------------------------------------------

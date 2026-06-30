@@ -8,49 +8,42 @@
 
 ## Executive Summary
 
-You have built an **extremely well-architected** voxel engine with LOD mesh merging, upload deduplication, and per-frame budgeted scheduling. Most hobby voxel engines crash or stall at 500 chunks; you're sitting at 9,645 with ~1120 FPS idle.
+Well-architected voxel engine with LOD mesh merging, upload deduplication, async light propagation on worker threads, frustum-prioritized chunk loading, and per-frame budgeted scheduling. Most hobby voxel engines crash or stall at 500 chunks; this one sits at 9,645 with ~1120 FPS idle.
 
-Phase 4 (LOD merging) reduced draw calls from ~9645 to ~2278 — an **80% reduction**. The remaining 0.87ms/frame is Godot+GPU overhead. No amount of C++ micro-optimization will fix that — rendering fewer things is the only path forward.
-
----
-
-## What I Like (Keep Doing This)
-
-1. **Lazy RID creation** (`chunk_world.cpp:186-191`) — Creating 83k `RenderingServer` RIDs for invisible chunks would destroy startup. You only create them when a mesh actually needs to upload. Smart.
-2. **RID reuse** (`mesh_manager.cpp:210-215`) — `mesh_clear` instead of `free_rid` + `mesh_create` on every update eliminates RID churn.
-3. **Reused `Array` for uploads** (`mesh_manager.cpp:165-166`) — One `Array` alive and overwriting slots is exactly right.
-4. **Thread-local `MeshBuilder`** (`mesh_manager.cpp:38`) — One builder per thread, no allocations, no contention.
-5. **Frame budgets with dynamic scaling** (`world_updater.cpp:59-70`) — Pressure-aware `dynamic_max_generations` based on worker queue depth.
-6. **Resumable cursors** (`world_updater.hpp:127-140`) — Generation and unload cursors that persist across frames.
-7. **Height cache with FIFO eviction** (`world_updater.cpp:250-269`) — 65k-entry LRU for column heights.
-8. **Fast-path generation** (`chunk_world.cpp:29-54`) — All-air, all-bedrock, all-solid-subsurface chunks skip the full generator.
-9. **Section-based air skipping** (`mesh_builder.cpp:124-127`) — `is_section_all_air(s)` skips 16-block vertical slabs entirely.
-10. **Shared-lock batching in collision** (`collision_resolver.cpp:69-74`) — One `acquire_shared_lock` for the entire 3-axis resolve.
-11. **Solid cache layout** (`mesh_builder.hpp:227`) — `[y][z][x]` with `x` fastest-varying for cache-friendly horizontal scans.
-12. **Custom FastNoise** (`noise.hpp`) — No external dependencies, no `std::function` indirection.
-13. **Good test/build hygiene** (`SConstruct:30-48`) — Separate `bench`, `test`, and `debug` targets.
-14. **Upload dedup** (`hash_utils.hpp`) — FNV-1a hash on vertex+index data avoids redundant GPU uploads.
-15. **LOD merging** (`mesh_manager_lod.cpp`) — 2×2×2 chunk groups, 300-frame periodic rescan, instance budget capping.
+Phase 4 (LOD merging) reduced draw calls from ~9645 to ~2278 — an **80% reduction**. Async light propagation freed the main thread from block-light flood-fill. Frustum prioritization ensures visible chunks are generated, meshed, and kept in memory ahead of non-visible ones.
 
 ---
 
-## Phase 4 — LOD Mesh Merging
+## Architecture Decisions That Paid Off
 
-Implemented 2×2×2 group merging to reduce draw calls:
+1. **Lazy RID creation** — Only create RenderingServer RIDs when a mesh actually needs to upload. Avoids 83k RID startup cost.
+2. **RID reuse** — `mesh_clear` instead of `free_rid` + `mesh_create` on every update eliminates RID churn.
+3. **Reused `Array` for uploads** — One `Array` alive and overwriting slots is exactly right.
+4. **Thread-local `MeshBuilder`** — One builder per thread, no allocations, no contention.
+5. **Frame budgets with dynamic scaling** — Pressure-aware `dynamic_max_generations` based on worker queue depth.
+6. **Resumable cursors** — Generation and unload cursors that persist across frames.
+7. **Height cache with FIFO eviction** — 65k-entry LRU for column heights avoids re-querying noise.
+8. **Fast-path generation** — All-air, all-bedrock, all-solid-subsurface chunks skip the full generator.
+9. **Section-based air skipping** — `is_section_all_air(s)` skips 16-block vertical slabs entirely.
+10. **Shared-lock batching in collision** — One `acquire_shared_lock` for the entire 3-axis resolve.
+11. **Solid cache layout** — `[y][z][x]` with `x` fastest-varying for cache-friendly horizontal scans.
+12. **Custom FastNoise** — No external dependencies, no `std::function` indirection.
+13. **Upload dedup** — FNV-1a hash on vertex+index data avoids redundant GPU uploads.
+14. **LOD merging** — 2×2×2 chunk groups, periodic rescan, instance budget capping.
+15. **Async light propagation** — 3×3×3 block-light flood-fill runs on worker threads, polled on main thread.
 
-- **Pre-LOD:** ~9645 draw calls (one per chunk)
-- **Post-LOD:** ~2278 draw calls (940 individual + 1338 group instances)
-- **80% reduction** in draw calls
-- FPS improved from ~891 to ~1120-1156
-- Groups discovered over ~30s via periodic 300-frame rescans
-- Instance budget cap uses 2D horizontal distance + vertical buffer ≤ 2 (matching LOD classifier)
-- `recover_stuck_lod_chunks` throttled via `needs_stuck_recovery_` flag — only runs after group release/split (cut `world_update` from 0.27ms to 0.01ms at idle)
-- `material_set` flag avoids redundant `mesh_surface_set_material` RS calls; reset in both `mesh_create` and `mesh_clear` paths
+---
 
-### LOD Settings (`voxel_engine_controller.cpp:59-63`)
-- `lod0_radius = 8` — merge near-player chunks
-- `lod1_radius = 24` — merge mid-range chunks
-- `merge_shift = 1` — 2×2×2 groups
+## Frustum-Prioritized Chunk Loading
+
+Implemented frustum awareness across the entire chunk pipeline (`core/frustum.hpp`):
+
+- **Mesh rebuild queue**: Visible chunks sort ahead of non-visible ones at the same distance (`urgent > in_frustum > dist_sq`)
+- **Generation**: Dedicated frustum-priority pass runs before the distance-sorted sweep — up to half the per-frame budget goes to visible chunks
+- **Unload**: Non-visible chunks beyond render distance are evicted before visible ones
+- **Camera integration**: `Camera3D::get_frustum()` resolves 6 world-space planes each frame via `ChunkManager._process()`
+
+The frustum is recalculated every frame from the player's Camera3D child. No significant overhead — the AABB-plane test is ~6 dot products.
 
 ---
 
@@ -62,7 +55,7 @@ Implemented 2×2×2 group merging to reduce draw calls:
 | Your C++ (idle) | ~0.01 ms |
 | Godot + GPU overhead | **~0.87 ms** |
 
-**99% of your frame time is not your code.** You have optimized the C++ side to near-zero at idle. The 0.87ms is fixed Godot rendering overhead for 2278 draw calls. To go faster, you need fewer draw calls (larger LOD groups or custom rendering pipeline) or accept that ~1120 FPS is already beyond any monitor's refresh rate.
+**99% of your frame time is not your code.** The C++ side is optimized to near-zero at idle. The 0.87ms is fixed Godot rendering overhead for 2278 draw calls. To go faster: fewer draw calls (larger LOD groups) or accept ~1120 FPS is already beyond any monitor's refresh rate.
 
 ---
 
@@ -70,9 +63,9 @@ Implemented 2×2×2 group merging to reduce draw calls:
 
 | Priority | Fix | File | Notes |
 |----------|-----|------|-------|
-| ~~P2~~ | ~~Cache `BlockRegistry*` in `build_mesh`~~ | ~~`mesh/mesh_builder.cpp`~~ | Done — cached as `registry_` member |
-| ~~P2~~ | ~~Cap `scaled_mesh/upload_budget` at 32 (hard)~~ | ~~`mesh_manager.cpp`, `mesh_manager_lod.cpp`~~ | Done — removed `*4` dynamic scaling |
-| P2 | Move light propagation to worker threads | `world/chunk_world.cpp:101-134` | Frees main thread budget — 15 workers idle during light step |
-| P2 | 4×4×4 LOD groups | `mesh_manager_lod.cpp:413` | Blocked — 64-member group requires dynamic container |
+| ~~P2~~ | ~~Move light propagation to worker threads~~ | ~~`world/chunk_world.cpp:101-134`~~ | Done — async block-light on thread pool, polled on main |
+| P2 | 4×4×4 LOD groups | `mesh_manager_lod.cpp` | Blocked — 64-member group requires dynamic container |
+| P2 | Frustum-aware LOD classification | `mesh/lod_controller.cpp` | Visible far chunks currently get same LOD as non-visible; could boost LOD for in-frustum chunks |
 | P3 | Implement 3D DDA collision | `engine/collision_resolver.cpp` | 10× fewer collision checks |
 | P3 | Pool `PackedBuiltMeshData` allocations | `mesh/mesh_manager.cpp` | Reduces allocator pressure — blocked by thread-boundary handoff |
+| P3 | Dynamic mesh budget by viewport load | `world/world_updater.cpp` | Scale mesh budgets based on frustum-visible chunk count instead of flat caps |

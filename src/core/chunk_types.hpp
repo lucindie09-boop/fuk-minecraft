@@ -105,10 +105,10 @@ struct DirtyChunkEntry {
     uint64_t key = 0;
     int32_t dist_sq = 0;
     bool urgent = false;
+    bool in_frustum = false;
     bool operator>(const DirtyChunkEntry& other) const {
-        if (urgent != other.urgent) {
-            return !urgent && other.urgent;
-        }
+        if (urgent != other.urgent) return !urgent && other.urgent;
+        if (in_frustum != other.in_frustum) return !in_frustum && other.in_frustum;
         return dist_sq > other.dist_sq;
     }
 };
