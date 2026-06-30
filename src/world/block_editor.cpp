@@ -121,10 +121,10 @@ Dictionary BlockEditor::raycast(godot::Node* chunk_manager, const NodePath& play
     int32_t steps = 0;
 
 constexpr int32_t kLockReacquireInterval = 8;
-    auto map_lock = chunk_world->get_chunk_map().acquire_shared_lock();
+    auto map_lock = chunk_world->get_chunk_map().lock_all();
     while (steps < max_steps) {
 if (steps > 0 && steps % kLockReacquireInterval == 0) {
-map_lock = chunk_world->get_chunk_map().acquire_shared_lock();
+map_lock = chunk_world->get_chunk_map().lock_all();
 }
         int block = chunk_world->get_chunk_map().get_block_world_fast(current_x, current_y, current_z);
         if (block != 0) {

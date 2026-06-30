@@ -69,9 +69,7 @@ CollisionResolver::CollisionResult CollisionResolver::resolve(
     Vector3 result = position;
     CollisionResult out;
 
-
-// Acquire the chunk map lock once for the whole resolve pass instead of once per // 1.0f step plus once per binary-search iteration. At ~5 steps x 3 axes, each // potentially followed by a 10-iteration bisection, that was on the order of a // hundred+ lock/unlock cycles per call. is_aabb_solid_fast() below assumes the // caller already holds the lock, matching is_aabb_solid()'s contract.
-auto lock = chunk_map_->acquire_shared_lock();
+    auto lock = chunk_map_->lock_all();
 
     for (int axis = 0; axis < 3; ++axis) {
         bool collided = false;
@@ -113,7 +111,7 @@ bool CollisionResolver::is_aabb_solid_fast(const AABB& aabb) const {
 }
 
 bool CollisionResolver::is_aabb_solid(const AABB& aabb) const {
-    auto lock = chunk_map_->acquire_shared_lock();
+    auto lock = chunk_map_->lock_all();
     return is_aabb_solid_fast(aabb);
 }
 
