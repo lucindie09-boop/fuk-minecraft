@@ -68,4 +68,4 @@ The frustum is recalculated every frame from the player's Camera3D child. No sig
 | P2 | Frustum-aware LOD classification | `mesh/lod_controller.cpp` | Visible far chunks currently get same LOD as non-visible; could boost LOD for in-frustum chunks |
 | P3 | Implement 3D DDA collision | `engine/collision_resolver.cpp` | 10× fewer collision checks |
 | P3 | Pool `PackedBuiltMeshData` allocations | `mesh/mesh_manager.cpp` | Reduces allocator pressure — blocked by thread-boundary handoff |
-| P3 | Dynamic mesh budget by viewport load | `world/world_updater.cpp` | Scale mesh budgets based on frustum-visible chunk count instead of flat caps |
+| ~~P3~~ | ~~Dynamic mesh budget by viewport load~~ | ~~`world/world_updater.cpp`~~ | Done — mesh rebuild & upload budgets scaled by visible-chunk ratio (0.5× for empty viewport, 1.0× for full viewport) |

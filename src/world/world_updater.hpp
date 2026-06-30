@@ -102,6 +102,7 @@ private:
     Frustum frustum;
     size_t frustum_cursor = 0;
     bool frustum_pass_complete = false;
+    float visible_chunk_ratio_ = 1.0f;
 
     // Resumable generation cursor — amortises the pre_sorted_offsets scan across frames.
     // Reset when player changes chunks; set pass_complete when a full sweep finds nothing.

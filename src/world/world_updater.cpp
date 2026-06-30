@@ -87,10 +87,13 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
     // --- Phase 1: Frustum-priority pass ---
     // Walk the offset list and generate chunks that are in the camera frustum.
     // Allocates up to half the generation budget to visible chunks.
+    // Also counts visible-vs-total offsets to estimate viewport load.
     if (frustum_active && !frustum_pass_complete && total_offsets > 0) {
         size_t   frustum_checks          = 0;
         int32_t  frustum_generations     = 0;
         const size_t max_frustum_checks = std::max(max_checks_per_frame / 2, size_t(64));
+        int32_t  visible_in_sweep        = 0;
+        int32_t  total_in_sweep          = 0;
 
         auto lock = chunk_world->get_chunk_map().acquire_shared_lock();
         while (frustum_checks < max_frustum_checks &&
@@ -109,7 +112,9 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
             int32_t cy = pcy + offset.y;
             int32_t cz = pcz + offset.z;
 
+            ++total_in_sweep;
             if (!frustum.is_chunk_visible(cx, cy, cz)) continue;
+            ++visible_in_sweep;
 
             uint64_t key = chunk_world->get_chunk_map().get_chunk_key(cx, cy, cz);
             if (chunk_world->get_chunk_map().contains_fast(key)) continue;
@@ -129,6 +134,9 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
                 generation_sweep_generated = true;
             }
             lock.lock();
+        }
+        if (total_in_sweep > 0) {
+            visible_chunk_ratio_ = static_cast<float>(visible_in_sweep) / static_cast<float>(total_in_sweep);
         }
     }
 
@@ -274,6 +282,13 @@ void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t
     } else {
         mesh_rebuild_budget = budgets.mesh_rebuilds_idle;
         upload_budget = budgets.mesh_uploads_idle;
+    }
+    // Scale budgets by viewport load: few visible chunks → less urgency, save CPU.
+    // Many visible chunks → keep full budget for visible-area quality.
+    if (!is_initial_loading) {
+        const float visibility_scale = 0.5f + visible_chunk_ratio_ * 0.5f;
+        mesh_rebuild_budget = std::max(1, static_cast<int32_t>(mesh_rebuild_budget * visibility_scale));
+        upload_budget       = std::max(1, static_cast<int32_t>(upload_budget * visibility_scale));
     }
 
     {
