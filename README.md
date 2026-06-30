@@ -26,7 +26,7 @@ A Minecraft-style voxel engine built in Godot 4 with a custom C++ GDExtension. P
 | Mesh manager | `src/mesh/mesh_manager.hpp/cpp` | Upload deduplication (FNV-1a), lazy RID creation, instance budget capping |
 | Lighting | `src/lighting/light_propagator.cpp` | Async block-light propagation on worker threads, sky-light columns |
 | Terrain gen | `src/worldgen/chunk_generator.hpp/cpp` | Multi-octave FBM noise, biomes, lakes, caves, surface height cache |
-| Collision | `src/engine/collision_resolver.cpp` | 3D DDA with leading-face-only block checks, no binary search (no Godot physics nodes) |
+| Collision | `src/engine/collision_resolver.cpp` | Custom AABB voxel grid query (no Godot physics nodes) |
 | Day/night | `src/world/day_night_cycle.hpp` | Shader-driven sky-light intensity + color blending, sunset bleed fix |
 | LOD groups | `src/mesh/mesh_manager_lod.hpp/cpp` | 2×2×2 chunk merging, hysteresis, split-on-edit, periodic rescan |
 | Frame budgets | `src/core/frame_budgets.hpp` | Tiered budgets for generate/light/mesh/upload (idle/active/loading) |

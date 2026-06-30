@@ -69,6 +69,6 @@ The frustum is recalculated every frame from the player's Camera3D child. No sig
 | ~~P2~~ | ~~Move light propagation to worker threads~~ | ~~`world/chunk_world.cpp:101-134`~~ | Done — async block-light on thread pool, polled on main |
 | P2 | 4×4×4 LOD groups | `mesh_manager_lod.cpp` | Blocked — 64-member group requires dynamic container |
 | P2 | Frustum-aware LOD classification | `mesh/lod_controller.cpp` | Visible far chunks currently get same LOD as non-visible; could boost LOD for in-frustum chunks |
-| ~~P3~~ | ~~Implement 3D DDA collision~~ | ~~`engine/collision_resolver.cpp`~~ | Done — DDA leading-face-only checks replace full-AABB volume; binary search eliminated; block checks reduced ~4× per step |
+| P3 | Implement 3D DDA collision | `engine/collision_resolver.cpp` | 10× fewer collision checks |
 | P3 | Pool `PackedBuiltMeshData` allocations | `mesh/mesh_manager.cpp` | Reduces allocator pressure — blocked by thread-boundary handoff |
 | ~~P3~~ | ~~Dynamic mesh budget by viewport load~~ | ~~`world/world_updater.cpp`~~ | Done — mesh rebuild & upload budgets scaled by visible-chunk ratio (0.5× for empty viewport, 1.0× for full viewport) |
