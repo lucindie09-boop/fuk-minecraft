@@ -64,8 +64,8 @@ void fragment(){
 
     float layer=custom1_attr.r;
 
-    bool is_water=(layer>4.5&&layer<6.5);
-    bool is_leaves=abs(layer-8.0)<0.5;
+    bool is_water=abs(layer-11.0)<0.5;
+    bool is_leaves=false;
 
     vec3 block_light=custom0_attr.rgb;
 

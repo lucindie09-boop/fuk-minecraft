@@ -297,6 +297,8 @@ float VoxelEngineController::get_height_scale() const { return height_scale; }
 
 void VoxelEngineController::set_mountain_scale(float scale) { mountain_scale = scale; world_updater.set_mountain_scale(mountain_scale); }
 float VoxelEngineController::get_mountain_scale() const { return mountain_scale; }
+void VoxelEngineController::set_biome_size(float size) { biome_size = size; world_updater.set_biome_size(biome_size); }
+float VoxelEngineController::get_biome_size() const { return biome_size; }
 
 void VoxelEngineController::set_auto_update(bool enabled) { auto_update = enabled; }
 bool VoxelEngineController::get_auto_update() const { return auto_update; }

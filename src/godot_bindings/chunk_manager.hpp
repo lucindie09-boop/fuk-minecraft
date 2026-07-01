@@ -75,6 +75,9 @@ public:
     void set_mountain_scale(float scale);
     float get_mountain_scale() const;
 
+    void set_biome_size(float size);
+    float get_biome_size() const;
+
     godot::String get_performance_report();
 
     void set_chunk_scenario(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);

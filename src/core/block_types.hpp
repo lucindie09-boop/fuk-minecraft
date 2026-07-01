@@ -156,6 +156,9 @@ namespace BlockIDs {
     constexpr BlockID LIGHT_RED      = 15;
     constexpr BlockID LIGHT_GREEN    = 16;
     constexpr BlockID LIGHT_BLUE     = 17;
+    constexpr BlockID SNOW           = 18;
+    constexpr BlockID GRAVEL         = 19;
+    constexpr BlockID CACTUS         = 20;
 }
 
 } // namespace VoxelEngine

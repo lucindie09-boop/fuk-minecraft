@@ -93,35 +93,42 @@ struct MeshBuildTask : Task {
             builder.set_greedy_enabled(true);
         }
 
-        ChunkRenderData* neighbors[6] = {};
-        ChunkRenderData* diag[4] = {};
+        ChunkRenderData* all_neighbors[26] = {};
         if (chunk_map) {
-            chunk_map->get_extended_neighbors(chunk_x, chunk_y, chunk_z, neighbors, diag);
+            chunk_map->get_all_neighbors(chunk_x, chunk_y, chunk_z, all_neighbors);
         }
-        ChunkRenderData* d_x_neg = neighbors[0];
-        ChunkRenderData* d_x_pos = neighbors[1];
-        ChunkRenderData* d_y_neg = neighbors[2];
-        ChunkRenderData* d_y_pos = neighbors[3];
-        ChunkRenderData* d_z_neg = neighbors[4];
-        ChunkRenderData* d_z_pos = neighbors[5];
-
-        ChunkRenderData* c_neg_x_neg_z = diag[0];
-        ChunkRenderData* c_neg_x_pos_z = diag[1];
-        ChunkRenderData* c_pos_x_neg_z = diag[2];
-        ChunkRenderData* c_pos_x_pos_z = diag[3];
+        auto data_or_null = [](ChunkRenderData* rd) -> const ChunkData* {
+            return (rd && rd->data) ? rd->data.get() : nullptr;
+        };
 
         builder.build_mesh(
             *render_data->data,
-            d_x_neg && d_x_neg->data ? d_x_neg->data.get() : nullptr,
-            d_x_pos && d_x_pos->data ? d_x_pos->data.get() : nullptr,
-            d_y_neg && d_y_neg->data ? d_y_neg->data.get() : nullptr,
-            d_y_pos && d_y_pos->data ? d_y_pos->data.get() : nullptr,
-            d_z_neg && d_z_neg->data ? d_z_neg->data.get() : nullptr,
-            d_z_pos && d_z_pos->data ? d_z_pos->data.get() : nullptr,
-            c_neg_x_neg_z && c_neg_x_neg_z->data ? c_neg_x_neg_z->data.get() : nullptr,
-            c_neg_x_pos_z && c_neg_x_pos_z->data ? c_neg_x_pos_z->data.get() : nullptr,
-            c_pos_x_neg_z && c_pos_x_neg_z->data ? c_pos_x_neg_z->data.get() : nullptr,
-            c_pos_x_pos_z && c_pos_x_pos_z->data ? c_pos_x_pos_z->data.get() : nullptr
+            data_or_null(all_neighbors[0]),  // neg_x
+            data_or_null(all_neighbors[1]),  // pos_x
+            data_or_null(all_neighbors[2]),  // neg_y
+            data_or_null(all_neighbors[3]),  // pos_y
+            data_or_null(all_neighbors[4]),  // neg_z
+            data_or_null(all_neighbors[5]),  // pos_z
+            data_or_null(all_neighbors[6]),  // neg_x_neg_z
+            data_or_null(all_neighbors[7]),  // neg_x_pos_z
+            data_or_null(all_neighbors[8]),  // pos_x_neg_z
+            data_or_null(all_neighbors[9]),  // pos_x_pos_z
+            data_or_null(all_neighbors[10]), // neg_x_neg_y
+            data_or_null(all_neighbors[11]), // pos_x_neg_y
+            data_or_null(all_neighbors[12]), // neg_x_pos_y
+            data_or_null(all_neighbors[13]), // pos_x_pos_y
+            data_or_null(all_neighbors[14]), // neg_y_neg_z
+            data_or_null(all_neighbors[15]), // neg_y_pos_z
+            data_or_null(all_neighbors[16]), // pos_y_neg_z
+            data_or_null(all_neighbors[17]), // pos_y_pos_z
+            data_or_null(all_neighbors[18]), // neg_x_neg_y_neg_z
+            data_or_null(all_neighbors[19]), // pos_x_neg_y_neg_z
+            data_or_null(all_neighbors[20]), // neg_x_pos_y_neg_z
+            data_or_null(all_neighbors[21]), // pos_x_pos_y_neg_z
+            data_or_null(all_neighbors[22]), // neg_x_neg_y_pos_z
+            data_or_null(all_neighbors[23]), // pos_x_neg_y_pos_z
+            data_or_null(all_neighbors[24]), // neg_x_pos_y_pos_z
+            data_or_null(all_neighbors[25])  // pos_x_pos_y_pos_z
         );
 
         PackedBuiltMeshData packed_mesh;

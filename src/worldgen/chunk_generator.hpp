@@ -24,12 +24,9 @@ enum class BiomeType : uint8_t {
     ShallowOcean,
     Beach,
     Plains,
-    Desert,
     Forest,
-    Jungle,
-    Tundra,
+    Desert,
     Mountains,
-    Peaks
 };
 
 // -------------------------------------------------------------------------
@@ -56,11 +53,7 @@ public:
         float water_level;
         bool near_water;
         float land_height;
-        // Cached per-column values reused by lake fixup and bank-blend passes
-        float lake_raw;          // blended lake noise value (0-1)
         float cont;              // continentalness value (0-1)
-        float lake_water_level;  // computed lake water level (valid when biome==Lake or lake_raw used)
-        // Climate values
         float temperature;
         float humidity;
     };
@@ -104,11 +97,9 @@ private:
     // Voronoi land biome from temperature/humidity (no beach/ocean/promotion).
     static BiomeType voronoi_land_biome(float temperature, float humidity) {
         static constexpr struct { float t; float h; BiomeType b; } centers[] = {
-            {0.15f, 0.50f, BiomeType::Tundra},
             {0.40f, 0.35f, BiomeType::Plains},
             {0.40f, 0.75f, BiomeType::Forest},
             {0.80f, 0.15f, BiomeType::Desert},
-            {0.80f, 0.80f, BiomeType::Jungle},
         };
         float best_dist = 999.0f;
         BiomeType result = BiomeType::Plains;
@@ -121,7 +112,7 @@ private:
 
     BiomeType biome_from_climate(float temperature, float humidity, float cont) const {
         float beach_t = smoothstep(params.land_threshold, params.land_threshold + params.beach_width, cont);
-        if (beach_t < 0.9f && cont >= params.land_threshold - 0.05f) {
+        if (beach_t < 0.9f && cont >= params.land_threshold - params.beach_width) {
             return BiomeType::Beach;
         }
         if (cont < params.ocean_threshold) {
@@ -134,42 +125,65 @@ private:
     }
 
     static BiomeType promote_biome_by_height(BiomeType biome, float land_height, float sea_level) {
-        if (land_height > sea_level + 60.0f) return BiomeType::Peaks;
         if (land_height > sea_level + 30.0f) return BiomeType::Mountains;
         return biome;
     }
 
     // Continuous Voronoi-weighted blend of all land-biome height parameters.
-    // Produces smooth terrain transitions even when the discrete biome label flips.
+    // Each biome gets its own noise profile (ridge for mountains, dunes for desert,
+    // smooth for plains) and the results are blended smoothly across ecotones.
     float sample_land_shape(float x, float z, float temperature, float humidity) const {
         static constexpr struct { float t, h, base_off, scale_m; } centers[] = {
-            {0.15f, 0.50f, -12.0f, 0.33f},   // Tundra
-            {0.40f, 0.35f, -12.0f, 0.33f},   // Plains
-            {0.40f, 0.75f,   4.0f, 0.75f},   // Forest
-            {0.80f, 0.15f,  -8.0f, 0.42f},   // Desert
-            {0.80f, 0.80f,  20.0f, 1.08f},   // Jungle
+            {0.40f, 0.35f, -16.0f, 0.65f},   // Plains
+            {0.40f, 0.75f,   4.0f, 1.00f},   // Forest
+            {0.80f, 0.15f, -12.0f, 0.75f},   // Desert
         };
-        float w_base = 0.0f, w_scale = 0.0f, w_total = 0.0f;
-        for (auto& c : centers) {
-            float dsq = (temperature - c.t) * (temperature - c.t) + (humidity - c.h) * (humidity - c.h);
+
+        float w_total = 0.0f, w_base = 0.0f, w_scale = 0.0f;
+        float weights[3];
+        for (int i = 0; i < 3; i++) {
+            float dsq = (temperature - centers[i].t) * (temperature - centers[i].t)
+                      + (humidity - centers[i].h) * (humidity - centers[i].h);
             float w = 1.0f / (dsq + 0.0001f);
-            w_base += w * c.base_off;
-            w_scale += w * c.scale_m;
+            weights[i] = w;
+            w_base  += w * centers[i].base_off;
+            w_scale += w * centers[i].scale_m;
             w_total += w;
         }
-        float base = params.base_height + w_base / w_total;
+        float base  = params.base_height + w_base / w_total;
         float scale = params.height_scale * (w_scale / w_total);
 
-        float broad_roll  = terrain_noise.fbm(x, z, 4, 0.52f, 0.0016f);
-        float medium_roll = terrain_noise.fbm(x + 2000.0f, z - 2000.0f, 4, 0.55f, 0.0048f);
-        float fine_roll   = terrain_noise.noise_2d(x * 0.012f, z * 0.012f);
-        float micro_roll  = terrain_noise.noise_2d((x - 9000.0f) * 0.022f, (z + 9000.0f) * 0.022f);
+        // Shared noise layers at multiple scales
+        float broad  = terrain_noise.fbm(x, z, 4, 0.52f, 0.0016f);
+        float medium = terrain_noise.fbm(x + 2000.0f, z - 2000.0f, 4, 0.55f, 0.0048f);
+        float fine   = terrain_noise.noise_2d(x * 0.012f, z * 0.012f);
+        float micro  = terrain_noise.noise_2d((x - 9000.0f) * 0.022f, (z + 9000.0f) * 0.022f);
+        float close  = terrain_noise.noise_2d(x * 0.050f, z * 0.050f); // ~20-block features
 
-        return base
-             + broad_roll  * scale * 0.28f
-             + medium_roll * scale * 0.16f
-             + fine_roll   * scale * 0.07f
-             + micro_roll  * scale * 0.03f;
+        // Ridge noise — 3 octaves for sharper terrain
+        float ridge = terrain_noise.ridged_noise(x + 5000.0f, z + 3000.0f, 3, 0.55f, 0.0032f);
+
+        // Dune noise — broad undulating ridges for desert
+        float dune = std::abs(terrain_noise.fbm(x + 7000.0f, z + 5000.0f, 2, 0.50f, 0.0020f));
+
+        // Amplitude modulation: areas where medium noise is near zero get flatter,
+        // areas where it's strongly positive/negative get hillier.
+        float detail_mod = std::abs(medium) * 0.6f + 0.4f;
+
+        // Per-biome noise: [Plains, Forest, Desert]
+        float per_noise[3] = {};
+        per_noise[0] = broad * 0.22f + medium * 0.18f
+                     + (fine * 0.22f + micro * 0.14f + close * 0.08f) * detail_mod;
+        per_noise[1] = broad * 0.20f + ridge * 0.08f + medium * 0.16f
+                     + (fine * 0.22f + micro * 0.14f + close * 0.08f) * detail_mod;
+        per_noise[2] = broad * 0.14f + dune  * 0.22f + medium * 0.12f
+                     + (fine * 0.18f + micro * 0.10f + close * 0.06f) * detail_mod;
+
+        float blended = 0.0f;
+        for (int i = 0; i < 3; i++) blended += weights[i] * per_noise[i];
+        blended /= w_total;
+
+        return base + blended * scale;
     }
 
     // -------------------------------------------------------------------------
