@@ -149,24 +149,6 @@ void BlockRegistry::initialize_default_blocks() noexcept {
         0, 0, 15,
         LightEmissionPattern::Diamond
     });
-
-    // 18: Sandstone (desert subsurface)
-    solid("sandstone");
-
-    // 19: Snow (cold biome surface)
-    register_block({
-        0, "snow",
-        BlockProperty::Solid | BlockProperty::Opaque,
-        {true, true, true, true, true, true},
-        {0, 0, 0, 0, 0, 0},
-        0,
-        0, 0, 0,
-        LightEmissionPattern::Diamond,
-        0.0625f   // slight offset like mud
-    });
-
-    // 20: Gravel (riverbeds, ocean floor variant, mountain paths)
-    solid("gravel");
 }
 
 } // namespace VoxelEngine

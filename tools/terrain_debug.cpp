@@ -205,18 +205,10 @@ int main() {
                 size_t idx = (static_cast<size_t>(py) * W + px) * 3;
                 uint8_t r, g, b;
                 switch (col.biome) {
-                    case VoxelEngine::BiomeType::Ocean:     r=20;  g=60;  b=140; break;
-                    case VoxelEngine::BiomeType::Beach:     r=220; g=200; b=140; break;
-                    case VoxelEngine::BiomeType::Plains:    r=60;  g=160; b=60;  break;
-                    case VoxelEngine::BiomeType::Forest:    r=30;  g=120; b=40;  break;
-                    case VoxelEngine::BiomeType::Desert:    r=240; g=220; b=140; break;
-                    case VoxelEngine::BiomeType::Taiga:     r=50;  g=110; b=70;  break;
-                    case VoxelEngine::BiomeType::Tundra:    r=220; g=230; b=240; break;
-                    case VoxelEngine::BiomeType::Savanna:   r=180; g=200; b=80;  break;
-                    case VoxelEngine::BiomeType::Jungle:    r=30;  g=100; b=30;  break;
-                    case VoxelEngine::BiomeType::Swamp:     r=60;  g=90;  b=50;  break;
-                    case VoxelEngine::BiomeType::Mountains: r=120; g=120; b=110; break;
-                    default:                                r=255; g=0;   b=255; break;
+                    case VoxelEngine::BiomeType::Ocean: r=20;  g=60;  b=140; break;
+                    case VoxelEngine::BiomeType::Land:  r=60;  g=160; b=60;  break;
+                    case VoxelEngine::BiomeType::Beach: r=220; g=200; b=140; break;
+                    default:                            r=255; g=0;   b=255; break;
                 }
                 pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
             }
@@ -250,18 +242,10 @@ int main() {
                 size_t idx = (static_cast<size_t>(py) * W + px) * 3;
                 uint8_t r, g, b;
                 switch (col.biome) {
-                    case VoxelEngine::BiomeType::Ocean:     r=20;  g=60;  b=140; break;
-                    case VoxelEngine::BiomeType::Beach:     r=220; g=200; b=140; break;
-                    case VoxelEngine::BiomeType::Plains:    r=60;  g=160; b=60;  break;
-                    case VoxelEngine::BiomeType::Forest:    r=30;  g=120; b=40;  break;
-                    case VoxelEngine::BiomeType::Desert:    r=240; g=220; b=140; break;
-                    case VoxelEngine::BiomeType::Taiga:     r=50;  g=110; b=70;  break;
-                    case VoxelEngine::BiomeType::Tundra:    r=220; g=230; b=240; break;
-                    case VoxelEngine::BiomeType::Savanna:   r=180; g=200; b=80;  break;
-                    case VoxelEngine::BiomeType::Jungle:    r=30;  g=100; b=30;  break;
-                    case VoxelEngine::BiomeType::Swamp:     r=60;  g=90;  b=50;  break;
-                    case VoxelEngine::BiomeType::Mountains: r=120; g=120; b=110; break;
-                    default:                                r=255; g=0;   b=255; break;
+                    case VoxelEngine::BiomeType::Ocean: r=20;  g=60;  b=140; break;
+                    case VoxelEngine::BiomeType::Land:  r=60;  g=160; b=60;  break;
+                    case VoxelEngine::BiomeType::Beach: r=220; g=200; b=140; break;
+                    default:                            r=255; g=0;   b=255; break;
                 }
                 pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
             }
@@ -283,18 +267,10 @@ int main() {
                 size_t idx = (static_cast<size_t>(py) * W + px) * 3;
                 uint8_t r, g, b;
                 switch (col.biome) {
-                    case VoxelEngine::BiomeType::Ocean:     r=20;  g=60;  b=140; break;
-                    case VoxelEngine::BiomeType::Beach:     r=220; g=200; b=140; break;
-                    case VoxelEngine::BiomeType::Plains:    r=60;  g=160; b=60;  break;
-                    case VoxelEngine::BiomeType::Forest:    r=30;  g=120; b=40;  break;
-                    case VoxelEngine::BiomeType::Desert:    r=240; g=220; b=140; break;
-                    case VoxelEngine::BiomeType::Taiga:     r=50;  g=110; b=70;  break;
-                    case VoxelEngine::BiomeType::Tundra:    r=220; g=230; b=240; break;
-                    case VoxelEngine::BiomeType::Savanna:   r=180; g=200; b=80;  break;
-                    case VoxelEngine::BiomeType::Jungle:    r=30;  g=100; b=30;  break;
-                    case VoxelEngine::BiomeType::Swamp:     r=60;  g=90;  b=50;  break;
-                    case VoxelEngine::BiomeType::Mountains: r=120; g=120; b=110; break;
-                    default:                                r=255; g=0;   b=255; break;
+                    case VoxelEngine::BiomeType::Ocean: r=20;  g=60;  b=140; break;
+                    case VoxelEngine::BiomeType::Land:  r=60;  g=160; b=60;  break;
+                    case VoxelEngine::BiomeType::Beach: r=220; g=200; b=140; break;
+                    default:                            r=255; g=0;   b=255; break;
                 }
                 pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
             }

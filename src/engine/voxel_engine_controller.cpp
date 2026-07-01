@@ -52,6 +52,9 @@ VoxelEngineController::VoxelEngineController()
     world_updater.set_owner(nullptr);
     world_updater.set_seed(seed);
     world_updater.set_sea_level(sea_level);
+    world_updater.set_base_height(base_height);
+    world_updater.set_height_scale(height_scale);
+    world_updater.set_mountain_scale(mountain_scale);
     world_updater.set_render_distance(render_distance);
     world_updater.set_editor_render_distance(editor_render_distance);
     mesh_manager.set_mesh_render_distance(render_distance);
@@ -285,6 +288,15 @@ godot::Vector3 VoxelEngineController::get_player_position() const { return playe
 
 void VoxelEngineController::set_sea_level(float level) { sea_level = level; world_updater.set_sea_level(sea_level); }
 float VoxelEngineController::get_sea_level() const { return sea_level; }
+
+void VoxelEngineController::set_base_height(float height) { base_height = height; world_updater.set_base_height(base_height); }
+float VoxelEngineController::get_base_height() const { return base_height; }
+
+void VoxelEngineController::set_height_scale(float scale) { height_scale = scale; world_updater.set_height_scale(height_scale); }
+float VoxelEngineController::get_height_scale() const { return height_scale; }
+
+void VoxelEngineController::set_mountain_scale(float scale) { mountain_scale = scale; world_updater.set_mountain_scale(mountain_scale); }
+float VoxelEngineController::get_mountain_scale() const { return mountain_scale; }
 
 void VoxelEngineController::set_auto_update(bool enabled) { auto_update = enabled; }
 bool VoxelEngineController::get_auto_update() const { return auto_update; }

@@ -16,8 +16,7 @@ Default(library)
 # Debug terrain renderer (standalone executable)
 debug_env = env.Clone()
 debug_env.Append(LIBS=[])
-debug_env.Append(CPPPATH=["src/"])
-debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp", "src/worldgen/chunk_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp"])
+debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp"])
 Alias("debug", debug_prog)
 
 # Performance benchmark (standalone executable)
@@ -42,8 +41,6 @@ test_sources = Glob("build/test_src/*.cpp") + [
     "build/tests/mesh/mesh_builder_faces.cpp",
     "build/tests/mesh/mesh_builder_greedy.cpp",
     "build/tests/mesh/chunk_neighbor_accessor.cpp",
-    "build/tests/mesh/ambient_occlusion.cpp",
-    "build/tests/mesh/smooth_lighting.cpp",
     "build/tests/lighting/block_light_region.cpp",
 ]
 test_prog = test_env.Program("bin/run_tests", test_sources)

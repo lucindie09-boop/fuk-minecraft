@@ -79,6 +79,12 @@ public:
     godot::Vector3 get_player_position() const;
     void set_sea_level(float level);
     float get_sea_level() const;
+    void set_base_height(float height);
+    float get_base_height() const;
+    void set_height_scale(float scale);
+    float get_height_scale() const;
+    void set_mountain_scale(float scale);
+    float get_mountain_scale() const;
     void set_auto_update(bool enabled);
     bool get_auto_update() const;
     void set_editor_enabled(bool enabled);
@@ -155,7 +161,10 @@ private:
     bool auto_update = true;
     bool editor_enabled = false;
 bool smooth_lighting = false;
-    float sea_level = 192.0f;
+    float sea_level = 96.0f;
+    float base_height = 120.0f;
+    float height_scale = 96.0f;
+    float mountain_scale = 220.0f;
     bool debug_enabled = true;
     double debug_print_interval = 2.0;
     double debug_accumulated_time = 0.0;
