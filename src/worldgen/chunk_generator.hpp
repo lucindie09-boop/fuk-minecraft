@@ -190,12 +190,11 @@ private:
         for (int i = 0; i < 3; i++) blended += weights[i] * per_noise[i];
         blended /= w_total;
 
-        // Mountain boost: discrete patches of tall peaks, no random hills elsewhere
+        // Mountain boost: thresholded ridge noise creates spiky peaks, no plateaus
         float pre_height = base + blended * scale;
-        float mtn_raw = terrain_noise.fbm(x + 11000.0f, z + 7000.0f, 2, 0.5f, 0.0003f);
-        float mtn_mask = smoothstep(0.6f, 0.85f, mtn_raw);
-        float peak_shape = ridge * ridge;
-        return pre_height + mtn_mask * peak_shape * 500.0f;
+        float mtn_ridge = terrain_noise.ridged_noise(x + 13000.0f, z + 11000.0f, 3, 0.55f, 0.0012f);
+        float mtn_strength = std::max(0.0f, mtn_ridge - 0.55f) * 4.0f;
+        return pre_height + mtn_strength * mtn_strength * 400.0f;
     }
 
     // -------------------------------------------------------------------------

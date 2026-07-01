@@ -72,8 +72,13 @@ void VegetationGenerator::place_tree(
 
     for (int32_t dy = 1; dy <= trunk_height; dy++) {
         int32_t y = surface_y + dy;
-        if (y >= world_y_start && y < world_y_end)
+        if (y >= world_y_start && y < world_y_end) {
             chunk.set_block(local_x, y - world_y_start, local_z, BlockIDs::WOOD);
+        } else if (cross_writer) {
+            int32_t wx = chunk_x * CHUNK_WIDTH + local_x;
+            int32_t wz = chunk_z * CHUNK_DEPTH + local_z;
+            cross_writer(wx, y, wz, BlockIDs::WOOD);
+        }
     }
 
     int32_t base_y = surface_y + trunk_height;
@@ -82,7 +87,14 @@ void VegetationGenerator::place_tree(
         int32_t lx = local_x + dx;
         int32_t lz = local_z + dz;
         int32_t ly = base_y + dy;
-        if (ly < world_y_start || ly >= world_y_end) return;
+        if (ly < world_y_start || ly >= world_y_end) {
+            if (cross_writer) {
+                int32_t wx = chunk_x * CHUNK_WIDTH + lx;
+                int32_t wz = chunk_z * CHUNK_DEPTH + lz;
+                cross_writer(wx, ly, wz, BlockIDs::LEAVES);
+            }
+            return;
+        }
         if (lx >= 0 && lx < CHUNK_WIDTH && lz >= 0 && lz < CHUNK_DEPTH) {
             if (chunk.get_block(lx, ly - world_y_start, lz) == BlockIDs::AIR)
                 chunk.set_block(lx, ly - world_y_start, lz, BlockIDs::LEAVES);

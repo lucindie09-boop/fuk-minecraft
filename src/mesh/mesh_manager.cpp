@@ -695,16 +695,16 @@ void MeshManager::process_queue(int32_t max_immediate, int32_t max_rebuilds, dou
     int32_t pcx = last_player_chunk_x;
     int32_t pcy = last_player_chunk_y;
     int32_t pcz = last_player_chunk_z;
-    mesh_queue.process(
-        [this, mesh_rd_sq, pcx, pcy, pcz](int32_t cx, int32_t cy, int32_t cz) {
-            int32_t dx = cx - pcx;
-            int32_t dy = cy - pcy;
-            int32_t dz = cz - pcz;
-            if (dx*dx + dy*dy + dz*dz > mesh_rd_sq) {
-                return;
-            }
-            rebuild_chunk_mesh(cx, cy, cz, async_epoch ? async_epoch->load(std::memory_order_acquire) : 0);
-        },
+        mesh_queue.process(
+            [this, mesh_rd_sq, pcx, pcy, pcz](int32_t cx, int32_t cy, int32_t cz) {
+                int32_t dx = cx - pcx;
+                int32_t dy = cy - pcy;
+                int32_t dz = cz - pcz;
+                if (dx*dx + dz*dz > mesh_rd_sq || std::abs(dy) > 10) {
+                    return;
+                }
+                rebuild_chunk_mesh(cx, cy, cz, async_epoch ? async_epoch->load(std::memory_order_acquire) : 0);
+            },
         max_immediate,
         max_rebuilds,
         budget_ms
