@@ -16,14 +16,14 @@ Default(library)
 # Debug terrain renderer (standalone executable)
 debug_env = env.Clone()
 debug_env.Append(LIBS=[])
-debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp"])
+debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp"])
 Alias("debug", debug_prog)
 
 # Performance benchmark (standalone executable)
 bench_env = env.Clone()
 bench_env.Append(CPPPATH=["src/"])
 bench_env.Append(LIBS=[])
-bench_sources = ["tools/benchmark.cpp", "src/worldgen/chunk_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp"]
+bench_sources = ["tools/benchmark.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp"]
 bench_prog = bench_env.Program("bin/benchmark", bench_sources)
 Alias("bench", bench_prog)
 

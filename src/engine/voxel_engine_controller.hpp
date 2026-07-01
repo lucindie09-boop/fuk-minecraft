@@ -85,6 +85,8 @@ public:
     float get_height_scale() const;
     void set_mountain_scale(float scale);
     float get_mountain_scale() const;
+    void set_biome_size(float size);
+    float get_biome_size() const;
     void set_auto_update(bool enabled);
     bool get_auto_update() const;
     void set_editor_enabled(bool enabled);
@@ -161,10 +163,11 @@ private:
     bool auto_update = true;
     bool editor_enabled = false;
 bool smooth_lighting = false;
-    float sea_level = 96.0f;
-    float base_height = 120.0f;
-    float height_scale = 96.0f;
-    float mountain_scale = 220.0f;
+    float sea_level = 200.0f;
+    float base_height = 212.0f;
+    float height_scale = 48.0f;
+    float mountain_scale = 120.0f;
+    float biome_size = 1.0f;
     bool debug_enabled = true;
     double debug_print_interval = 2.0;
     double debug_accumulated_time = 0.0;

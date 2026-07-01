@@ -278,6 +278,50 @@ public:
         }
     }
 
+    // Returns all 26 neighbors as ChunkRenderData* pointers in this order:
+    //   0: neg_x     1: pos_x     2: neg_y     3: pos_y
+    //   4: neg_z     5: pos_z
+    //   6-9: X-Z diagonals (neg_x_neg_z, neg_x_pos_z, pos_x_neg_z, pos_x_pos_z)
+    //  10-13: Y-X diagonals (neg_x_neg_y, pos_x_neg_y, neg_x_pos_y, pos_x_pos_y)
+    //  14-17: Y-Z diagonals (neg_y_neg_z, neg_y_pos_z, pos_y_neg_z, pos_y_pos_z)
+    //  18-25: triple corners (neg_x_neg_y_neg_z .. pos_x_pos_y_pos_z)
+    void get_all_neighbors(int32_t cx, int32_t cy, int32_t cz,
+                           ChunkRenderData* out[26]) const {
+        uint64_t keys[26] = {
+            get_chunk_key(cx - 1, cy,     cz    ),     // 0: neg_x
+            get_chunk_key(cx + 1, cy,     cz    ),     // 1: pos_x
+            get_chunk_key(cx,     cy - 1, cz    ),     // 2: neg_y
+            get_chunk_key(cx,     cy + 1, cz    ),     // 3: pos_y
+            get_chunk_key(cx,     cy,     cz - 1),     // 4: neg_z
+            get_chunk_key(cx,     cy,     cz + 1),     // 5: pos_z
+            get_chunk_key(cx - 1, cy,     cz - 1),     // 6: neg_x_neg_z
+            get_chunk_key(cx - 1, cy,     cz + 1),     // 7: neg_x_pos_z
+            get_chunk_key(cx + 1, cy,     cz - 1),     // 8: pos_x_neg_z
+            get_chunk_key(cx + 1, cy,     cz + 1),     // 9: pos_x_pos_z
+            get_chunk_key(cx - 1, cy - 1, cz    ),     //10: neg_x_neg_y
+            get_chunk_key(cx + 1, cy - 1, cz    ),     //11: pos_x_neg_y
+            get_chunk_key(cx - 1, cy + 1, cz    ),     //12: neg_x_pos_y
+            get_chunk_key(cx + 1, cy + 1, cz    ),     //13: pos_x_pos_y
+            get_chunk_key(cx,     cy - 1, cz - 1),     //14: neg_y_neg_z
+            get_chunk_key(cx,     cy - 1, cz + 1),     //15: neg_y_pos_z
+            get_chunk_key(cx,     cy + 1, cz - 1),     //16: pos_y_neg_z
+            get_chunk_key(cx,     cy + 1, cz + 1),     //17: pos_y_pos_z
+            get_chunk_key(cx - 1, cy - 1, cz - 1),     //18: neg_x_neg_y_neg_z
+            get_chunk_key(cx + 1, cy - 1, cz - 1),     //19: pos_x_neg_y_neg_z
+            get_chunk_key(cx - 1, cy + 1, cz - 1),     //20: neg_x_pos_y_neg_z
+            get_chunk_key(cx + 1, cy + 1, cz - 1),     //21: pos_x_pos_y_neg_z
+            get_chunk_key(cx - 1, cy - 1, cz + 1),     //22: neg_x_neg_y_pos_z
+            get_chunk_key(cx + 1, cy - 1, cz + 1),     //23: pos_x_neg_y_pos_z
+            get_chunk_key(cx - 1, cy + 1, cz + 1),     //24: neg_x_pos_y_pos_z
+            get_chunk_key(cx + 1, cy + 1, cz + 1)      //25: pos_x_pos_y_pos_z
+        };
+        auto sl = lock_keys(std::vector<uint64_t>(keys, keys + 26));
+        for (int i = 0; i < 26; ++i) {
+            auto it = shards_[key_to_shard(keys[i])].chunks.find(keys[i]);
+            out[i] = (it != shards_[key_to_shard(keys[i])].chunks.end()) ? it->second.get() : nullptr;
+        }
+    }
+
     void get_neighbor_data(int32_t cx, int32_t cy, int32_t cz, ChunkData* out[6]) const {
         uint64_t keys[6] = {
             get_chunk_key(cx - 1, cy,     cz    ),

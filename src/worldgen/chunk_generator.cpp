@@ -51,7 +51,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         water_level = std::max(params.sea_level, water_level);
     }
 
-    return ColumnSample{biome, height, water_level, false, saved_land_height, 0.0f, cont, 0.0f, temperature, humidity};
+    return ColumnSample{biome, height, water_level, false, saved_land_height, cont, temperature, humidity};
 }
 
 BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_surface_water, bool near_water) const {
@@ -63,11 +63,9 @@ BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_s
         case BiomeType::DeepOcean:
         case BiomeType::ShallowOcean: return BlockIDs::SAND;
         case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
-        case BiomeType::Tundra:      return BlockIDs::SNOW;
         case BiomeType::Desert:      return BlockIDs::SAND;
         case BiomeType::Mountains:   return BlockIDs::STONE;
-        case BiomeType::Peaks:       return BlockIDs::STONE;
-        default:                     return near_water ? BlockIDs::MUD : (y > params.sea_level ? BlockIDs::GRASS : BlockIDs::DIRT);
+        default:                     return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
     }
 }
 
@@ -78,8 +76,7 @@ BlockID ChunkGenerator::get_subsurface_block(BiomeType biome, bool near_water) c
         case BiomeType::ShallowOcean: return BlockIDs::SAND;
         case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
         case BiomeType::Desert:       return BlockIDs::SAND;
-        case BiomeType::Mountains:
-        case BiomeType::Peaks:        return BlockIDs::STONE;
+        case BiomeType::Mountains:    return BlockIDs::STONE;
         default:                      return BlockIDs::DIRT;
     }
 }
@@ -283,13 +280,10 @@ void ChunkGenerator::render_biome_pgm(const char* filename, int img_w, int img_h
                 case BiomeType::DeepOcean:     byte = 30;  break;
                 case BiomeType::ShallowOcean:  byte = 60;  break;
                 case BiomeType::Beach:         byte = 220; break;
-                case BiomeType::Tundra:        byte = 240; break;
                 case BiomeType::Plains:        byte = 150; break;
                 case BiomeType::Forest:        byte = 100; break;
                 case BiomeType::Desert:        byte = 200; break;
-                case BiomeType::Jungle:        byte = 80;  break;
                 case BiomeType::Mountains:     byte = 180; break;
-                case BiomeType::Peaks:         byte = 255; break;
                 default:                       byte = 128; break;
             }
             fwrite(&byte, 1, 1, f);

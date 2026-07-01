@@ -31,7 +31,7 @@ fog_depth_end = 1024.0
 [node name="Main" type="Node3D" unique_id=294280302]
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=584275560]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 180, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 280, 0)
 script = ExtResource("1_glv2v")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=623630723]
@@ -52,7 +52,7 @@ environment = SubResource("Environment_uu6xs")
 
 [node name="ChunkManager" type="ChunkManager" parent="." unique_id=318602554]
 render_distance = 32
-player_position = Vector3(0, 180, 0)
+player_position = Vector3(0, 280, 0)
 debug_enabled = false
 smooth_lighting = true
 fog_density = 0.1

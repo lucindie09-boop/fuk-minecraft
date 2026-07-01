@@ -117,6 +117,9 @@ inline void TextureArrayGenerator::initialize_texture_mappings() {
     add("wet_sand",      "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand");
     add("mud_full",      "mud", "mud", "mud", "mud", "mud", "mud");
     add("wet_sand_full", "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand");
+    add("snow",   "snow", "snow", "snow", "snow", "snow", "snow");
+    add("gravel", "gravel", "gravel", "gravel", "gravel", "gravel", "gravel");
+    add("cactus", "cactus", "cactus", "cactus", "cactus", "cactus", "cactus");
 }
 
 inline godot::String TextureArrayGenerator::get_safe_texture_path(const godot::String& texture_name) {

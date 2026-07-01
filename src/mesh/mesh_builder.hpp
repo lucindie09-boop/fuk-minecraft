@@ -96,7 +96,23 @@ uint64_t reject_distance_limit = 0;
         const ChunkData* neg_x_neg_z = nullptr,
         const ChunkData* neg_x_pos_z = nullptr,
         const ChunkData* pos_x_neg_z = nullptr,
-        const ChunkData* pos_x_pos_z = nullptr
+        const ChunkData* pos_x_pos_z = nullptr,
+        const ChunkData* neg_x_neg_y = nullptr,
+        const ChunkData* pos_x_neg_y = nullptr,
+        const ChunkData* neg_x_pos_y = nullptr,
+        const ChunkData* pos_x_pos_y = nullptr,
+        const ChunkData* neg_y_neg_z = nullptr,
+        const ChunkData* neg_y_pos_z = nullptr,
+        const ChunkData* pos_y_neg_z = nullptr,
+        const ChunkData* pos_y_pos_z = nullptr,
+        const ChunkData* neg_x_neg_y_neg_z = nullptr,
+        const ChunkData* pos_x_neg_y_neg_z = nullptr,
+        const ChunkData* neg_x_pos_y_neg_z = nullptr,
+        const ChunkData* pos_x_pos_y_neg_z = nullptr,
+        const ChunkData* neg_x_neg_y_pos_z = nullptr,
+        const ChunkData* pos_x_neg_y_pos_z = nullptr,
+        const ChunkData* neg_x_pos_y_pos_z = nullptr,
+        const ChunkData* pos_x_pos_y_pos_z = nullptr
     );
 
     void clear();
@@ -111,7 +127,23 @@ uint64_t reject_distance_limit = 0;
                     const ChunkData* neg_x_neg_z = nullptr,
                     const ChunkData* neg_x_pos_z = nullptr,
                     const ChunkData* pos_x_neg_z = nullptr,
-                    const ChunkData* pos_x_pos_z = nullptr);
+                    const ChunkData* pos_x_pos_z = nullptr,
+                    const ChunkData* neg_x_neg_y = nullptr,
+                    const ChunkData* pos_x_neg_y = nullptr,
+                    const ChunkData* neg_x_pos_y = nullptr,
+                    const ChunkData* pos_x_pos_y = nullptr,
+                    const ChunkData* neg_y_neg_z = nullptr,
+                    const ChunkData* neg_y_pos_z = nullptr,
+                    const ChunkData* pos_y_neg_z = nullptr,
+                    const ChunkData* pos_y_pos_z = nullptr,
+                    const ChunkData* neg_x_neg_y_neg_z = nullptr,
+                    const ChunkData* pos_x_neg_y_neg_z = nullptr,
+                    const ChunkData* neg_x_pos_y_neg_z = nullptr,
+                    const ChunkData* pos_x_pos_y_neg_z = nullptr,
+                    const ChunkData* neg_x_neg_y_pos_z = nullptr,
+                    const ChunkData* pos_x_neg_y_pos_z = nullptr,
+                    const ChunkData* neg_x_pos_y_pos_z = nullptr,
+                    const ChunkData* pos_x_pos_y_pos_z = nullptr);
 
     const std::vector<Vertex>& get_vertices() const { return vertices; }
     const std::vector<uint32_t>& get_indices() const { return indices; }

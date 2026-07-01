@@ -149,6 +149,11 @@ void BlockRegistry::initialize_default_blocks() noexcept {
         0, 0, 15,
         LightEmissionPattern::Diamond
     });
+
+    // 18-20: Snow, Gravel, Cactus
+    solid("snow");
+    solid("gravel");
+    solid("cactus");
 }
 
 } // namespace VoxelEngine

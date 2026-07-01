@@ -152,6 +152,9 @@ float ChunkManager::get_height_scale() const { return controller->get_height_sca
 void ChunkManager::set_mountain_scale(float scale) { controller->set_mountain_scale(scale); }
 float ChunkManager::get_mountain_scale() const { return controller->get_mountain_scale(); }
 
+void ChunkManager::set_biome_size(float size) { controller->set_biome_size(size); }
+float ChunkManager::get_biome_size() const { return controller->get_biome_size(); }
+
 String ChunkManager::get_performance_report() { return controller->get_performance_report(); }
 
 void ChunkManager::set_chunk_scenario(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z) {
@@ -296,6 +299,9 @@ ClassDB::bind_method(D_METHOD("toggle_day_night_cycle"), &ChunkManager::toggle_d
     BIND_PROP(Variant::FLOAT,   base_height,               "height");
     BIND_PROP(Variant::FLOAT,   height_scale,              "scale");
     BIND_PROP(Variant::FLOAT,   mountain_scale,            "scale");
+    ClassDB::bind_method(D_METHOD("set_biome_size", "size"), &ChunkManager::set_biome_size);
+    ClassDB::bind_method(D_METHOD("get_biome_size"), &ChunkManager::get_biome_size);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "biome_size", PROPERTY_HINT_RANGE, "0.25,4.0,0.05"), "set_biome_size", "get_biome_size");
     BIND_PROP(Variant::BOOL,    debug_enabled,             "enabled");
     BIND_PROP(Variant::FLOAT,   debug_print_interval,      "interval");
     BIND_PROP(Variant::BOOL,    editor_enabled,            "enabled");

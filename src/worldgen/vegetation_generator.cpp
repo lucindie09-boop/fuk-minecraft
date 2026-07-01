@@ -25,9 +25,9 @@ void VegetationGenerator::generate_vegetation(
 
             BlockID surface_block = chunk.get_block(x, surface_y - world_y_start, z);
 
-            if (biome == BiomeType::Forest || biome == BiomeType::Jungle) {
-                // ~8% tree density
-                if ((h % 100u) < 8u) {
+            if (biome == BiomeType::Forest) {
+                // ~7 trees per chunk avg (0.7% column density)
+                if ((h % 1000u) < 7u) {
                     place_tree(chunk, x, z, surface_y, world_y_start, world_y_end, h, chunk_x, chunk_z, cross_writer);
                 }
             } else if (biome == BiomeType::Plains) {

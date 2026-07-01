@@ -49,10 +49,32 @@ BuiltMeshData MeshBuilder::build_mesh_data(
     const ChunkData* neg_x_neg_z,
     const ChunkData* neg_x_pos_z,
     const ChunkData* pos_x_neg_z,
-    const ChunkData* pos_x_pos_z
+    const ChunkData* pos_x_pos_z,
+    const ChunkData* neg_x_neg_y,
+    const ChunkData* pos_x_neg_y,
+    const ChunkData* neg_x_pos_y,
+    const ChunkData* pos_x_pos_y,
+    const ChunkData* neg_y_neg_z,
+    const ChunkData* neg_y_pos_z,
+    const ChunkData* pos_y_neg_z,
+    const ChunkData* pos_y_pos_z,
+    const ChunkData* neg_x_neg_y_neg_z,
+    const ChunkData* pos_x_neg_y_neg_z,
+    const ChunkData* neg_x_pos_y_neg_z,
+    const ChunkData* pos_x_pos_y_neg_z,
+    const ChunkData* neg_x_neg_y_pos_z,
+    const ChunkData* pos_x_neg_y_pos_z,
+    const ChunkData* neg_x_pos_y_pos_z,
+    const ChunkData* pos_x_pos_y_pos_z
 ) {
     build_mesh(chunk_data, neg_x, pos_x, neg_y, pos_y, neg_z, pos_z,
-               neg_x_neg_z, neg_x_pos_z, pos_x_neg_z, pos_x_pos_z);
+               neg_x_neg_z, neg_x_pos_z, pos_x_neg_z, pos_x_pos_z,
+               neg_x_neg_y, pos_x_neg_y, neg_x_pos_y, pos_x_pos_y,
+               neg_y_neg_z, neg_y_pos_z, pos_y_neg_z, pos_y_pos_z,
+               neg_x_neg_y_neg_z, pos_x_neg_y_neg_z,
+               neg_x_pos_y_neg_z, pos_x_pos_y_neg_z,
+               neg_x_neg_y_pos_z, pos_x_neg_y_pos_z,
+               neg_x_pos_y_pos_z, pos_x_pos_y_pos_z);
     BuiltMeshData result;
     result.vertices = std::move(vertices);
     result.indices = std::move(indices);
@@ -78,7 +100,23 @@ void MeshBuilder::build_mesh(const ChunkData& chunk,
                              const ChunkData* neg_x_neg_z,
                              const ChunkData* neg_x_pos_z,
                              const ChunkData* pos_x_neg_z,
-                             const ChunkData* pos_x_pos_z) {
+                             const ChunkData* pos_x_pos_z,
+                             const ChunkData* neg_x_neg_y,
+                             const ChunkData* pos_x_neg_y,
+                             const ChunkData* neg_x_pos_y,
+                             const ChunkData* pos_x_pos_y,
+                             const ChunkData* neg_y_neg_z,
+                             const ChunkData* neg_y_pos_z,
+                             const ChunkData* pos_y_neg_z,
+                             const ChunkData* pos_y_pos_z,
+                             const ChunkData* neg_x_neg_y_neg_z,
+                             const ChunkData* pos_x_neg_y_neg_z,
+                             const ChunkData* neg_x_pos_y_neg_z,
+                             const ChunkData* pos_x_pos_y_neg_z,
+                             const ChunkData* neg_x_neg_y_pos_z,
+                             const ChunkData* pos_x_neg_y_pos_z,
+                             const ChunkData* neg_x_pos_y_pos_z,
+                             const ChunkData* pos_x_pos_y_pos_z) {
 ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
 
     clear();
@@ -95,6 +133,22 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
     accessor.neg_x_pos_z = neg_x_pos_z;
     accessor.pos_x_neg_z = pos_x_neg_z;
     accessor.pos_x_pos_z = pos_x_pos_z;
+    accessor.neg_x_neg_y = neg_x_neg_y;
+    accessor.pos_x_neg_y = pos_x_neg_y;
+    accessor.neg_x_pos_y = neg_x_pos_y;
+    accessor.pos_x_pos_y = pos_x_pos_y;
+    accessor.neg_y_neg_z = neg_y_neg_z;
+    accessor.neg_y_pos_z = neg_y_pos_z;
+    accessor.pos_y_neg_z = pos_y_neg_z;
+    accessor.pos_y_pos_z = pos_y_pos_z;
+    accessor.neg_x_neg_y_neg_z = neg_x_neg_y_neg_z;
+    accessor.pos_x_neg_y_neg_z = pos_x_neg_y_neg_z;
+    accessor.neg_x_pos_y_neg_z = neg_x_pos_y_neg_z;
+    accessor.pos_x_pos_y_neg_z = pos_x_pos_y_neg_z;
+    accessor.neg_x_neg_y_pos_z = neg_x_neg_y_pos_z;
+    accessor.pos_x_neg_y_pos_z = pos_x_neg_y_pos_z;
+    accessor.neg_x_pos_y_pos_z = neg_x_pos_y_pos_z;
+    accessor.pos_x_pos_y_pos_z = pos_x_pos_y_pos_z;
 
     if (chunk.is_all_air()) {
         return;
