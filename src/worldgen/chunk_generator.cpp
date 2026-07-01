@@ -28,9 +28,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         saved_land_height = land_height;
         height = land_height;
 
-        BiomeType base_biome = biome_from_climate(temperature, humidity, cont);
-        float plateau_mask = sample_plateau_mask(x, z);
-        biome = promote_biome_by_plateau(base_biome, plateau_mask);
+        biome = biome_from_climate(temperature, humidity, cont);
     } else {
         float cont_from_coast = params.land_threshold - cont;
         float depth = cont_from_coast <= 0.05f
@@ -65,10 +63,6 @@ BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_s
         case BiomeType::ShallowOcean: return BlockIDs::SAND;
         case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
         case BiomeType::Desert:      return BlockIDs::SAND;
-        case BiomeType::StonePlateau:   return BlockIDs::STONE;
-        case BiomeType::Tundra:      return BlockIDs::SNOW;
-        case BiomeType::Taiga:       return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
-        case BiomeType::Savanna:     return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
         default:                     return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
     }
 }
@@ -80,10 +74,6 @@ BlockID ChunkGenerator::get_subsurface_block(BiomeType biome, bool near_water) c
         case BiomeType::ShallowOcean: return BlockIDs::SAND;
         case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
         case BiomeType::Desert:       return BlockIDs::SAND;
-        case BiomeType::StonePlateau:    return BlockIDs::STONE;
-        case BiomeType::Tundra:       return BlockIDs::DIRT;
-        case BiomeType::Taiga:        return BlockIDs::DIRT;
-        case BiomeType::Savanna:      return BlockIDs::DIRT;
         default:                      return BlockIDs::DIRT;
     }
 }
@@ -290,10 +280,6 @@ void ChunkGenerator::render_biome_pgm(const char* filename, int img_w, int img_h
                 case BiomeType::Plains:        byte = 150; break;
                 case BiomeType::Forest:        byte = 100; break;
                 case BiomeType::Desert:        byte = 200; break;
-                case BiomeType::StonePlateau:     byte = 180; break;
-                case BiomeType::Tundra:        byte = 240; break;
-                case BiomeType::Taiga:         byte = 80;  break;
-                case BiomeType::Savanna:       byte = 170; break;
                 default:                       byte = 128; break;
             }
             fwrite(&byte, 1, 1, f);
