@@ -37,6 +37,9 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
   - Total per-chunk memory: from ~130KB (65KB blocks + 65KB light) to ~1–20KB.
   - At ~9645 loaded chunks: total from ~1.25GB to ~10–200MB.
 - Pushed sharded locking + PaletteStorage (blocks + light) to `main`.
+- Renamed Mountains→StonePlateau biome across enum, block selection, PGM renderer, debug viewer.
+- **Removed `has_no_boundary_faces_produced`** — the interior-chunk optimization incorrectly culled meshes for fully-solid chunks adjacent to non-fully-solid neighbors (e.g. stone chunks 1 block below the plateau surface). Now only the `buried` check (all 6 neighbors fully_solid) skips mesh building; all other chunks go through the greedy mesher which correctly handles per-face culling.
+- **Fixed `count_section_blocks` Y-index formula** — the palette-section to chunk-section Y mapping used `si / 4` (z-part) instead of `(si / SECS_PER_DIM) % SECS_PER_DIM` (y-part), causing `is_section_all_air` to report wrong false for chunk section 1 (y=16..31) in surface chunks with blocks only in z>16.
 
 ### In Progress
 - (none)

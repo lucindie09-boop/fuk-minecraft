@@ -357,93 +357,6 @@ static inline bool should_cull_neighbor(BlockID current, BlockID neighbor, FaceD
     return true;
 }
 
-static bool has_no_boundary_faces_produced(const ChunkRenderData* render_data,
-                                            const ChunkRenderData* d_x_neg, const ChunkRenderData* d_x_pos,
-                                            const ChunkRenderData* d_y_neg, const ChunkRenderData* d_y_pos,
-                                            const ChunkRenderData* d_z_neg, const ChunkRenderData* d_z_pos,
-                                            int32_t chunk_y) {
-    if (!render_data || !render_data->data || !render_data->data->fully_solid()) {
-        return false;
-    }
-
-    const BlockRegistry& registry = BlockRegistry::get_instance();
-    const ChunkData& chunk = *render_data->data;
-
-    // Check -X boundary (x = 0) vs d_x_neg (x = CHUNK_WIDTH - 1)
-    {
-        const ChunkData* neighbor = d_x_neg ? d_x_neg->data.get() : nullptr;
-        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
-            for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
-                BlockID current = chunk.get_block_unsafe(0, y, z);
-                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(CHUNK_WIDTH - 1, y, z) : BlockIDs::AIR;
-                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Left, registry)) return false;
-            }
-        }
-    }
-
-    // Check +X boundary (x = CHUNK_WIDTH - 1) vs d_x_pos (x = 0)
-    {
-        const ChunkData* neighbor = d_x_pos ? d_x_pos->data.get() : nullptr;
-        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
-            for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
-                BlockID current = chunk.get_block_unsafe(CHUNK_WIDTH - 1, y, z);
-                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(0, y, z) : BlockIDs::AIR;
-                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Right, registry)) return false;
-            }
-        }
-    }
-
-    // Check -Y boundary (y = 0) vs d_y_neg (y = CHUNK_HEIGHT - 1)
-    if (chunk_y > 0) {
-        const ChunkData* neighbor = d_y_neg ? d_y_neg->data.get() : nullptr;
-        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
-            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
-                BlockID current = chunk.get_block_unsafe(x, 0, z);
-                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, CHUNK_HEIGHT - 1, z) : BlockIDs::AIR;
-                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Bottom, registry)) return false;
-            }
-        }
-    }
-
-    // Check +Y boundary (y = CHUNK_HEIGHT - 1) vs d_y_pos (y = 0)
-    {
-        const ChunkData* neighbor = d_y_pos ? d_y_pos->data.get() : nullptr;
-        for (int32_t z = 0; z < CHUNK_DEPTH; ++z) {
-            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
-                BlockID current = chunk.get_block_unsafe(x, CHUNK_HEIGHT - 1, z);
-                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, 0, z) : BlockIDs::AIR;
-                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Top, registry)) return false;
-            }
-        }
-    }
-
-    // Check -Z boundary (z = 0) vs d_z_neg (z = CHUNK_DEPTH - 1)
-    {
-        const ChunkData* neighbor = d_z_neg ? d_z_neg->data.get() : nullptr;
-        for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
-            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
-                BlockID current = chunk.get_block_unsafe(x, y, 0);
-                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, y, CHUNK_DEPTH - 1) : BlockIDs::AIR;
-                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Back, registry)) return false;
-            }
-        }
-    }
-
-    // Check +Z boundary (z = CHUNK_DEPTH - 1) vs d_z_pos (z = 0)
-    {
-        const ChunkData* neighbor = d_z_pos ? d_z_pos->data.get() : nullptr;
-        for (int32_t y = 0; y < CHUNK_HEIGHT; ++y) {
-            for (int32_t x = 0; x < CHUNK_WIDTH; ++x) {
-                BlockID current = chunk.get_block_unsafe(x, y, CHUNK_DEPTH - 1);
-                BlockID neighbor_block = neighbor ? neighbor->get_block_unsafe(x, y, 0) : BlockIDs::AIR;
-                if (!should_cull_neighbor(current, neighbor_block, FaceDirection::Front, registry)) return false;
-            }
-        }
-    }
-
-    return true;
-}
-
 void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,
                                                    ChunkRenderData* render_data,
                                                    ChunkRenderData* d_x_neg,
@@ -512,29 +425,6 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
             neighbor_fully_solid(d_z_pos) &&
             (neighbor_fully_solid(d_y_neg) || chunk_y == 0);
         if (buried) {
-            if (render_data->mesh_rid.is_valid()) {
-                RenderingServer* rs = RenderingServer::get_singleton();
-                rs->free_rid(render_data->mesh_rid);
-                render_data->mesh_rid = RID();
-            }
-            if (render_data->instance_rid.is_valid()) {
-                RenderingServer* rs = RenderingServer::get_singleton();
-                rs->free_rid(render_data->instance_rid);
-                render_data->instance_rid = RID();
-            }
-            render_data->is_mesh_dirty = false;
-            render_data->dirty_subchunks = 0;
-
-            render_data->last_built_version = render_data->mesh_version;
-            ChunkRenderData* neighbors[6] = { d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos };
-            for (int i = 0; i < 6; ++i) {
-                render_data->last_built_neighbor_versions[i] = neighbors[i] ? neighbors[i]->mesh_version : 0;
-            }
-            return;
-        }
-
-        // 1.6 Interior fast-path (mixed-interior check)
-        if (has_no_boundary_faces_produced(render_data, d_x_neg, d_x_pos, d_y_neg, d_y_pos, d_z_neg, d_z_pos, chunk_y)) {
             if (render_data->mesh_rid.is_valid()) {
                 RenderingServer* rs = RenderingServer::get_singleton();
                 rs->free_rid(render_data->mesh_rid);
