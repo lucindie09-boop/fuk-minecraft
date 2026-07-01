@@ -125,7 +125,7 @@ private:
     }
 
     static BiomeType promote_biome_by_height(BiomeType biome, float land_height, float sea_level) {
-        if (land_height > sea_level + 30.0f) return BiomeType::Mountains;
+        if (land_height > sea_level + 16.0f) return BiomeType::Mountains;
         return biome;
     }
 
@@ -190,7 +190,10 @@ private:
         for (int i = 0; i < 3; i++) blended += weights[i] * per_noise[i];
         blended /= w_total;
 
-        return base + blended * scale;
+        // Mountain boost: extra height where ridge is strong and terrain already elevated
+        float pre_height = base + blended * scale;
+        float boost_t = smoothstep(params.sea_level + 8.0f, params.sea_level + 24.0f, pre_height);
+        return pre_height + ridge * params.mountain_scale * boost_t;
     }
 
     // -------------------------------------------------------------------------
