@@ -1,5 +1,6 @@
 #ifndef FUK_MINECRAFT_CHUNK_GENERATOR_HPP
 #define FUK_MINECRAFT_CHUNK_GENERATOR_HPP
+#include <functional>
 #include "core/terrain_params.hpp"
 #include "core/noise.hpp"
 #include "core/block_types.hpp"
@@ -18,9 +19,17 @@ namespace VoxelEngine {
 // Biome types
 // -------------------------------------------------------------------------
 enum class BiomeType : uint8_t {
-    Land,
-    Ocean,
-    Beach
+    AbyssalTrench,
+    DeepOcean,
+    ShallowOcean,
+    Beach,
+    Plains,
+    Desert,
+    Forest,
+    Jungle,
+    Tundra,
+    Mountains,
+    Peaks
 };
 
 // -------------------------------------------------------------------------
@@ -31,6 +40,8 @@ private:
     FastNoise terrain_noise;
     FastNoise cave_noise;
     FastNoise continental_noise;
+    FastNoise temp_noise;
+    FastNoise humidity_noise;
 
     TerrainParams params;
     std::mt19937 rng;
@@ -49,6 +60,9 @@ public:
         float lake_raw;          // blended lake noise value (0-1)
         float cont;              // continentalness value (0-1)
         float lake_water_level;  // computed lake water level (valid when biome==Lake or lake_raw used)
+        // Climate values
+        float temperature;
+        float humidity;
     };
 
 private:
@@ -77,17 +91,85 @@ private:
         return clamp01((raw + 1.0f) * 0.5f);
     }
 
-    float sample_land_shape(float x, float z) const {
+    float sample_temperature(float x, float z) const {
+        return clamp01((temp_noise.noise_2d(x * params.climate_temp_scale,
+                                             z * params.climate_temp_scale) + 1.0f) * 0.5f);
+    }
+
+    float sample_humidity(float x, float z) const {
+        return clamp01((humidity_noise.noise_2d(x * params.climate_humidity_scale,
+                                                 z * params.climate_humidity_scale) + 1.0f) * 0.5f);
+    }
+
+    // Voronoi land biome from temperature/humidity (no beach/ocean/promotion).
+    static BiomeType voronoi_land_biome(float temperature, float humidity) {
+        static constexpr struct { float t; float h; BiomeType b; } centers[] = {
+            {0.15f, 0.50f, BiomeType::Tundra},
+            {0.40f, 0.35f, BiomeType::Plains},
+            {0.40f, 0.75f, BiomeType::Forest},
+            {0.80f, 0.15f, BiomeType::Desert},
+            {0.80f, 0.80f, BiomeType::Jungle},
+        };
+        float best_dist = 999.0f;
+        BiomeType result = BiomeType::Plains;
+        for (auto& c : centers) {
+            float d = (temperature - c.t) * (temperature - c.t) + (humidity - c.h) * (humidity - c.h);
+            if (d < best_dist) { best_dist = d; result = c.b; }
+        }
+        return result;
+    }
+
+    BiomeType biome_from_climate(float temperature, float humidity, float cont) const {
+        float beach_t = smoothstep(params.land_threshold, params.land_threshold + params.beach_width, cont);
+        if (beach_t < 0.9f && cont >= params.land_threshold - 0.05f) {
+            return BiomeType::Beach;
+        }
+        if (cont < params.ocean_threshold) {
+            float depth = params.ocean_threshold - cont;
+            if (depth > 0.10f) return BiomeType::AbyssalTrench;
+            if (depth > 0.05f) return BiomeType::DeepOcean;
+            return BiomeType::ShallowOcean;
+        }
+        return voronoi_land_biome(temperature, humidity);
+    }
+
+    static BiomeType promote_biome_by_height(BiomeType biome, float land_height, float sea_level) {
+        if (land_height > sea_level + 60.0f) return BiomeType::Peaks;
+        if (land_height > sea_level + 30.0f) return BiomeType::Mountains;
+        return biome;
+    }
+
+    // Continuous Voronoi-weighted blend of all land-biome height parameters.
+    // Produces smooth terrain transitions even when the discrete biome label flips.
+    float sample_land_shape(float x, float z, float temperature, float humidity) const {
+        static constexpr struct { float t, h, base_off, scale_m; } centers[] = {
+            {0.15f, 0.50f, -12.0f, 0.33f},   // Tundra
+            {0.40f, 0.35f, -12.0f, 0.33f},   // Plains
+            {0.40f, 0.75f,   4.0f, 0.75f},   // Forest
+            {0.80f, 0.15f,  -8.0f, 0.42f},   // Desert
+            {0.80f, 0.80f,  20.0f, 1.08f},   // Jungle
+        };
+        float w_base = 0.0f, w_scale = 0.0f, w_total = 0.0f;
+        for (auto& c : centers) {
+            float dsq = (temperature - c.t) * (temperature - c.t) + (humidity - c.h) * (humidity - c.h);
+            float w = 1.0f / (dsq + 0.0001f);
+            w_base += w * c.base_off;
+            w_scale += w * c.scale_m;
+            w_total += w;
+        }
+        float base = params.base_height + w_base / w_total;
+        float scale = params.height_scale * (w_scale / w_total);
+
         float broad_roll  = terrain_noise.fbm(x, z, 4, 0.52f, 0.0016f);
         float medium_roll = terrain_noise.fbm(x + 2000.0f, z - 2000.0f, 4, 0.55f, 0.0048f);
         float fine_roll   = terrain_noise.noise_2d(x * 0.012f, z * 0.012f);
         float micro_roll  = terrain_noise.noise_2d((x - 9000.0f) * 0.022f, (z + 9000.0f) * 0.022f);
 
-        return params.base_height
-             + broad_roll  * std::max(12.0f, params.height_scale * 0.28f)
-             + medium_roll * std::max(5.0f,  params.height_scale * 0.16f)
-             + fine_roll   * std::max(2.0f, params.height_scale * 0.07f)
-             + micro_roll  * std::max(1.0f, params.height_scale * 0.03f);
+        return base
+             + broad_roll  * scale * 0.28f
+             + medium_roll * scale * 0.16f
+             + fine_roll   * scale * 0.07f
+             + micro_roll  * scale * 0.03f;
     }
 
     // -------------------------------------------------------------------------
@@ -125,6 +207,8 @@ float max_water_h = -1.0f;
         : terrain_noise(p.seed)
         , cave_noise(p.seed + 2000)
         , continental_noise(p.seed + 6000)
+        , temp_noise(p.seed + 4000)
+        , humidity_noise(p.seed + 5000)
         , params(p)
         , rng(p.seed)
     {
@@ -139,9 +223,12 @@ float max_water_h = -1.0f;
     }
 
     // Cheaper than sample_column: only land shape, no biome/lake evaluation.
-    // Slightly overestimates (safe for culling) because it ignores ocean shelves.
     float quick_height_estimate(int32_t world_x, int32_t world_z) const {
-        return sample_land_shape(static_cast<float>(world_x), static_cast<float>(world_z));
+        float x = static_cast<float>(world_x);
+        float z = static_cast<float>(world_z);
+        float t = sample_temperature(x, z);
+        float h = sample_humidity(x, z);
+        return sample_land_shape(x, z, t, h);
     }
 
     bool is_cave(int32_t x, int32_t y, int32_t z) {
@@ -159,15 +246,21 @@ float max_water_h = -1.0f;
     // -------------------------------------------------------------------------
     struct ChunkColumn {
         int32_t height = 0;
-        BiomeType biome = BiomeType::Land;
+        BiomeType biome = BiomeType::Plains;
         int32_t water_level = -1;
         bool near_water = false;
+        float temperature;
+        float humidity;
     };
+
+    // Cross-chunk block writer callback type
+    using CrossChunkWriter = std::function<void(int32_t, int32_t, int32_t, BlockID)>;
 
     // -------------------------------------------------------------------------
     // Main generation entry point
     // -------------------------------------------------------------------------
-    void generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);
+    void generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z,
+                        const CrossChunkWriter& cross_writer = nullptr);
 
     // -------------------------------------------------------------------------
     // Debug: render continentalness as a PGM image (portable graymap)
@@ -190,6 +283,8 @@ float max_water_h = -1.0f;
             terrain_noise     = FastNoise(p.seed);
             cave_noise        = FastNoise(p.seed + 2000);
             continental_noise = FastNoise(p.seed + 6000);
+            temp_noise        = FastNoise(p.seed + 4000);
+            humidity_noise    = FastNoise(p.seed + 5000);
             rng.seed(p.seed);
         }
     }
