@@ -26,7 +26,7 @@ enum class BiomeType : uint8_t {
     Plains,
     Forest,
     Desert,
-    Mountains,
+    StonePlateau,
 };
 
 // -------------------------------------------------------------------------
@@ -125,7 +125,7 @@ private:
     }
 
     static BiomeType promote_biome_by_height(BiomeType biome, float land_height, float sea_level) {
-        if (land_height > sea_level + 16.0f) return BiomeType::Mountains;
+        if (land_height > sea_level + 16.0f) return BiomeType::StonePlateau;
         return biome;
     }
 
@@ -190,11 +190,11 @@ private:
         for (int i = 0; i < 3; i++) blended += weights[i] * per_noise[i];
         blended /= w_total;
 
-        // Mountain boost: thresholded ridge noise creates spiky peaks, no plateaus
+        // Plateau boost: discrete elevated plateaus via noise mask + ridge texture
         float pre_height = base + blended * scale;
-        float mtn_ridge = terrain_noise.ridged_noise(x + 13000.0f, z + 11000.0f, 3, 0.55f, 0.0012f);
-        float mtn_strength = std::max(0.0f, mtn_ridge - 0.55f) * 4.0f;
-        return pre_height + mtn_strength * mtn_strength * 400.0f;
+        float plt_raw = terrain_noise.fbm(x + 11000.0f, z + 7000.0f, 2, 0.5f, 0.0003f);
+        float plt_mask = smoothstep(0.6f, 0.85f, plt_raw);
+        return pre_height + plt_mask * (ridge * 60.0f + 140.0f);
     }
 
     // -------------------------------------------------------------------------
