@@ -177,7 +177,7 @@ private:
         // shared noise layers with completely different weights, giving each
         // one a genuinely distinct silhouette rather than just a height shift.
         static constexpr struct { float t, h, base_off, scale_m; } centers[] = {
-            {0.50f, 0.35f, -16.0f, 0.65f},   // 0 Plains     — temperate, low humidity: gentle rolling
+            {0.50f, 0.35f,   6.0f, 3.20f},   // 0 Plains     — gentle rolling
             {0.50f, 0.78f,   4.0f, 1.00f},   // 1 Forest     — temperate, humid: hilly
             {0.78f, 0.22f, -12.0f, 0.75f},   // 2 Desert     — hot, dry: dunes
             {0.22f, 0.22f, -20.0f, 0.35f},   // 3 Tundra     — cold, dry: near-flat frozen ground
@@ -225,8 +225,8 @@ private:
         // biome, not just an amplitude/offset tweak on one shared formula.
         float per_noise[NUM_BIOMES] = {};
         // 0 Plains — gentle rolling: broad + light detail
-        per_noise[0] = broad * 0.22f + medium * 0.18f
-                     + (fine * 0.22f + micro * 0.14f + close * 0.08f) * detail_mod;
+        per_noise[0] = broad * 0.55f + medium * 0.32f
+                     + (fine * 0.10f + micro * 0.05f) * detail_mod;
         // 1 Forest — hillier: adds a touch of ridge, more fine detail
         per_noise[1] = broad * 0.20f + ridge * 0.08f + medium * 0.16f
                      + (fine * 0.22f + micro * 0.14f + close * 0.08f) * detail_mod;
