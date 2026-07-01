@@ -301,7 +301,7 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             const int32_t dx = completed.chunk_x - last_player_chunk_x;
             const int32_t dz = completed.chunk_z - last_player_chunk_z;
             const int32_t dy = std::abs(completed.chunk_y - last_player_chunk_y);
-            within_render_distance = (dx*dx + dz*dz) <= (mesh_render_distance * mesh_render_distance) && dy <= 2;
+            within_render_distance = (dx*dx + dz*dz) <= (mesh_render_distance * mesh_render_distance) && dy <= 10;
         }
         const bool show_instance = render_data->render_lod != ChunkRenderLod::HiddenInGroup && within_render_distance;
         if (render_data->instance_rid.is_valid()) {
