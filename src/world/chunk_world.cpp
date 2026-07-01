@@ -64,7 +64,26 @@ float top_content_h = std::max(height_range.max_h, height_range.max_water_h);
                 }
 
                 // Surface chunk: generate normally
-                generator.generate_chunk(*chunk_data, cx, cy, cz);
+                {
+                    auto cross_writer = [this](int32_t wx, int32_t wy, int32_t wz, BlockID block) {
+                        int32_t tc_x, tc_y, tc_z, lx, ly, lz;
+                        world_to_chunk_local(wx, wy, wz, tc_x, tc_y, tc_z, lx, ly, lz);
+                        ChunkData* target = chunk_map.get_chunk_data(tc_x, tc_y, tc_z);
+                        if (target) {
+                            if (target->get_block(lx, ly, lz) != BlockIDs::AIR)
+                                return;
+                            target->set_block(lx, ly, lz, block);
+                            {
+                                std::lock_guard<std::mutex> lock(cross_boundary_mutex);
+                                pending_cross_boundary_remesh.push_back({tc_x, tc_y, tc_z});
+                            }
+                        } else {
+                            queue_pending_placement(wx, wy, wz, static_cast<int>(block));
+                        }
+                    };
+                    generator.generate_chunk(*chunk_data, cx, cy, cz,
+                                             ChunkGenerator::CrossChunkWriter(std::move(cross_writer)));
+                }
             }
             chunk_data->propagate_sky_light(chunk_map.get_chunk_data(cx, cy + 1, cz));
             if (chunk_data->get_emissive_count() > 0) {
@@ -300,6 +319,17 @@ light_propagator->try_fixup_chunk(key, completed.chunk_x, completed.chunk_y, com
         }
 
         break;
+    }
+
+    // Process cross-boundary vegetation modifications (neighbor chunks that need re-mesh)
+    {
+        std::lock_guard<std::mutex> lock(cross_boundary_mutex);
+        for (const auto& pos : pending_cross_boundary_remesh) {
+            if (mesh_manager) {
+                mesh_manager->queue_dirty_chunk(pos.x, pos.y, pos.z);
+            }
+        }
+        pending_cross_boundary_remesh.clear();
     }
 
     return installed_count;

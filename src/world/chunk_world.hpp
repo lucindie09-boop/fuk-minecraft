@@ -5,6 +5,7 @@
 #include "core/chunk_types.hpp"
 #include "world/chunk_scheduler.hpp"
 #include "core/thread_pool.hpp"
+#include "worldgen/chunk_generator.hpp"
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
@@ -78,6 +79,10 @@ private:
 
     std::unordered_set<uint64_t> dirty_chunks;
     mutable std::mutex dirty_chunks_mutex;
+
+    // Cross-boundary vegetation writes: neighbor chunks modified during generation
+    std::vector<ChunkPos> pending_cross_boundary_remesh;
+    mutable std::mutex cross_boundary_mutex;
 };
 
 } // namespace VoxelEngine

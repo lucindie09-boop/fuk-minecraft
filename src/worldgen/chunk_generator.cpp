@@ -1,5 +1,6 @@
 #include "worldgen/chunk_generator.hpp"
 #include "core/chunk_data.hpp"
+#include "worldgen/vegetation_generator.hpp"
 
 namespace VoxelEngine {
 
@@ -10,28 +11,26 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
     float z = static_cast<float>(world_z);
 
     float cont = sample_continentalness(x, z);
+    float temperature = sample_temperature(x, z);
+    float humidity = sample_humidity(x, z);
     bool is_land = cont >= params.land_threshold;
     float coast_width = std::max(0.0001f, params.shelf_width * 0.4f);
 
     float height = 0.0f;
     float water_level = -1.0f;
-    BiomeType biome = BiomeType::Land;
+    BiomeType biome = BiomeType::Plains;
     float saved_land_height = 0.0f;
 
     if (is_land) {
-        float land_height = sample_land_shape(x, z);
+        float land_height = sample_land_shape(x, z, temperature, humidity);
         float coast_t = smoothstep(params.ocean_threshold, params.ocean_threshold + coast_width, cont);
         land_height = lerp(params.sea_level, land_height, coast_t);
         saved_land_height = land_height;
         height = land_height;
 
-            // Beach
-            float beach_t = smoothstep(params.land_threshold, params.land_threshold + params.beach_width, cont);
-            if (beach_t < 0.9f && cont >= params.land_threshold - 0.05f) {
-                biome = BiomeType::Beach;
-            }
+        BiomeType base_biome = biome_from_climate(temperature, humidity, cont);
+        biome = promote_biome_by_height(base_biome, land_height, params.sea_level);
     } else {
-        // Simple ocean: shelf→slope→deep
         float cont_from_coast = params.land_threshold - cont;
         float depth = cont_from_coast <= 0.05f
             ? lerp(1.0f, params.shelf_depth, cont_from_coast / 0.05f)
@@ -44,8 +43,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         height = std::min(height, params.sea_level - 1.0f);
         water_level = params.sea_level;
 
-        float beach_t = smoothstep(params.land_threshold, params.land_threshold + params.beach_width, cont);
-        biome = (beach_t < 0.9f && cont >= params.land_threshold - 0.05f) ? BiomeType::Beach : BiomeType::Ocean;
+        biome = biome_from_climate(temperature, humidity, cont);
     }
 
     height = std::max(params.bedrock_height + 1.0f, height);
@@ -53,25 +51,36 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         water_level = std::max(params.sea_level, water_level);
     }
 
-    return ColumnSample{biome, height, water_level, false, saved_land_height};
+    return ColumnSample{biome, height, water_level, false, saved_land_height, 0.0f, cont, 0.0f, temperature, humidity};
 }
 
 BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_surface_water, bool near_water) const {
     if (has_surface_water) {
-return BlockIDs::SAND;
+        return BlockIDs::SAND;
     }
     switch (biome) {
-        case BiomeType::Ocean:  return BlockIDs::SAND;
-        case BiomeType::Beach:  return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
-        default:                return near_water ? BlockIDs::MUD : (y > params.sea_level ? BlockIDs::GRASS : BlockIDs::DIRT);
+        case BiomeType::AbyssalTrench:
+        case BiomeType::DeepOcean:
+        case BiomeType::ShallowOcean: return BlockIDs::SAND;
+        case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
+        case BiomeType::Tundra:      return BlockIDs::SNOW;
+        case BiomeType::Desert:      return BlockIDs::SAND;
+        case BiomeType::Mountains:   return BlockIDs::STONE;
+        case BiomeType::Peaks:       return BlockIDs::STONE;
+        default:                     return near_water ? BlockIDs::MUD : (y > params.sea_level ? BlockIDs::GRASS : BlockIDs::DIRT);
     }
 }
 
 BlockID ChunkGenerator::get_subsurface_block(BiomeType biome, bool near_water) const {
     switch (biome) {
-        case BiomeType::Ocean:  return BlockIDs::SAND;
-        case BiomeType::Beach:  return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
-        default:                return BlockIDs::DIRT;
+        case BiomeType::AbyssalTrench:
+        case BiomeType::DeepOcean:
+        case BiomeType::ShallowOcean: return BlockIDs::SAND;
+        case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
+        case BiomeType::Desert:       return BlockIDs::SAND;
+        case BiomeType::Mountains:
+        case BiomeType::Peaks:        return BlockIDs::STONE;
+        default:                      return BlockIDs::DIRT;
     }
 }
 
@@ -109,13 +118,15 @@ BlockID ChunkGenerator::get_chunk_subsurface_block(int32_t chunk_x, int32_t chun
     return get_subsurface_block(col.biome, false);
 }
 
-void ChunkGenerator::generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z) {
+void ChunkGenerator::generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z,
+                                    const CrossChunkWriter& cross_writer) {
     ScopedTimer timer(perf_timer, TimerID::GenerateChunk);
     chunk.clear();
 
     int32_t world_x_start = chunk_x * CHUNK_WIDTH;
     int32_t world_y_start = chunk_y * CHUNK_HEIGHT;
     int32_t world_z_start = chunk_z * CHUNK_DEPTH;
+    int32_t world_y_end = world_y_start + CHUNK_HEIGHT;
 
     // Single struct-of-arrays for all per-column data (replaces 7 separate stack arrays).
     ChunkColumn columns[CHUNK_WIDTH][CHUNK_DEPTH];
@@ -128,6 +139,8 @@ void ChunkGenerator::generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t c
             columns[x][z].water_level = col.water_level >= 0.0f
                 ? static_cast<int32_t>(std::round(col.water_level))
                 : -1;
+            columns[x][z].temperature = col.temperature;
+            columns[x][z].humidity    = col.humidity;
         }
     }
 
@@ -176,8 +189,6 @@ void ChunkGenerator::generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t c
             BlockID surface_block    = get_surface_block(biome, surface_y, has_surface_water, near_water);
             BlockID subsurface_block = get_subsurface_block(biome, near_water);
             int32_t bed = params.bedrock_height;
-
-            int32_t world_y_end = world_y_start + CHUNK_HEIGHT;
 
             // Bedrock occupies world y in [0, bed)
             int32_t bedrock_overlap_start = std::max(0, world_y_start);
@@ -229,6 +240,11 @@ chunk.set_block(x, local_y, z, BlockIDs::STONE);
     }
 
     chunk.compute_section_flags();
+
+    // Place vegetation
+    VegetationGenerator veg;
+    veg.generate_vegetation(chunk, columns, chunk_x, chunk_z,
+                            world_y_start, world_y_end, cross_writer);
 }
 
 void ChunkGenerator::render_continentalness_pgm(const char* filename, int img_w, int img_h,
@@ -263,10 +279,18 @@ void ChunkGenerator::render_biome_pgm(const char* filename, int img_w, int img_h
                                                static_cast<int32_t>(wz));
             uint8_t byte;
             switch (col.biome) {
-                case BiomeType::Ocean: byte = 30;   break;
-                case BiomeType::Land:  byte = 200; break;
-                case BiomeType::Beach: byte = 220; break;
-                default:              byte = 255; break;
+                case BiomeType::AbyssalTrench: byte = 10;  break;
+                case BiomeType::DeepOcean:     byte = 30;  break;
+                case BiomeType::ShallowOcean:  byte = 60;  break;
+                case BiomeType::Beach:         byte = 220; break;
+                case BiomeType::Tundra:        byte = 240; break;
+                case BiomeType::Plains:        byte = 150; break;
+                case BiomeType::Forest:        byte = 100; break;
+                case BiomeType::Desert:        byte = 200; break;
+                case BiomeType::Jungle:        byte = 80;  break;
+                case BiomeType::Mountains:     byte = 180; break;
+                case BiomeType::Peaks:         byte = 255; break;
+                default:                       byte = 128; break;
             }
             fwrite(&byte, 1, 1, f);
         }
