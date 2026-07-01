@@ -132,18 +132,25 @@ private:
     // Continuous Voronoi-weighted blend of all land-biome height parameters.
     // Each biome gets its own noise profile (ridge for mountains, dunes for desert,
     // smooth for plains) and the results are blended smoothly across ecotones.
-    float sample_land_shape(float x, float z, float temperature, float humidity) const {
+    // Uses fixed base-frequency climate for Voronoi weights so biome boundaries
+    // in the height field remain smooth regardless of biome_size.
+    float sample_land_shape(float x, float z, float /*temperature*/, float /*humidity*/) const {
+        static constexpr float BASE_TEMP_SCALE = 0.00015f;
+        static constexpr float BASE_HUM_SCALE  = 0.00020f;
         static constexpr struct { float t, h, base_off, scale_m; } centers[] = {
             {0.40f, 0.35f, -16.0f, 0.65f},   // Plains
             {0.40f, 0.75f,   4.0f, 1.00f},   // Forest
             {0.80f, 0.15f, -12.0f, 0.75f},   // Desert
         };
+        // Sample climate at the base frequency for smooth height blending
+        float blend_temp = clamp01((temp_noise.noise_2d(x * BASE_TEMP_SCALE, z * BASE_TEMP_SCALE) + 1.0f) * 0.5f);
+        float blend_hum  = clamp01((humidity_noise.noise_2d(x * BASE_HUM_SCALE,  z * BASE_HUM_SCALE)  + 1.0f) * 0.5f);
 
         float w_total = 0.0f, w_base = 0.0f, w_scale = 0.0f;
         float weights[3];
         for (int i = 0; i < 3; i++) {
-            float dsq = (temperature - centers[i].t) * (temperature - centers[i].t)
-                      + (humidity - centers[i].h) * (humidity - centers[i].h);
+            float dsq = (blend_temp - centers[i].t) * (blend_temp - centers[i].t)
+                      + (blend_hum  - centers[i].h) * (blend_hum  - centers[i].h);
             float w = 1.0f / (dsq + 0.0001f);
             weights[i] = w;
             w_base  += w * centers[i].base_off;
