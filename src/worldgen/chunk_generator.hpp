@@ -172,8 +172,9 @@ private:
         float base  = params.base_height + w_base / w_total;
         float scale = params.height_scale * (w_scale / w_total);
 
-        // Single noise layer — broad low-frequency terrain
-        float per_noise_val = terrain_noise.fbm(x, z, 4, 0.52f, 0.0064f);
+        // Broad low-frequency terrain with ridged detail for non-circular breaks
+        float per_noise_val = terrain_noise.fbm(x, z, 4, 0.52f, 0.0064f) * 0.85f
+                            + terrain_noise.ridged_noise(x + 4000.0f, z + 4000.0f, 3, 0.55f, 0.016f) * 0.15f;
 
         // Per-biome noise recipes — all land biomes share the same simple recipe
         float per_noise[NUM_BIOMES] = {};
