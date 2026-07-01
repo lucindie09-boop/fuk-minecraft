@@ -211,7 +211,7 @@ public:
     void count_section_blocks(uint32_t out[CHUNK_SECTIONS]) const {
         std::memset(out, 0, CHUNK_SECTIONS * sizeof(uint32_t));
         for (int si = 0; si < NUM_SECTIONS; ++si) {
-            int sy = si / (SECS_PER_DIM * SECS_PER_DIM);
+            int sy = (si / SECS_PER_DIM) % SECS_PER_DIM;
             const auto& s = block_secs[si];
             if (s.is_uniform()) {
                 if (s.uniform_val() != 0) out[sy] += SEC_VOLUME;
