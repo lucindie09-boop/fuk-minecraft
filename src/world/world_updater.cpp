@@ -397,9 +397,8 @@ void WorldUpdater::initialize_view_distance(int32_t horizontal_rd) {
         height_estimator->set_params(terrain_params);
     }
     column_height_cache.reserve(65536);
-    // Vertical range is computed automatically from surface height.
-    // We use a small buffer (2 chunks = 64 blocks) to cover surface variation.
-    constexpr int32_t VERTICAL_BUFFER = 2;
+    // Vertical range covers terrain variation up to ~500-block mountain peaks.
+    constexpr int32_t VERTICAL_BUFFER = 10;
     current_render_distance = horizontal_rd;
     pre_sorted_offsets.clear();
     unload_queue.clear();

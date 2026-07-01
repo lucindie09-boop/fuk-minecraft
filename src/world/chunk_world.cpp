@@ -73,6 +73,11 @@ float top_content_h = std::max(height_range.max_h, height_range.max_water_h);
                             if (target->get_block(lx, ly, lz) != BlockIDs::AIR)
                                 return;
                             target->set_block(lx, ly, lz, block);
+                            // Bump mesh_version so the rebuild isn't skipped
+                            ChunkRenderData* target_rd = chunk_map.get_chunk_render_data(tc_x, tc_y, tc_z);
+                            if (target_rd) {
+                                target_rd->mesh_version++;
+                            }
                             {
                                 std::lock_guard<std::mutex> lock(cross_boundary_mutex);
                                 pending_cross_boundary_remesh.push_back({tc_x, tc_y, tc_z});

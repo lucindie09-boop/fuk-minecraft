@@ -190,10 +190,12 @@ private:
         for (int i = 0; i < 3; i++) blended += weights[i] * per_noise[i];
         blended /= w_total;
 
-        // Mountain boost: extra height where ridge is strong and terrain already elevated
+        // Mountain boost: discrete patches of tall peaks, no random hills elsewhere
         float pre_height = base + blended * scale;
-        float boost_t = smoothstep(params.sea_level + 8.0f, params.sea_level + 24.0f, pre_height);
-        return pre_height + ridge * params.mountain_scale * boost_t;
+        float mtn_raw = terrain_noise.fbm(x + 11000.0f, z + 7000.0f, 2, 0.5f, 0.0003f);
+        float mtn_mask = smoothstep(0.6f, 0.85f, mtn_raw);
+        float peak_shape = ridge * ridge;
+        return pre_height + mtn_mask * peak_shape * 500.0f;
     }
 
     // -------------------------------------------------------------------------
