@@ -2,10 +2,6 @@
 #include <cstdio>
 #include <cstdint>
 
-namespace VoxelEngine {
-    PerformanceTimer ChunkGenerator::perf_timer;
-}
-
 int main() {
     VoxelEngine::TerrainParams params;
     VoxelEngine::ChunkGenerator gen(params);
@@ -13,15 +9,15 @@ int main() {
     const int NUM_CHUNKS = 1000;
     VoxelEngine::ChunkData chunk;
 
-    // Warmup
+    // Warmup — generate chunks at surface level (chunk_y=6 covers y=192..223)
     for (int i = 0; i < 50; i++) {
-        gen.generate_chunk(chunk, i * 10, i * 10);
+        gen.generate_chunk(chunk, i * 10, 6, i * 10);
     }
 
     VoxelEngine::PerformanceTimer perf;
     for (int i = 0; i < NUM_CHUNKS; i++) {
         VoxelEngine::ScopedTimer timer(perf, VoxelEngine::TimerID::GenerateChunk);
-        gen.generate_chunk(chunk, i * 10, i * 10);
+        gen.generate_chunk(chunk, i * 10, 6, i * 10);
     }
 
     double avg = perf.get_avg(VoxelEngine::TimerID::GenerateChunk);

@@ -15,40 +15,48 @@
 namespace VoxelEngine {
 
 // -------------------------------------------------------------------------
-// Biome types
+// Biome types — climate-biome mapping uses temperature × humidity
 // -------------------------------------------------------------------------
 enum class BiomeType : uint8_t {
-    Land,
-    Ocean,
-    Beach
+    Ocean     = 0,
+    Beach     = 1,
+    Plains    = 2,
+    Forest    = 3,
+    Desert    = 4,
+    Taiga     = 5,
+    Tundra    = 6,
+    Savanna   = 7,
+    Jungle    = 8,
+    Swamp     = 9,
+    Mountains = 10
 };
 
 // -------------------------------------------------------------------------
-// Chunk generator - Minecraft-style procedural terrain generation
+// Chunk generator — Minecraft-style procedural terrain generation
+// with climate-driven biome selection and per-biome height functions.
 // -------------------------------------------------------------------------
 class ChunkGenerator {
 private:
     FastNoise terrain_noise;
     FastNoise cave_noise;
     FastNoise continental_noise;
+    FastNoise temp_noise;
+    FastNoise humidity_noise;
+    FastNoise erosion_noise;
 
     TerrainParams params;
     std::mt19937 rng;
     static PerformanceTimer perf_timer;
 
-
-
 public:
     struct ColumnSample {
         BiomeType biome;
         float height;
-        float water_level;
+        float water_level;   // -1 if no standing water
         bool near_water;
-        float land_height;
-        // Cached per-column values reused by lake fixup and bank-blend passes
-        float lake_raw;          // blended lake noise value (0-1)
-        float cont;              // continentalness value (0-1)
-        float lake_water_level;  // computed lake water level (valid when biome==Lake or lake_raw used)
+        float cont;          // continentalness (0-1)
+        float temp;          // temperature (0-1)
+        float hum;           // humidity (0-1)
     };
 
 private:
@@ -77,21 +85,62 @@ private:
         return clamp01((raw + 1.0f) * 0.5f);
     }
 
-    float sample_land_shape(float x, float z) const {
-        float broad_roll  = terrain_noise.fbm(x, z, 4, 0.52f, 0.0016f);
-        float medium_roll = terrain_noise.fbm(x + 2000.0f, z - 2000.0f, 4, 0.55f, 0.0048f);
-        float fine_roll   = terrain_noise.noise_2d(x * 0.012f, z * 0.012f);
-        float micro_roll  = terrain_noise.noise_2d((x - 9000.0f) * 0.022f, (z + 9000.0f) * 0.022f);
+    float sample_temperature(float x, float z) const {
+        float raw = temp_noise.noise_2d(x * params.temp_scale, z * params.temp_scale);
+        return clamp01((raw + 1.0f) * 0.5f);
+    }
 
-        return params.base_height
-             + broad_roll  * std::max(12.0f, params.height_scale * 0.28f)
-             + medium_roll * std::max(5.0f,  params.height_scale * 0.16f)
-             + fine_roll   * std::max(2.0f, params.height_scale * 0.07f)
-             + micro_roll  * std::max(1.0f, params.height_scale * 0.03f);
+    float sample_humidity(float x, float z) const {
+        float raw = humidity_noise.noise_2d(x * params.humidity_scale, z * params.humidity_scale);
+        return clamp01((raw + 1.0f) * 0.5f);
+    }
+
+    float sample_erosion(float x, float z) const {
+        float raw = erosion_noise.noise_2d(x * params.erosion_scale, z * params.erosion_scale);
+        return clamp01((raw + 1.0f) * 0.5f);
     }
 
     // -------------------------------------------------------------------------
-    // Per-column terrain evaluation 
+    // Climate → biome (Voronoi in temperature–humidity space)
+    // -------------------------------------------------------------------------
+    BiomeType classify_biome(float temp, float hum) const {
+        struct Center { BiomeType type; float t; float h; };
+        static constexpr Center centers[] = {
+            {BiomeType::Tundra,  0.10f, 0.35f},
+            {BiomeType::Taiga,   0.25f, 0.60f},
+            {BiomeType::Plains,  0.45f, 0.35f},
+            {BiomeType::Forest,  0.45f, 0.65f},
+            {BiomeType::Savanna, 0.70f, 0.25f},
+            {BiomeType::Desert,  0.80f, 0.08f},
+            {BiomeType::Jungle,  0.70f, 0.80f},
+            {BiomeType::Swamp,   0.35f, 0.85f},
+        };
+        float best_dist = 999.0f;
+        BiomeType best = BiomeType::Plains;
+        for (auto& c : centers) {
+            float d = (temp - c.t) * (temp - c.t) + (hum - c.h) * (hum - c.h);
+            if (d < best_dist) { best_dist = d; best = c.type; }
+        }
+        return best;
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-biome height functions
+    // -------------------------------------------------------------------------
+    float compute_ocean_floor(float x, float z, float cont) const;
+
+    float compute_standard_height(float x, float z, float base_offset,
+                                  float height_scale, float freq_base) const;
+
+    float compute_mountain_height(float x, float z, float erosion) const;
+
+    float compute_desert_height(float x, float z) const;
+
+    float compute_biome_height(float x, float z, BiomeType biome,
+                                float temp, float hum, float erosion) const;
+
+    // -------------------------------------------------------------------------
+    // Per-column terrain evaluation
     // -------------------------------------------------------------------------
     ColumnSample sample_column(int32_t world_x, int32_t world_z) const;
 
@@ -108,12 +157,12 @@ public:
     struct HeightRange {
         float min_h = 0.0f;
         float max_h = 0.0f;
-float max_water_h = -1.0f;
+        float max_water_h = -1.0f;
     };
     HeightRange get_chunk_height_range(int32_t chunk_x, int32_t chunk_z) const;
     BlockID get_chunk_subsurface_block(int32_t chunk_x, int32_t chunk_z) const;
 
-    // Debug accessors (expose private members for standalone tools)
+    // Debug accessors
     float sample_continentalness_debug(float x, float z) const {
         return sample_continentalness(x, z);
     }
@@ -125,6 +174,9 @@ float max_water_h = -1.0f;
         : terrain_noise(p.seed)
         , cave_noise(p.seed + 2000)
         , continental_noise(p.seed + 6000)
+        , temp_noise(p.seed + 3000)
+        , humidity_noise(p.seed + 4000)
+        , erosion_noise(p.seed + 5000)
         , params(p)
         , rng(p.seed)
     {
@@ -138,10 +190,10 @@ float max_water_h = -1.0f;
         return sample_column(world_x, world_z).height;
     }
 
-    // Cheaper than sample_column: only land shape, no biome/lake evaluation.
-    // Slightly overestimates (safe for culling) because it ignores ocean shelves.
     float quick_height_estimate(int32_t world_x, int32_t world_z) const {
-        return sample_land_shape(static_cast<float>(world_x), static_cast<float>(world_z));
+        float x = static_cast<float>(world_x);
+        float z = static_cast<float>(world_z);
+        return compute_standard_height(x, z, 8.0f, 16.0f, 1.0f);
     }
 
     bool is_cave(int32_t x, int32_t y, int32_t z) {
@@ -155,11 +207,11 @@ float max_water_h = -1.0f;
     }
 
     // -------------------------------------------------------------------------
-    // Per-column data used during chunk generation (replaces 7 separate arrays)
+    // Per-column data used during chunk generation
     // -------------------------------------------------------------------------
     struct ChunkColumn {
         int32_t height = 0;
-        BiomeType biome = BiomeType::Land;
+        BiomeType biome = BiomeType::Plains;
         int32_t water_level = -1;
         bool near_water = false;
     };
@@ -170,7 +222,7 @@ float max_water_h = -1.0f;
     void generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);
 
     // -------------------------------------------------------------------------
-    // Debug: render continentalness as a PGM image (portable graymap)
+    // Debug: render continentalness / biome PGM images
     // -------------------------------------------------------------------------
     void render_continentalness_pgm(const char* filename, int img_w, int img_h,
                                     float world_x_start, float world_z_start,
@@ -190,6 +242,9 @@ float max_water_h = -1.0f;
             terrain_noise     = FastNoise(p.seed);
             cave_noise        = FastNoise(p.seed + 2000);
             continental_noise = FastNoise(p.seed + 6000);
+            temp_noise        = FastNoise(p.seed + 3000);
+            humidity_noise    = FastNoise(p.seed + 4000);
+            erosion_noise     = FastNoise(p.seed + 5000);
             rng.seed(p.seed);
         }
     }
