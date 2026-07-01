@@ -214,7 +214,7 @@ int main() {
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
 
-                    case VoxelEngine::BiomeType::Mountains:     r=140; g=130; b=120;  break;
+                    case VoxelEngine::BiomeType::StonePlateau:     r=140; g=130; b=120;  break;
 
                     default:                                    r=255; g=0;   b=255;  break;
                 }
@@ -259,7 +259,7 @@ int main() {
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
 
-                    case VoxelEngine::BiomeType::Mountains:     r=140; g=130; b=120;  break;
+                    case VoxelEngine::BiomeType::StonePlateau:     r=140; g=130; b=120;  break;
 
                     default:                                    r=255; g=0;   b=255;  break;
                 }
@@ -292,7 +292,7 @@ int main() {
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
 
-                    case VoxelEngine::BiomeType::Mountains:     r=140; g=130; b=120;  break;
+                    case VoxelEngine::BiomeType::StonePlateau:     r=140; g=130; b=120;  break;
 
                     default:                                    r=255; g=0;   b=255;  break;
                 }
