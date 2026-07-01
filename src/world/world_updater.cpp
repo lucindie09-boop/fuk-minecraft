@@ -18,9 +18,7 @@ WorldUpdater::~WorldUpdater() = default;
 
 void WorldUpdater::set_seed(int32_t s) { terrain_params.seed = s; if (height_estimator) height_estimator->set_params(terrain_params); invalidate_height_cache(); }
 void WorldUpdater::set_sea_level(float level) { terrain_params.sea_level = level; if (height_estimator) height_estimator->set_params(terrain_params); invalidate_height_cache(); }
-void WorldUpdater::set_base_height(float height) { terrain_params.base_height = height; if (height_estimator) height_estimator->set_params(terrain_params); invalidate_height_cache(); }
-void WorldUpdater::set_height_scale(float scale) { terrain_params.height_scale = scale; if (height_estimator) height_estimator->set_params(terrain_params); invalidate_height_cache(); }
-void WorldUpdater::set_mountain_scale(float scale) { terrain_params.mountain_scale = scale; if (height_estimator) height_estimator->set_params(terrain_params); invalidate_height_cache(); }
+
 
 void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_processed_total, double delta) {
     int32_t player_chunk_x, player_chunk_y, player_chunk_z;

@@ -66,15 +66,6 @@ public:
     void set_sea_level(float level);
     float get_sea_level() const;
 
-    void set_base_height(float height);
-    float get_base_height() const;
-
-    void set_height_scale(float scale);
-    float get_height_scale() const;
-
-    void set_mountain_scale(float scale);
-    float get_mountain_scale() const;
-
     godot::String get_performance_report();
 
     void set_chunk_scenario(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);

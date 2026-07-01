@@ -43,9 +43,6 @@ public:
 
     void set_seed(int32_t s);
     void set_sea_level(float level);
-    void set_base_height(float height);
-    void set_height_scale(float scale);
-    void set_mountain_scale(float scale);
     void set_render_distance(int32_t rd) { render_distance = rd; }
     void set_editor_render_distance(int32_t rd) { editor_render_distance = rd; }
     void set_player_position(const godot::Vector3& pos) { player_position = pos; }

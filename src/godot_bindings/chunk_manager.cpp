@@ -143,15 +143,6 @@ void ChunkManager::unload_chunk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_
 void ChunkManager::set_sea_level(float level) { controller->set_sea_level(level); }
 float ChunkManager::get_sea_level() const { return controller->get_sea_level(); }
 
-void ChunkManager::set_base_height(float height) { controller->set_base_height(height); }
-float ChunkManager::get_base_height() const { return controller->get_base_height(); }
-
-void ChunkManager::set_height_scale(float scale) { controller->set_height_scale(scale); }
-float ChunkManager::get_height_scale() const { return controller->get_height_scale(); }
-
-void ChunkManager::set_mountain_scale(float scale) { controller->set_mountain_scale(scale); }
-float ChunkManager::get_mountain_scale() const { return controller->get_mountain_scale(); }
-
 String ChunkManager::get_performance_report() { return controller->get_performance_report(); }
 
 void ChunkManager::set_chunk_scenario(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z) {
@@ -293,9 +284,6 @@ ClassDB::bind_method(D_METHOD("toggle_day_night_cycle"), &ChunkManager::toggle_d
     BIND_PROP(Variant::VECTOR3, player_position,           "position");
     BIND_PROP(Variant::BOOL,    auto_update,               "enabled");
     BIND_PROP(Variant::FLOAT,   sea_level,                 "level");
-    BIND_PROP(Variant::FLOAT,   base_height,               "height");
-    BIND_PROP(Variant::FLOAT,   height_scale,              "scale");
-    BIND_PROP(Variant::FLOAT,   mountain_scale,            "scale");
     BIND_PROP(Variant::BOOL,    debug_enabled,             "enabled");
     BIND_PROP(Variant::FLOAT,   debug_print_interval,      "interval");
     BIND_PROP(Variant::BOOL,    editor_enabled,            "enabled");
