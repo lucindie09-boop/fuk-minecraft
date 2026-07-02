@@ -140,6 +140,22 @@ void fragment(){
             sky_light_color*
             sky_light_intensity*
             0.08;
+
+        // Sun glint: smooth specular highlight where the sun's reflection
+        // hits the water, strongest low on the horizon at sunrise/sunset.
+        // Uses the flat face normal (no per-pixel wave noise), so the
+        // highlight shape comes purely from how the view ray sweeps across
+        // the surface geometry -- same as a classic flat-plane specular
+        // highlight. No noise involved means no aliasing risk.
+        vec3 incident=normalize(view_direction);
+        vec3 reflect_dir=reflect(incident,world_normal);
+        float specAngle=max(dot(reflect_dir,sun_dir_norm),0.0);
+        float glint=
+            pow(specAngle,90.0)*1.2+
+            pow(specAngle,20.0)*0.25;
+        glint*=max(sky_light_intensity,0.05);
+
+        lit_color+=vec3(1.0,0.85,0.6)*glint;
     }
 
     if(sky_light_intensity>0.1){
