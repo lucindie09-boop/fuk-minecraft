@@ -238,6 +238,9 @@ godot::Color ChunkManager::get_night_sky_color() const { return controller->get_
 void ChunkManager::set_fog_density(double density) { controller->set_fog_density(density); }
 double ChunkManager::get_fog_density() const { return controller->get_fog_density(); }
 
+void ChunkManager::set_lighting_preset(int32_t preset) { controller->set_lighting_preset(preset); }
+int32_t ChunkManager::get_lighting_preset() const { return controller->get_lighting_preset(); }
+
 // -------------------------------------------------------------------------
 // _bind_methods
 // -------------------------------------------------------------------------
@@ -317,5 +320,9 @@ BIND_PROP(Variant::FLOAT, day_time, "time");
     BIND_PROP(Variant::COLOR,   day_sky_color,             "color");
     BIND_PROP(Variant::COLOR,   night_sky_color,           "color");
     BIND_PROP(Variant::FLOAT,   fog_density,               "density");
+
+    ClassDB::bind_method(D_METHOD("set_lighting_preset", "preset"), &ChunkManager::set_lighting_preset);
+    ClassDB::bind_method(D_METHOD("get_lighting_preset"), &ChunkManager::get_lighting_preset);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "lighting_preset", PROPERTY_HINT_ENUM, "Main:0,Spooky:1"), "set_lighting_preset", "get_lighting_preset");
 #undef BIND_PROP
 }

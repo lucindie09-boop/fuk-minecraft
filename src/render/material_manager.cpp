@@ -29,6 +29,8 @@ void MaterialManager::update_fog_parameters(float fog_begin, float fog_end, cons
         material->set_shader_parameter("fog_density", fog_density);
         material->set_shader_parameter("height_fog_density", height_fog_density);
         material->set_shader_parameter("sea_level", sea_level);
+        material->set_shader_parameter("aerial_color", aerial_color);
+        material->set_shader_parameter("aerial_strength", 0.05f);
         material->set_shader_parameter("fog_scatter", fog_scatter);
         material->set_shader_parameter("fog_scatter_color", fog_scatter_color);
     }

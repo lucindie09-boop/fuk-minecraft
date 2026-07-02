@@ -63,6 +63,7 @@ VoxelEngineController::VoxelEngineController()
     lod_settings.lod1_radius = 24;
     lod_settings.enabled = true;
     mesh_manager.set_lod_settings(lod_settings);
+    environment_controller.set_lighting_preset(LightingPreset::Main);
 }
 
 VoxelEngineController::~VoxelEngineController() {
@@ -354,5 +355,12 @@ void VoxelEngineController::set_fog_density(double density) { environment_contro
 double VoxelEngineController::get_fog_density() const { return environment_controller.get_fog_density(); }
 void VoxelEngineController::set_render_distance_blocks(float blocks) { environment_controller.set_render_distance_blocks(blocks); }
 float VoxelEngineController::get_render_distance_blocks() const { return environment_controller.get_render_distance_blocks(); }
+
+void VoxelEngineController::set_lighting_preset(int32_t preset) {
+    lighting_preset_ = preset;
+    environment_controller.set_lighting_preset(
+        preset == 0 ? LightingPreset::Main : LightingPreset::Spooky
+    );
+}
 
 } // namespace VoxelEngine

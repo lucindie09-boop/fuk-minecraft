@@ -1,15 +1,18 @@
 #ifndef FUK_MINECRAFT_SKY_CONTROLLER_HPP
 #define FUK_MINECRAFT_SKY_CONTROLLER_HPP
 #include <godot_cpp/variant/color.hpp>
-#include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/classes/environment.hpp>
 #include <godot_cpp/classes/sky.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/shader.hpp>
-#include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
+#include <godot_cpp/classes/resource_loader.hpp>
+#include <cmath>
 #include <algorithm>
+#include <string>
 
 namespace VoxelEngine {
 
@@ -19,7 +22,7 @@ shader_type sky;
 uniform float blend = 1.0;
 uniform vec3 sun_direction = vec3(0.0, 1.0, 0.0);
 uniform vec3 sun_color = vec3(1.0, 0.95, 0.7);
-uniform float exposure = 1.0;
+uniform float exposure = 0.88;
 uniform vec3 horizon_color = vec3(0.30, 0.52, 0.85);
 uniform vec3 zenith_color = vec3(0.06, 0.20, 0.85);
 uniform float moon_phase = 0.5;
@@ -51,10 +54,11 @@ void sky() {
     float sun_elevation = sun_fwd.y;
     float sun_dot = max(dot(dir, sun_fwd), 0.0);
 
-    float gradient = 1.0 - (1.0 - up) * sqrt(1.0 - up);
+    float gradient = pow(up, 0.65);
     vec3 base_sky = mix(horizon_color, zenith_color, gradient);
+    base_sky *= mix(1.0, 0.84, gradient);
 
-    float sun_glow = pow(sun_dot, 20.0) * 0.3 + pow(sun_dot, 60.0) * 0.6;
+    float sun_glow = pow(sun_dot, 24.0) * 0.16 + pow(sun_dot, 72.0) * 0.32;
     base_sky += sun_color * sun_glow * smoothstep(-0.08, 0.08, sun_elevation);
 
     // Sun using texture
@@ -67,8 +71,8 @@ void sky() {
         float in_range = float(tex_uv.x >= 0.0 && tex_uv.x <= 1.0 && tex_uv.y >= 0.0 && tex_uv.y <= 1.0);
         vec4 texel = texture(sun_texture, tex_uv);
         float alpha = texel.a * in_range;
-        vec3 sun_tex_col = texel.rgb * vec3(1.0, 0.5, 0.08) * 2.0;
-        float glow = exp(-length(suv) * 8.0) * 0.2;
+        vec3 sun_tex_col = texel.rgb * vec3(1.0, 0.78, 0.50) * 1.2;
+        float glow = exp(-length(suv) * 8.0) * 0.08;
         base_sky += (sun_tex_col * alpha + glow) * sun_vis;
     }
 
@@ -83,9 +87,9 @@ void sky() {
         float in_range = float(tex_uv.x >= 0.0 && tex_uv.x <= 1.0 && tex_uv.y >= 0.0 && tex_uv.y <= 1.0);
         vec4 texel = texture(sun_texture, tex_uv);
         float alpha = texel.a * in_range;
-        vec3 moon_tint = vec3(0.5, 0.65, 1.0);
-        float halo = pow(moon_dot, 80.0) * 0.04;
-        base_sky += (texel.rgb * moon_tint * alpha * 1.5 + halo) * moon_vis * moon_dim;
+        vec3 moon_tint = vec3(0.72, 0.82, 1.0);
+        float halo = pow(moon_dot, 80.0) * 0.02;
+        base_sky += (texel.rgb * moon_tint * alpha * 1.1 + halo) * moon_vis * moon_dim;
     }
 
     // Stars
@@ -111,7 +115,7 @@ void sky() {
                 float a = tex.a * ir;
                 if (a > 0.01) {
                     float t = 0.85 + 0.15 * sin(TIME * 2.5 + h * 1000.0);
-                    base_sky += tex.rgb * a * t * star_vis * 4.0;
+                    base_sky += tex.rgb * a * t * star_vis * 2.8;
                 }
             }
         }
@@ -129,7 +133,7 @@ void sky() {
             vec4 tex = texture(star_texture, tev);
             float a = tex.a * ir;
             if (a > 0.01) {
-                base_sky += tex.rgb * a * star_vis * 8.0;
+                base_sky += tex.rgb * a * star_vis * 5.0;
             }
         }
     }
@@ -141,31 +145,37 @@ void sky() {
 )";
 
 class SkyController {
-private:
-    godot::Vector3 compute_horizon_color(float blend, float sun_elevation) const {
-        godot::Vector3 day_horizon(0.30f, 0.52f, 0.85f);
-        godot::Vector3 night_horizon(0.025f, 0.045f, 0.090f);
-
-        float sunset_factor = std::clamp(std::abs(sun_elevation) / 0.35f, 0.0f, 1.0f);
-        godot::Vector3 sunset_horizon(0.95f, 0.70f, 0.40f);
-
-        godot::Vector3 base_color = night_horizon.lerp(day_horizon, blend);
-        return base_color.lerp(sunset_horizon, (1.0f - sunset_factor) * 0.5f * blend);
-    }
-
-    godot::Vector3 compute_zenith_color(float blend) const {
-        godot::Vector3 day_zenith(0.06f, 0.20f, 0.85f);
-        godot::Vector3 night_zenith(0.001f, 0.004f, 0.015f);
-        return night_zenith.lerp(day_zenith, blend);
-    }
-
 public:
+    void set_horizon_day(const godot::Vector3& c) { day_horizon_ = c; }
+    void set_horizon_night(const godot::Vector3& c) { night_horizon_ = c; }
+    void set_horizon_sunset(const godot::Vector3& c) { sunset_horizon_ = c; }
+    void set_zenith_day(const godot::Vector3& c) { day_zenith_ = c; }
+    void set_zenith_night(const godot::Vector3& c) { night_zenith_ = c; }
+
+    void set_lighting_preset(const std::string& preset) {
+        if (preset == "main") {
+            day_horizon_ = godot::Vector3(0.48f, 0.72f, 0.94f);
+            night_horizon_ = godot::Vector3(0.04f, 0.07f, 0.14f);
+            sunset_horizon_ = godot::Vector3(0.96f, 0.70f, 0.52f);
+            day_zenith_ = godot::Vector3(0.10f, 0.28f, 0.74f);
+            night_zenith_ = godot::Vector3(0.02f, 0.04f, 0.10f);
+        } else if (preset == "spooky") {
+            day_horizon_ = godot::Vector3(0.50f, 0.55f, 0.62f);
+            night_horizon_ = godot::Vector3(0.025f, 0.045f, 0.090f);
+            sunset_horizon_ = godot::Vector3(0.60f, 0.50f, 0.42f);
+            day_zenith_ = godot::Vector3(0.40f, 0.45f, 0.55f);
+            night_zenith_ = godot::Vector3(0.001f, 0.004f, 0.015f);
+        }
+    }
+
     [[nodiscard]] godot::Vector3 get_horizon_color(float blend, float sun_elevation = 0.0f) const {
-        return compute_horizon_color(blend, sun_elevation);
+        float sunset_factor = std::clamp(std::abs(sun_elevation) / 0.35f, 0.0f, 1.0f);
+        godot::Vector3 base_color = night_horizon_.lerp(day_horizon_, blend);
+        return base_color.lerp(sunset_horizon_, (1.0f - sunset_factor) * 0.28f * blend);
     }
 
     [[nodiscard]] godot::Vector3 get_zenith_color(float blend) const {
-        return compute_zenith_color(blend);
+        return night_zenith_.lerp(day_zenith_, blend);
     }
 
     void ensure_sky(godot::Environment* env) {
@@ -220,8 +230,8 @@ public:
         cached_mat->set_shader_parameter(p_moon_phase, moon_phase);
 
         float sun_elevation = sun_dir.y;
-        godot::Vector3 horizon_color = compute_horizon_color(blend, sun_elevation);
-        godot::Vector3 zenith_color = compute_zenith_color(blend);
+        godot::Vector3 horizon_color = get_horizon_color(blend, sun_elevation);
+        godot::Vector3 zenith_color = get_zenith_color(blend);
         cached_mat->set_shader_parameter(p_horizon_color, horizon_color);
         cached_mat->set_shader_parameter(p_zenith_color, zenith_color);
     }
@@ -238,6 +248,12 @@ private:
     godot::StringName p_moon_phase = godot::StringName("moon_phase");
     godot::StringName p_horizon_color = godot::StringName("horizon_color");
     godot::StringName p_zenith_color = godot::StringName("zenith_color");
+
+    godot::Vector3 day_horizon_ = godot::Vector3(0.46f, 0.74f, 0.96f);
+    godot::Vector3 night_horizon_ = godot::Vector3(0.025f, 0.045f, 0.090f);
+    godot::Vector3 sunset_horizon_ = godot::Vector3(0.96f, 0.52f, 0.20f);
+    godot::Vector3 day_zenith_ = godot::Vector3(0.16f, 0.40f, 0.90f);
+    godot::Vector3 night_zenith_ = godot::Vector3(0.001f, 0.004f, 0.015f);
 };
 
 } // namespace VoxelEngine
