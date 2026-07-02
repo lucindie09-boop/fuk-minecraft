@@ -170,13 +170,17 @@ private:
         }
         float base  = params.base_height + w_base / w_total;
 
-        // Terrain amplitude control — some regions flat, some hilly, some mountainous
+        // Terrain amplitude control — distinct flat, hilly, and mountainous regions
         float terrain_control = terrain_noise.fbm(x + 7000.0f, z + 7000.0f, 3, 0.50f, 0.0015f);
-        float terrain_amplitude = lerp(10.0f, 24.0f, smoothstep(-0.5f, 0.7f, terrain_control));
+        float terrain_amplitude = lerp(8.0f, 32.0f, smoothstep(-0.3f, 0.5f, terrain_control));
+
+        // Anisotropic domain warp — subtle directional flow so contours aren't perfectly isotropic
+        float warp_x = terrain_noise.noise_2d(x * 0.002f, z * 0.002f) * 18.0f;
+        float warp_z = terrain_noise.noise_2d((x + 5000.0f) * 0.002f, (z + 5000.0f) * 0.002f) * 30.0f;
 
         // Broad low-frequency terrain with light ridged detail
-        float per_noise_val = terrain_noise.fbm(x, z, 4, 0.52f, 0.0064f) * 0.85f
-                            + terrain_noise.ridged_noise(x + 4000.0f, z + 4000.0f, 3, 0.55f, 0.016f) * 0.15f;
+        float per_noise_val = terrain_noise.fbm(x + warp_x, z + warp_z, 4, 0.52f, 0.0064f) * 0.85f
+                            + terrain_noise.ridged_noise(x + 4000.0f + warp_x, z + 4000.0f + warp_z, 3, 0.55f, 0.016f) * 0.15f;
 
         return base + per_noise_val * terrain_amplitude;
     }
