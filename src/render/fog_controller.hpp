@@ -41,13 +41,13 @@ public:
 
     [[nodiscard]] float get_shader_fog_density() const {
         if (fog_density <= 0.0f) return 0.0f;
-        return std::clamp(0.04f + fog_density * 0.10f, 0.0f, 0.16f);
+        return 0.7f;
     }
 
     [[nodiscard]] godot::Color get_fog_color(float blend, const godot::Color& horizon_color, float sun_elevation) const {
         if (!enabled) return fog_color_day;
         if (sun_elevation > 0.08f) {
-            return fog_color_day.lerp(horizon_color, 0.03f);
+            return fog_color_day.lerp(horizon_color, 0.5f);
         } else if (sun_elevation > -0.08f) {
             float t = (sun_elevation + 0.08f) / 0.16f;
             return fog_color_sunset.lerp(fog_color_day, t);
@@ -87,11 +87,11 @@ private:
     float depth_begin_day = 160.0f;
     float depth_end_night = 1024.0f;
     float depth_end_day = 1536.0f;
-    float fog_scatter_intensity = 0.24f;
-    godot::Color fog_color_day = godot::Color(0.70f, 0.82f, 0.94f, 1.0f);
-    godot::Color fog_color_night = godot::Color(0.05f, 0.09f, 0.18f, 1.0f);
-    godot::Color fog_color_sunset = godot::Color(0.82f, 0.68f, 0.56f, 1.0f);
-    godot::Color fog_color_dawn = godot::Color(0.84f, 0.71f, 0.58f, 1.0f);
+    float fog_scatter_intensity = 0.5f;
+    godot::Color fog_color_day = godot::Color(0.62f, 0.78f, 0.95f, 1.0f);
+    godot::Color fog_color_night = godot::Color(0.04f, 0.07f, 0.14f, 1.0f);
+    godot::Color fog_color_sunset = godot::Color(0.85f, 0.55f, 0.32f, 1.0f);
+    godot::Color fog_color_dawn = godot::Color(0.92f, 0.62f, 0.40f, 1.0f);
 };
 
 } // namespace VoxelEngine

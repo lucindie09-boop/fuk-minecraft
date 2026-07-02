@@ -1,7 +1,6 @@
 #ifndef FUK_MINECRAFT_ENVIRONMENT_CONTROLLER_HPP
 #define FUK_MINECRAFT_ENVIRONMENT_CONTROLLER_HPP
 #include <cstdint>
-#include <string>
 
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -59,22 +58,6 @@ double get_day_time() const { return day_night.get_time(); }
     void set_night_sky_color(const godot::Color& color) { day_night.set_night_color(color); update_shader_parameters(); }
     godot::Color get_night_sky_color() const { return day_night.get_night_color(); }
 
-    void set_lighting_preset(LightingPreset preset) {
-        day_night.set_lighting_preset(preset);
-        sky_controller.set_lighting_preset(preset == LightingPreset::Main ? "main" : "spooky");
-        switch (preset) {
-        case LightingPreset::Main:
-            lighting_horizon_ = godot::Vector3(0.52f, 0.72f, 0.92f);
-            lighting_zenith_ = godot::Vector3(0.12f, 0.30f, 0.76f);
-            break;
-        case LightingPreset::Spooky:
-            lighting_horizon_ = godot::Vector3(0.50f, 0.55f, 0.62f);
-            lighting_zenith_ = godot::Vector3(0.40f, 0.45f, 0.55f);
-            break;
-        }
-        update_shader_parameters();
-    }
-
     void set_fog_density(double density) { fog_controller.set_fog_density(static_cast<float>(density)); update_shader_parameters(); }
     double get_fog_density() const { return static_cast<double>(fog_controller.get_fog_density()); }
     void set_render_distance_blocks(float blocks) { fog_controller.set_render_distance_blocks(blocks); update_shader_parameters(); }
@@ -86,8 +69,6 @@ private:
     MaterialManager material_manager;
     SkyController sky_controller;
     FogController fog_controller;
-    godot::Vector3 lighting_horizon_ = godot::Vector3(0.52f, 0.72f, 0.92f);
-    godot::Vector3 lighting_zenith_ = godot::Vector3(0.12f, 0.30f, 0.76f);
 
     godot::Node* cached_parent = nullptr;
     godot::WorldEnvironment* cached_world_env = nullptr;
