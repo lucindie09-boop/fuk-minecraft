@@ -45,23 +45,13 @@ void EnvironmentController::update_environment(godot::Node* parent) {
 
     sky_controller.update(env.ptr(), blend, static_cast<float>(day_night.get_raw_time()),
                           static_cast<float>(day_night.get_cloud_time()), sun_color, sun_dir,
-                          day_night.get_moon_phase(), 0.66f + blend * 0.06f, day_night.get_sky_turbidity(), 1.0f,
+                          day_night.get_moon_phase(), 1.0f, day_night.get_sky_turbidity(), 1.0f,
                           fog_controller.get_fog_scatter(blend, elevation));
     fog_controller.update(env.ptr(), blend, horizon_color, fog_controller.get_fog_color(blend, horizon_color, elevation), fog_controller.get_fog_scatter(blend, elevation));
 
     env->set_ambient_source(godot::Environment::AMBIENT_SOURCE_SKY);
     env->set_ambient_light_color(day_night.get_ambient_color());
     env->set_ambient_light_energy(day_night.get_ambient_intensity());
-    env->set_tonemap_exposure(0.78f + (1.0f - blend) * 0.28f);
-    env->set_glow_enabled(true);
-    env->set_glow_intensity(0.08f);
-    env->set_glow_bloom(0.03f);
-    env->set_glow_mix(0.08f);
-    env->set_glow_hdr_luminance_cap(8.0f);
-    env->set_adjustment_enabled(true);
-    env->set_adjustment_saturation(0.92f);
-    env->set_adjustment_contrast(1.14f);
-    env->set_adjustment_brightness(0.90f + (1.0f - blend) * 0.24f);
 
     if (cached_sun_light) {
         godot::Vector3 light_pos = cached_sun_light->get_global_position();
@@ -72,15 +62,15 @@ void EnvironmentController::update_environment(godot::Node* parent) {
 
         if (sun_visible > 0.0f) {
             cached_sun_light->set_color(sun_color);
-            cached_sun_light->set_param(godot::Light3D::PARAM_ENERGY, 2.2f * sun_visible * day_night.get_day_intensity());
+            cached_sun_light->set_param(godot::Light3D::PARAM_ENERGY, 3.0f * sun_visible * day_night.get_day_intensity());
             cached_sun_light->set_shadow(true);
             cached_sun_light->set_param(godot::Light3D::PARAM_SHADOW_BIAS, 0.05f);
             cached_sun_light->set_param(godot::Light3D::PARAM_SHADOW_NORMAL_BIAS, 2.0f);
             cached_sun_light->set_param(godot::Light3D::PARAM_SHADOW_MAX_DISTANCE, 512.0f);
             cached_sun_light->set_sky_mode(godot::DirectionalLight3D::SKY_MODE_LIGHT_ONLY);
         } else if (moon_visible > 0.0f) {
-            cached_sun_light->set_color(godot::Color(0.62f, 0.72f, 0.88f));
-            cached_sun_light->set_param(godot::Light3D::PARAM_ENERGY, 0.64f * moon_visible * day_night.get_night_intensity());
+            cached_sun_light->set_color(godot::Color(0.55f, 0.65f, 0.85f));
+            cached_sun_light->set_param(godot::Light3D::PARAM_ENERGY, 0.25f * moon_visible * day_night.get_night_intensity());
             cached_sun_light->set_shadow(false);
             cached_sun_light->set_sky_mode(godot::DirectionalLight3D::SKY_MODE_LIGHT_ONLY);
         } else {
@@ -100,23 +90,21 @@ void EnvironmentController::update_shader_parameters() {
     const float elevation = day_night.get_sun_elevation();
     const godot::Color sun_color = day_night.get_sun_color();
     const godot::Color sky_warmth = sun_color;
-    const godot::Color fog_color = fog_controller.get_fog_color(blend, horizon_color, elevation);
 
-    godot::Vector3 night_horizon(0.08f, 0.12f, 0.18f);
-    godot::Vector3 night_zenith(0.05f, 0.08f, 0.14f);
-    godot::Vector3 lighting_horizon_target(fog_color.r, fog_color.g, fog_color.b);
-    godot::Vector3 lighting_horizon_color = night_horizon.lerp(lighting_horizon_target, blend);
-    godot::Vector3 lighting_zenith_color = night_zenith.lerp(lighting_zenith_, blend);
-    material_manager.update_shader_parameters(sky_intensity, sky_color, sun_dir, sky_warmth, lighting_horizon_color, lighting_zenith_color);
+    const godot::Vector3 sky_horizon_color = sky_controller.get_horizon_color(blend, elevation);
+    const godot::Vector3 sky_zenith_color = sky_controller.get_zenith_color(blend);
+
+    material_manager.update_shader_parameters(sky_intensity, sky_color, sun_dir, sky_warmth, sky_horizon_color, sky_zenith_color);
 
     const float fog_begin = fog_controller.get_fog_begin();
     const float fog_end = fog_controller.get_fog_end();
 
+    const godot::Color fog_color = godot::Color(sky_horizon_color.x, sky_horizon_color.y, sky_horizon_color.z);
     const float fog_scatter = fog_controller.get_fog_scatter(blend, elevation);
     const godot::Color fog_scatter_color = sun_color;
 
     material_manager.update_fog_parameters(fog_begin, fog_end, fog_color,
-                                           fog_controller.get_shader_fog_density(), 0.0035f, 200.0f, fog_color,
+                                           fog_controller.get_shader_fog_density(), 0.012f, 200.0f, fog_color,
                                            fog_scatter, fog_scatter_color);
 }
 

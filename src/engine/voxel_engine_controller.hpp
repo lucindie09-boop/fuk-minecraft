@@ -126,9 +126,6 @@ void toggle_day_night_cycle();
     void set_render_distance_blocks(float blocks);
     float get_render_distance_blocks() const;
 
-    void set_lighting_preset(int32_t preset);
-    int32_t get_lighting_preset() const { return lighting_preset_; }
-
     ChunkWorld& get_chunk_world() { return chunk_world; }
     MeshManager& get_mesh_manager() { return mesh_manager; }
     WorldUpdater& get_world_updater() { return world_updater; }
@@ -166,7 +163,6 @@ private:
     bool auto_update = true;
     bool editor_enabled = false;
 bool smooth_lighting = false;
-    int32_t lighting_preset_ = 0;
     float sea_level = 200.0f;
     float base_height = 212.0f;
     float height_scale = 48.0f;
