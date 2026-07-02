@@ -151,14 +151,14 @@ private:
         static constexpr struct { float t, h, base_off, scale_m; } centers[] = {
  {0.50f, 0.35f,   6.0f, 0.12f},   // 0 Plains — gentle rolling
             {0.50f, 0.78f,   4.0f, 1.00f},   // 1 Forest     — temperate, humid: hilly
-            {0.78f, 0.22f, -12.0f, 0.75f},   // 2 Desert     — hot, dry: dunes
+            {0.78f, 0.22f, -12.0f, 0.37f},   // 2 Desert     — hot, dry
         };
         static constexpr int NUM_BIOMES = 3;
         // Sample climate at the base frequency for smooth height blending
         float blend_temp = clamp01((temp_noise.noise_2d(x * BASE_TEMP_SCALE, z * BASE_TEMP_SCALE) + 1.0f) * 0.5f);
         float blend_hum  = clamp01((humidity_noise.noise_2d(x * BASE_HUM_SCALE,  z * BASE_HUM_SCALE)  + 1.0f) * 0.5f);
 
-        float w_total = 0.0f, w_base = 0.0f, w_scale = 0.0f;
+        float w_total = 0.0f, w_base = 0.0f;
         float weights[NUM_BIOMES];
         for (int i = 0; i < NUM_BIOMES; i++) {
             float dsq = (blend_temp - centers[i].t) * (blend_temp - centers[i].t)
@@ -166,27 +166,19 @@ private:
             float w = 1.0f / (dsq + 0.0001f);
             weights[i] = w;
             w_base  += w * centers[i].base_off;
-            w_scale += w * centers[i].scale_m;
             w_total += w;
         }
         float base  = params.base_height + w_base / w_total;
-        float scale = params.height_scale * (w_scale / w_total);
 
-        // Broad low-frequency terrain with ridged detail for non-circular breaks
+        // Terrain amplitude control — some regions flat, some hilly, some mountainous
+        float terrain_control = terrain_noise.fbm(x + 7000.0f, z + 7000.0f, 3, 0.50f, 0.0015f);
+        float terrain_amplitude = lerp(10.0f, 24.0f, smoothstep(-0.5f, 0.7f, terrain_control));
+
+        // Broad low-frequency terrain with light ridged detail
         float per_noise_val = terrain_noise.fbm(x, z, 4, 0.52f, 0.0064f) * 0.85f
                             + terrain_noise.ridged_noise(x + 4000.0f, z + 4000.0f, 3, 0.55f, 0.016f) * 0.15f;
 
-        // Per-biome noise recipes — all land biomes share the same simple recipe
-        float per_noise[NUM_BIOMES] = {};
-        per_noise[0] = per_noise_val;
-        per_noise[1] = per_noise_val;
-        per_noise[2] = per_noise_val;
-
-        float blended = 0.0f;
-        for (int i = 0; i < NUM_BIOMES; i++) blended += weights[i] * per_noise[i];
-        blended /= w_total;
-
-        return base + blended * scale;
+        return base + per_noise_val * terrain_amplitude;
     }
 
     // -------------------------------------------------------------------------
