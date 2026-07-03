@@ -38,6 +38,8 @@ struct Vertex {
 struct BuiltMeshData {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+    std::vector<Vertex> water_vertices;
+    std::vector<uint32_t> water_indices;
     bool empty = true;
 };
 

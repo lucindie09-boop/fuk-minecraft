@@ -9,7 +9,10 @@ namespace VoxelEngine {
 void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                            int32_t x, int32_t y, int32_t z,
                            FaceDirection direction, BlockID block_id, const BlockRegistry& registry) {
-    uint32_t vertex_count = vertices.size();
+    const bool is_water = block_id == BlockIDs::SURFACE_WATER || block_id == BlockIDs::WATER;
+    auto& dest_vertices = is_water ? water_vertices : vertices;
+    auto& dest_indices = is_water ? water_indices : indices;
+    uint32_t vertex_count = static_cast<uint32_t>(dest_vertices.size());
     int dir_index = static_cast<int>(direction);
 
     const BlockType& block_type = registry.get_block(block_id);
@@ -47,8 +50,17 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
                 neighbor_id = accessor.get_block(nx, ny, nz);
                 use_self_light = registry.get_block(neighbor_id).top_face_offset > 0.0f;
             }
-            if (use_self_light) {
-                side_lowered_offset = registry.get_block(neighbor_id).top_face_offset;
+            // Check the block below (y-1) for geometry offset, NOT the horizontal neighbor.
+            // This handles the case where a solid block sits above water:
+            // the water's lowered top face means the solid block's side face
+            // should extend downward to fill the gap.
+            // The horizontal neighbor check above is for lighting only (use_self_light).
+            int32_t by = y - 1;
+            if (by >= 0) {
+                BlockID below_id = chunk.get_block_unsafe(x, by, z);
+                if (registry.get_block(below_id).top_face_offset > 0.0f) {
+                    side_lowered_offset = registry.get_block(below_id).top_face_offset;
+                }
             }
         }
         if (use_self_light) {
@@ -125,29 +137,32 @@ light_keys[0] = light_keys[1] = light_keys[2] = light_keys[3] = light_key;
         v.light_g = static_cast<uint8_t>(kBlockBrightness[unpack_g(light_keys[i])] * 255.0f);
         v.light_b = static_cast<uint8_t>(kBlockBrightness[unpack_b(light_keys[i])] * 255.0f);
         v.sky_light = static_cast<uint8_t>(kBlockBrightness[unpack_sky(light_keys[i])] * 255.0f);
-        vertices.push_back(v);
+        dest_vertices.push_back(v);
     }
 
     if (!flip) {
-        indices.push_back(vertex_count + 0);
-        indices.push_back(vertex_count + 1);
-        indices.push_back(vertex_count + 2);
-        indices.push_back(vertex_count + 0);
-        indices.push_back(vertex_count + 2);
-        indices.push_back(vertex_count + 3);
+        dest_indices.push_back(vertex_count + 0);
+        dest_indices.push_back(vertex_count + 1);
+        dest_indices.push_back(vertex_count + 2);
+        dest_indices.push_back(vertex_count + 0);
+        dest_indices.push_back(vertex_count + 2);
+        dest_indices.push_back(vertex_count + 3);
     } else {
-        indices.push_back(vertex_count + 1);
-        indices.push_back(vertex_count + 2);
-        indices.push_back(vertex_count + 3);
-        indices.push_back(vertex_count + 1);
-        indices.push_back(vertex_count + 3);
-        indices.push_back(vertex_count + 0);
+        dest_indices.push_back(vertex_count + 1);
+        dest_indices.push_back(vertex_count + 2);
+        dest_indices.push_back(vertex_count + 3);
+        dest_indices.push_back(vertex_count + 1);
+        dest_indices.push_back(vertex_count + 3);
+        dest_indices.push_back(vertex_count + 0);
     }
 }
 
 void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                   const Face& face, uint16_t face_light_key, int rotation, const float ao[4], const BlockRegistry& registry) {
-    uint32_t vertex_count = vertices.size();
+    const bool is_water = face.block_id == BlockIDs::SURFACE_WATER || face.block_id == BlockIDs::WATER;
+    auto& dest_vertices = is_water ? water_vertices : vertices;
+    auto& dest_indices = is_water ? water_indices : indices;
+    uint32_t vertex_count = static_cast<uint32_t>(dest_vertices.size());
     int dir_index = static_cast<int>(face.direction);
 
     int32_t u_size = face.u_max + 1;
@@ -231,23 +246,23 @@ bool flip = (ao[0] + ao[0]) < (ao[1] + ao[3]);
         v.light_g = static_cast<uint8_t>(kBlockBrightness[unpack_g(face_light_key)] * 255.0f);
         v.light_b = static_cast<uint8_t>(kBlockBrightness[unpack_b(face_light_key)] * 255.0f);
         v.sky_light = static_cast<uint8_t>(kBlockBrightness[unpack_sky(face_light_key)] * 255.0f);
-        vertices.push_back(v);
+        dest_vertices.push_back(v);
     }
 
 if (!flip) {
-indices.push_back(vertex_count + 0);
-indices.push_back(vertex_count + 1);
-indices.push_back(vertex_count + 2);
-indices.push_back(vertex_count + 0);
-indices.push_back(vertex_count + 2);
-indices.push_back(vertex_count + 3);
+dest_indices.push_back(vertex_count + 0);
+dest_indices.push_back(vertex_count + 1);
+dest_indices.push_back(vertex_count + 2);
+dest_indices.push_back(vertex_count + 0);
+dest_indices.push_back(vertex_count + 2);
+dest_indices.push_back(vertex_count + 3);
 } else {
-indices.push_back(vertex_count + 1);
-indices.push_back(vertex_count + 2);
-indices.push_back(vertex_count + 3);
-indices.push_back(vertex_count + 1);
-indices.push_back(vertex_count + 3);
-indices.push_back(vertex_count + 0);
+dest_indices.push_back(vertex_count + 1);
+dest_indices.push_back(vertex_count + 2);
+dest_indices.push_back(vertex_count + 3);
+dest_indices.push_back(vertex_count + 1);
+dest_indices.push_back(vertex_count + 3);
+dest_indices.push_back(vertex_count + 0);
     }
 }
 

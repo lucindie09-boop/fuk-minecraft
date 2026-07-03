@@ -19,9 +19,11 @@ public:
                                float fog_scatter = 0.0f, const godot::Color& fog_scatter_color = godot::Color(1.0f, 0.85f, 0.55f, 1.0f));
 void update_player_light(const godot::Vector3& position, float radius, float intensity, const godot::Color& color);
     godot::Ref<godot::ShaderMaterial> get_material();
+    godot::Ref<godot::ShaderMaterial> get_water_material();
 
 private:
     godot::Ref<godot::ShaderMaterial> cached_material;
+    godot::Ref<godot::ShaderMaterial> cached_water_material;
 };
 
 } // namespace VoxelEngine

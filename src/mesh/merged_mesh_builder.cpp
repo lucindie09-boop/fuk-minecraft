@@ -22,6 +22,24 @@ void append_mesh(BuiltMeshData& merged, const std::vector<Vertex>& vertices, con
     }
 }
 
+void append_water_mesh(BuiltMeshData& merged, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices,
+                       float offset_x, float offset_y, float offset_z) {
+    const uint32_t base_index = static_cast<uint32_t>(merged.water_vertices.size());
+    merged.water_vertices.reserve(merged.water_vertices.size() + vertices.size());
+    merged.water_indices.reserve(merged.water_indices.size() + indices.size());
+
+    for (const Vertex& v : vertices) {
+        Vertex out = v;
+        out.x += offset_x;
+        out.y += offset_y;
+        out.z += offset_z;
+        merged.water_vertices.push_back(out);
+    }
+    for (uint32_t idx : indices) {
+        merged.water_indices.push_back(base_index + idx);
+    }
+}
+
 } // namespace
 
 BuiltMeshData MergedMeshBuilder::build_merged(const ChunkMap& chunk_map,
@@ -73,11 +91,20 @@ BuiltMeshData MergedMeshBuilder::build_merged(const ChunkMap& chunk_map,
                     static_cast<float>(oy * CHUNK_HEIGHT),
                     static_cast<float>(oz * CHUNK_DEPTH)
                 );
+                append_water_mesh(
+                    merged,
+                    builder.get_water_vertices(),
+                    builder.get_water_indices(),
+                    static_cast<float>(ox * CHUNK_WIDTH),
+                    static_cast<float>(oy * CHUNK_HEIGHT),
+                    static_cast<float>(oz * CHUNK_DEPTH)
+                );
             }
         }
     }
 
-    merged.empty = merged.vertices.empty() || merged.indices.empty();
+    merged.empty = (merged.vertices.empty() || merged.indices.empty()) &&
+                   (merged.water_vertices.empty() || merged.water_indices.empty());
     return merged;
 }
 

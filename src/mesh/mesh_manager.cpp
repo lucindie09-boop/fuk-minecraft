@@ -24,6 +24,47 @@ using namespace godot;
 
 namespace {
 constexpr int32_t kGreedyDisableBlockRadius = 16;
+
+PackedBuiltMeshData pack_vertex_array(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices) {
+    PackedBuiltMeshData packed;
+    if (vertices.empty() || indices.empty()) {
+        packed.empty = true;
+        return packed;
+    }
+    packed.empty = false;
+    const size_t n = vertices.size();
+    packed.vertices.resize(n);
+    packed.normals.resize(n);
+    packed.custom0.resize(n * 4);
+    packed.uvs.resize(n);
+    packed.custom1.resize(n * 4);
+    packed.indices.resize(indices.size());
+
+    Vector3* v_ptr = packed.vertices.ptrw();
+    Vector3* n_ptr = packed.normals.ptrw();
+    uint8_t* c0_ptr = packed.custom0.ptrw();
+    Vector2* uv_ptr = packed.uvs.ptrw();
+    int32_t* idx_ptr = packed.indices.ptrw();
+
+    constexpr float kInv127 = 1.0f / 127.0f;
+    constexpr float kInv255 = 1.0f / 255.0f;
+
+    for (size_t i = 0; i < n; i++) {
+        const Vertex& v = vertices[i];
+        v_ptr[i] = Vector3(v.x, v.y, v.z);
+        n_ptr[i] = Vector3(v.nx * kInv127, v.ny * kInv127, v.nz * kInv127);
+        c0_ptr[i * 4 + 0] = v.light_r;
+        c0_ptr[i * 4 + 1] = v.light_g;
+        c0_ptr[i * 4 + 2] = v.light_b;
+        c0_ptr[i * 4 + 3] = v.sky_light;
+        uv_ptr[i] = Vector2(v.u, v.v);
+        packed.custom1.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.texture_index));
+        packed.custom1.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.ao * kInv255));
+    }
+    std::memcpy(idx_ptr, indices.data(), indices.size() * sizeof(int32_t));
+    return packed;
+}
+
 }
 
 struct MeshBuildTask : Task {
@@ -131,53 +172,16 @@ struct MeshBuildTask : Task {
             data_or_null(all_neighbors[25])  // pos_x_pos_y_pos_z
         );
 
-        PackedBuiltMeshData packed_mesh;
-        const auto& vertices = builder.get_vertices();
-        const auto& indices = builder.get_indices();
+        PackedBuiltMeshData packed_mesh = pack_vertex_array(builder.get_vertices(), builder.get_indices());
+        PackedBuiltMeshData water_mesh = pack_vertex_array(builder.get_water_vertices(), builder.get_water_indices());
 
-        if (vertices.empty() || indices.empty()) {
-            packed_mesh.empty = true;
-        } else {
-            packed_mesh.empty = false;
-            const size_t n = vertices.size();
-            packed_mesh.vertices.resize(n);
-            packed_mesh.normals.resize(n);
-            packed_mesh.custom0.resize(n * 4);
-            packed_mesh.uvs.resize(n);
-            packed_mesh.custom1.resize(n * 4);
-            packed_mesh.indices.resize(indices.size());
-
-            Vector3* v_ptr = packed_mesh.vertices.ptrw();
-            Vector3* n_ptr = packed_mesh.normals.ptrw();
-            uint8_t* c0_ptr = packed_mesh.custom0.ptrw();
-            Vector2* uv_ptr = packed_mesh.uvs.ptrw();
-            int32_t* idx_ptr = packed_mesh.indices.ptrw();
-
-            constexpr float kInv127 = 1.0f / 127.0f;
-            constexpr float kInv255 = 1.0f / 255.0f;
-
-            for (size_t i = 0; i < n; i++) {
-                const Vertex& v = vertices[i];
-                v_ptr[i] = Vector3(v.x, v.y, v.z);
-                n_ptr[i] = Vector3(v.nx * kInv127, v.ny * kInv127, v.nz * kInv127);
-                c0_ptr[i * 4 + 0] = v.light_r;
-                c0_ptr[i * 4 + 1] = v.light_g;
-                c0_ptr[i * 4 + 2] = v.light_b;
-                c0_ptr[i * 4 + 3] = v.sky_light;
-                uv_ptr[i] = Vector2(v.u, v.v);
-                packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.texture_index));
-                packed_mesh.custom1.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.ao * kInv255));
-            }
-            std::memcpy(idx_ptr, indices.data(), indices.size() * sizeof(int32_t));
-        }
-
-        // 3.1 Content hash for upload deduplication
+        // Content hash for upload deduplication (opaque only; water always uploaded)
         uint64_t content_hash;
-        if (vertices.empty() || indices.empty()) {
+        if (builder.get_vertices().empty() || builder.get_indices().empty()) {
             content_hash = 0;
         } else {
-            content_hash = fnv1a_hash_bytes(vertices.data(), vertices.size() * sizeof(Vertex));
-            content_hash = fnv1a_hash_bytes(indices.data(), indices.size() * sizeof(uint32_t), content_hash);
+            content_hash = fnv1a_hash_bytes(builder.get_vertices().data(), builder.get_vertices().size() * sizeof(Vertex));
+            content_hash = fnv1a_hash_bytes(builder.get_indices().data(), builder.get_indices().size() * sizeof(uint32_t), content_hash);
         }
 
         if (async_epoch && epoch != async_epoch->load(std::memory_order_acquire)) {
@@ -193,6 +197,7 @@ struct MeshBuildTask : Task {
         completed.mesh_job_serial = mesh_job_serial;
         completed.source_chunk = render_data;
         completed.mesh_data = std::move(packed_mesh);
+        completed.water_mesh_data = std::move(water_mesh);
         completed.mesh_content_hash = content_hash;
 
         chunk_scheduler->push_completed_mesh(std::move(completed), high_priority);
@@ -203,7 +208,9 @@ struct MeshBuildTask : Task {
     bool high_priority;
 };
 
-void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads, const Ref<ShaderMaterial>& material) {
+void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads,
+                                           const Ref<ShaderMaterial>& material,
+                                           const Ref<ShaderMaterial>& water_material) {
     if (!chunk_scheduler || !chunk_map) return;
 
     int32_t dynamic_max_uploads = max_uploads;
@@ -232,7 +239,7 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             continue;
         }
 
-        if (completed.mesh_data.empty) {
+        if (completed.mesh_data.empty && completed.water_mesh_data.empty) {
             if (render_data->mesh_rid.is_valid()) {
                 rs->free_rid(render_data->mesh_rid);
                 render_data->mesh_rid = RID();
@@ -250,13 +257,6 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
                                        render_data->mesh_content_hash == completed.mesh_content_hash;
 
         if (!content_unchanged) {
-            arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
-            arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
-            arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
-            arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
-            arrays[Mesh::ARRAY_CUSTOM0] = completed.mesh_data.custom0;
-            arrays[Mesh::ARRAY_CUSTOM1] = completed.mesh_data.custom1;
-
             // Reuse mesh RID instead of creating a new one every frame
             if (!render_data->mesh_rid.is_valid()) {
                 render_data->mesh_rid = rs->mesh_create();
@@ -279,18 +279,51 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RG_HALF) << RenderingServer::ARRAY_FORMAT_CUSTOM1_SHIFT;
             fmt |= RenderingServer::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 
-            if (perf_timer) {
-                ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
-                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
-            } else {
-                rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+            // Surface 0: opaque
+            int surface_index = 0;
+            if (!completed.mesh_data.empty) {
+                arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
+                arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
+                arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
+                arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
+                arrays[Mesh::ARRAY_CUSTOM0] = completed.mesh_data.custom0;
+                arrays[Mesh::ARRAY_CUSTOM1] = completed.mesh_data.custom1;
+
+                if (perf_timer) {
+                    ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
+                    rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+                } else {
+                    rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+                }
+
+                if (material.is_valid()) {
+                    rs->mesh_surface_set_material(render_data->mesh_rid, surface_index, material->get_rid());
+                }
+                surface_index++;
             }
 
-            if (material.is_valid() && !render_data->material_set) {
-                rs->mesh_surface_set_material(render_data->mesh_rid, 0, material->get_rid());
-                render_data->material_set = true;
+            // Surface 1: water (if present)
+            if (!completed.water_mesh_data.empty) {
+                arrays[Mesh::ARRAY_VERTEX] = completed.water_mesh_data.vertices;
+                arrays[Mesh::ARRAY_TEX_UV] = completed.water_mesh_data.uvs;
+                arrays[Mesh::ARRAY_NORMAL] = completed.water_mesh_data.normals;
+                arrays[Mesh::ARRAY_INDEX] = completed.water_mesh_data.indices;
+                arrays[Mesh::ARRAY_CUSTOM0] = completed.water_mesh_data.custom0;
+                arrays[Mesh::ARRAY_CUSTOM1] = completed.water_mesh_data.custom1;
+
+                if (perf_timer) {
+                    ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
+                    rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+                } else {
+                    rs->mesh_add_surface_from_arrays(render_data->mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+                }
+
+                if (water_material.is_valid()) {
+                    rs->mesh_surface_set_material(render_data->mesh_rid, surface_index, water_material->get_rid());
+                }
             }
 
+            render_data->material_set = true;
             render_data->mesh_content_hash = completed.mesh_content_hash;
         }
 
@@ -334,7 +367,7 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
     }
     }
 
-    process_completed_group_meshes(epoch, budget_ms, dynamic_max_uploads, material, uploads_this_frame, 0.0);
+    process_completed_group_meshes(epoch, budget_ms, dynamic_max_uploads, material, water_material, uploads_this_frame, 0.0);
 }
 
 static inline bool should_cull_neighbor(BlockID current, BlockID neighbor, FaceDirection direction, const BlockRegistry& registry) {

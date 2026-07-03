@@ -78,13 +78,18 @@ BuiltMeshData MeshBuilder::build_mesh_data(
     BuiltMeshData result;
     result.vertices = std::move(vertices);
     result.indices = std::move(indices);
-    result.empty = result.vertices.empty() || result.indices.empty();
+    result.water_vertices = std::move(water_vertices);
+    result.water_indices = std::move(water_indices);
+    result.empty = (result.vertices.empty() || result.indices.empty()) &&
+                   (result.water_vertices.empty() || result.water_indices.empty());
     return result;
 }
 
 void MeshBuilder::clear() {
     vertices.clear();
     indices.clear();
+    water_vertices.clear();
+    water_indices.clear();
     vertices.reserve(kVertexReserve);
     indices.reserve(kIndexReserve);
 greedy_v_stats_local = {};

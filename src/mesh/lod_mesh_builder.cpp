@@ -96,7 +96,8 @@ BuiltMeshData LodMeshBuilder::build_downsampled(const ChunkMap& chunk_map,
     BuiltMeshData result;
     result.vertices = builder.get_vertices();
     result.indices = builder.get_indices();
-    result.empty = result.vertices.empty() || result.indices.empty();
+    result.water_vertices = builder.get_water_vertices();
+    result.water_indices = builder.get_water_indices();
 
     const float scale = static_cast<float>(downsample_step);
     for (Vertex& v : result.vertices) {
@@ -104,7 +105,14 @@ BuiltMeshData LodMeshBuilder::build_downsampled(const ChunkMap& chunk_map,
         v.y *= scale;
         v.z *= scale;
     }
+    for (Vertex& v : result.water_vertices) {
+        v.x *= scale;
+        v.y *= scale;
+        v.z *= scale;
+    }
 
+    result.empty = (result.vertices.empty() || result.indices.empty()) &&
+                   (result.water_vertices.empty() || result.water_indices.empty());
     return result;
 }
 

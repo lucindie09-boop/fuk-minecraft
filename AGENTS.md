@@ -40,9 +40,19 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - Renamed Mountains→StonePlateau biome across enum, block selection, PGM renderer, debug viewer.
 - **Removed `has_no_boundary_faces_produced`** — the interior-chunk optimization incorrectly culled meshes for fully-solid chunks adjacent to non-fully-solid neighbors (e.g. stone chunks 1 block below the plateau surface). Now only the `buried` check (all 6 neighbors fully_solid) skips mesh building; all other chunks go through the greedy mesher which correctly handles per-face culling.
 - **Fixed `count_section_blocks` Y-index formula** — the palette-section to chunk-section Y mapping used `si / 4` (z-part) instead of `(si / SECS_PER_DIM) % SECS_PER_DIM` (y-part), causing `is_section_all_air` to report wrong false for chunk section 1 (y=16..31) in surface chunks with blocks only in z>16.
+- **Translucent water**: split water faces (SURFACE_WATER=5, WATER=6) into separate mesh surface 1 with `blend_mix` shader.
+  - Created `shaders/voxel_shader_water.gdshader` with edge fade, water tint, shimmer/glint.
+  - Created `materials/voxel_material_water.tres` referencing water shader.
+  - Added `get_water_material()` to `MaterialManager`.
+  - Updated `mesh_types.hpp`, `chunk_types.hpp`, `mesh_builder.hpp/cpp`, `mesh_builder_faces.cpp` for water vertex routing.
+  - Updated `mesh_manager.cpp`, `mesh_manager_lod.cpp` for two-surface upload (surface 0 opaque, surface 1 water).
+  - Updated `world_updater.cpp` to pass water material.
+  - Beer-Lambert depth absorption removed (caused invisible water); simplified to `water_color.a * edge_fade` for now.
+- **Fixed LOD mesh builders dropping water data**: `lod_mesh_builder.cpp` and `merged_mesh_builder.cpp` now copy `water_vertices`/`water_indices` from the builder into the merged/downsampled output (fixes water missing at LOD group distance).
+- **Fixed `side_lowered_offset` in `mesh_builder_faces.cpp`**: was checking the HORIZONTAL neighbor for `top_face_offset` instead of the block BELOW (y-1). When water (offset=0.12) sat adjacent to wet sand (offset=0.0625), the water's offset collapsed the wet sand side face to ~0.12 units tall (2 pixels).
 
 ### In Progress
-- (none)
+- Water shader Beer-Lambert depth absorption temporarily removed (depth texture reconstruction was causing invisible water; simplified for now)
 
 ### Blocked
 - (none)
@@ -60,6 +70,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `PalStorage::section_get`/`section_set` are generic static helpers used by both block and light accessors, reducing code duplication.
 
 ## Next Steps
+- Re-add Beer-Lambert depth absorption to water shader once stable.
 - Verify memory consumption in-game with ~10k loaded chunks.
 - Confirm no regression in light propagation correctness.
 
@@ -94,3 +105,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `src/world/block_editor.cpp`: Uses auto-locking `get_block_world`
 - `src/world/chunk_world.cpp`: Uses `lock_keys` for dirty neighbor checks
 - `src/world/generation_scheduler.cpp` / `world_updater.cpp`: Uses auto-locking `contains`
+- `shaders/voxel_shader_water.gdshader`: Water shader variant (edge fade, shimmer, sun glint)
+- `materials/voxel_material_water.tres`: Water ShaderMaterial resource
+- `src/render/material_manager.hpp/cpp`: `get_water_material()` lazy loading
+- `src/mesh/mesh_builder_faces.cpp`: Water face routing in `add_face`/`add_greedy_face`

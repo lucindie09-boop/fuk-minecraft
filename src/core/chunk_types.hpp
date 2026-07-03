@@ -52,6 +52,7 @@ struct CompletedMesh {
     uint64_t mesh_job_serial = 0;
     ChunkRenderData* source_chunk = nullptr;
     PackedBuiltMeshData mesh_data;
+    PackedBuiltMeshData water_mesh_data;
     uint64_t mesh_content_hash = 0;
 };
 
@@ -63,6 +64,7 @@ struct CompletedGroupMesh {
     uint64_t mesh_job_serial = 0;
     LodGroupRenderData* source_group = nullptr;
     PackedBuiltMeshData mesh_data;
+    PackedBuiltMeshData water_mesh_data;
     uint64_t mesh_content_hash = 0;
 };
 

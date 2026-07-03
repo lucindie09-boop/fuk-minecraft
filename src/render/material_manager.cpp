@@ -59,3 +59,19 @@ Ref<ShaderMaterial> MaterialManager::get_material() {
     }
     return cached_material;
 }
+
+Ref<ShaderMaterial> MaterialManager::get_water_material() {
+    if (!cached_water_material.is_valid()) {
+        ResourceLoader* loader = ResourceLoader::get_singleton();
+        cached_water_material = loader->load("res://materials/voxel_material_water.tres");
+        if (!cached_water_material.is_valid()) {
+            ERR_PRINT("Failed to load voxel_material_water.tres");
+            return cached_water_material;
+        }
+        Ref<Texture2DArray> texture_array = TextureArrayGenerator::get_instance().get_texture_array();
+        if (texture_array.is_valid()) {
+            cached_water_material->set_shader_parameter("texture_array", texture_array);
+        }
+    }
+    return cached_water_material;
+}

@@ -48,9 +48,12 @@ public:
     void process_lod_transitions(uint64_t epoch);
     void split_lod_group_for_edit(uint64_t group_key);
 
-    void process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads, const godot::Ref<godot::ShaderMaterial>& material);
+    void process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads,
+                                   const godot::Ref<godot::ShaderMaterial>& material,
+                                   const godot::Ref<godot::ShaderMaterial>& water_material);
     void process_completed_group_meshes_standalone(uint64_t epoch, double budget_ms, int32_t max_uploads,
-                                                   const godot::Ref<godot::ShaderMaterial>& material);
+                                                   const godot::Ref<godot::ShaderMaterial>& material,
+                                                   const godot::Ref<godot::ShaderMaterial>& water_material);
     void rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,
                                          ChunkRenderData* render_data,
                                          ChunkRenderData* d_x_neg,
@@ -79,7 +82,9 @@ public:
 
 private:
     void process_completed_group_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads,
-                                        const godot::Ref<godot::ShaderMaterial>& material, int32_t& uploads_this_frame,
+                                        const godot::Ref<godot::ShaderMaterial>& material,
+                                        const godot::Ref<godot::ShaderMaterial>& water_material,
+                                        int32_t& uploads_this_frame,
                                         double elapsed_budget_ms);
     void apply_split_transition(const LodTransition& transition, uint64_t epoch);
     void apply_merge_transition(const LodTransition& transition, uint64_t epoch);

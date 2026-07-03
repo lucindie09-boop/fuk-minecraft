@@ -147,6 +147,8 @@ uint64_t reject_distance_limit = 0;
 
     const std::vector<Vertex>& get_vertices() const { return vertices; }
     const std::vector<uint32_t>& get_indices() const { return indices; }
+    const std::vector<Vertex>& get_water_vertices() const { return water_vertices; }
+    const std::vector<uint32_t>& get_water_indices() const { return water_indices; }
     size_t get_vertex_count() const { return vertices.size(); }
     size_t get_index_count() const { return indices.size(); }
     size_t get_triangle_count() const { return indices.size() / 3; }
@@ -253,6 +255,8 @@ private:
     // -------------------------------------------------------------------------
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+    std::vector<Vertex> water_vertices;
+    std::vector<uint32_t> water_indices;
     // Layout is [y][z][x] (not [x][z][y]) so that scans with x as the inner
     // loop variable (passive_greedy_mesh_horizontal) read sequential memory
     // instead of striding by SC_W * SC_D each step

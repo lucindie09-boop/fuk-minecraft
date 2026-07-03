@@ -314,14 +314,16 @@ void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t
             epoch,
             budgets.processing_budget_ms,
             upload_budget,
-            material_manager->get_material()
+            material_manager->get_material(),
+            material_manager->get_water_material()
         );
         if (mesh_manager->get_lod_settings().enabled) {
             mesh_manager->process_completed_group_meshes_standalone(
                 epoch,
                 budgets.processing_budget_ms,
                 upload_budget,
-                material_manager->get_material()
+                material_manager->get_material(),
+                material_manager->get_water_material()
             );
         }
     }
