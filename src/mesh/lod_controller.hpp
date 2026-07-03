@@ -46,6 +46,7 @@ public:
     bool has_incomplete_groups() const;
     void queue_incomplete_group_merges();
     void collect_all_group_splits(std::vector<LodTransition>& out_transitions) const;
+    void mark_groups_dirty_for_chunk(int32_t cx, int32_t cy, int32_t cz);
 
 private:
     ChunkMap* chunk_map = nullptr;

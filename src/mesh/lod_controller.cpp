@@ -167,6 +167,17 @@ void LodController::remove_group(uint64_t group_key) {
     groups.erase(group_key);
 }
 
+void LodController::mark_groups_dirty_for_chunk(int32_t cx, int32_t cy, int32_t cz) {
+    if (!chunk_map) return;
+    int32_t ax, ay, az;
+    lod_align_anchor(cx, cy, cz, lod_settings.merge_shift, ax, ay, az);
+    const uint64_t group_key = chunk_map->get_chunk_key(ax, ay, az);
+    LodGroupRenderData* group = get_group(group_key);
+    if (group && group->instance_rid.is_valid()) {
+        group->is_dirty = true;
+    }
+}
+
 void LodController::for_each_group(const std::function<void(uint64_t, LodGroupRenderData&)>& fn) {
     for (auto& [key, group] : groups) {
         fn(key, *group);

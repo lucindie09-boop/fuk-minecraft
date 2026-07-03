@@ -54,6 +54,8 @@ public:
     void process_completed_group_meshes_standalone(uint64_t epoch, double budget_ms, int32_t max_uploads,
                                                    const godot::Ref<godot::ShaderMaterial>& material,
                                                    const godot::Ref<godot::ShaderMaterial>& water_material);
+    void notify_chunk_installed(int32_t cx, int32_t cy, int32_t cz) { lod_controller.mark_groups_dirty_for_chunk(cx, cy, cz); }
+
     void rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,
                                          ChunkRenderData* render_data,
                                          ChunkRenderData* d_x_neg,
