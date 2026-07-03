@@ -42,7 +42,7 @@ uniform vec3 zenith_color=vec3(0.06,0.20,0.85);
 // Water appearance
 uniform vec4 water_color=vec4(0.15,0.45,0.55,0.85);
 uniform float water_edge_fade=0.3;
-uniform float water_absorption=2.0;
+uniform float water_absorption=4.0;
 
 // Depth texture for Beer-Lambert absorption
 uniform sampler2D depth_tex : hint_depth_texture, filter_linear;
@@ -253,7 +253,7 @@ void fragment(){
     float scene_depth = texture(depth_tex, SCREEN_UV).r;
     float water_depth = abs(scene_depth - FRAGCOORD.z);
     float depth_factor = 1.0 - exp(-water_absorption * water_depth * 5.0);
-    depth_factor = mix(0.15, 1.0, depth_factor);
+    depth_factor = mix(0.35, 1.0, depth_factor);
 
     ALBEDO = final_color * water_color.rgb;
     ALPHA = water_color.a * depth_factor * edge_fade;
