@@ -23,6 +23,10 @@ uniform float fog_density=0.6;
 uniform float height_fog_density=0.012;
 uniform float sea_level=64.0;
 
+// Color grading
+uniform float saturation=1.0;
+uniform float contrast=1.0;
+
 // Atmosphere
 uniform float fog_scatter=0.0;
 uniform vec3 fog_scatter_color=vec3(1.0,0.85,0.55);
@@ -247,6 +251,14 @@ void fragment(){
     final_color = mix(final_color, vec3(lum), desat);
 
     final_color = final_color * (2.51 * final_color + 0.03) / (final_color * (2.43 * final_color + 0.59) + 0.14);
+    final_color = clamp(final_color, 0.0, 1.0);
+
+    // Saturation
+    float l = dot(final_color, vec3(0.299, 0.587, 0.114));
+    final_color = mix(vec3(l), final_color, saturation);
+
+    // Contrast
+    final_color = (final_color - 0.5) * contrast + 0.5;
     final_color = clamp(final_color, 0.0, 1.0);
 
     ALBEDO = final_color;

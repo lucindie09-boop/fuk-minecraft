@@ -116,9 +116,8 @@ void sky() {
     float gradient = 1.0 - (1.0 - up) * sqrt(1.0 - up);
     vec3 base_sky = mix(horizon_color, zenith_color, gradient);
 
-    float sun_glow = pow(sun_dot, 20.0) * 0.3 + pow(sun_dot, 60.0) * 0.6;
+    float sun_glow = (pow(sun_dot, 20.0) * 0.04 + pow(sun_dot, 60.0) * 0.08);
     base_sky += sun_color * sun_glow * smoothstep(-0.08, 0.08, sun_elevation);
-
     // Sun using texture
     vec3 sun_right = normalize(cross(vec3(0.0, 1.0, 0.0), sun_fwd + vec3(0.001, 0.0, 0.0)));
     vec3 sun_up_vec = cross(sun_fwd, sun_right);
@@ -126,12 +125,12 @@ void sky() {
     if (dot(dir, sun_fwd) > 0.0 && sun_vis > 0.0) {
         vec2 suv = vec2(dot(dir, sun_right), dot(dir, sun_up_vec)) / dot(dir, sun_fwd);
         vec2 tex_uv = suv / 0.13 + 0.5;
-        float in_range = float(tex_uv.x >= 0.0 && tex_uv.x <= 1.0 && tex_uv.y >= 0.0 && tex_uv.y <= 1.0);
+        float edge = 1.0 - smoothstep(0.0, 0.04, min(min(tex_uv.x, 1.0 - tex_uv.x), min(tex_uv.y, 1.0 - tex_uv.y)));
+        float in_range = float(tex_uv.x >= -0.01 && tex_uv.x <= 1.01 && tex_uv.y >= -0.01 && tex_uv.y <= 1.01);
         vec4 texel = texture(sun_texture, tex_uv);
-        float alpha = texel.a * in_range;
+        float alpha = texel.a * (1.0 - edge * 0.4) * in_range;
         vec3 sun_tex_col = texel.rgb * vec3(1.0, 0.5, 0.08) * 2.0;
-        float glow = exp(-length(suv) * 8.0) * 0.2;
-        base_sky += (sun_tex_col * alpha + glow) * sun_vis;
+        base_sky += (sun_tex_col * alpha + exp(-length(suv) * 5.0) * 0.04) * sun_vis;
     }
 
     // Moon using texture
@@ -142,11 +141,12 @@ void sky() {
     if (moon_dot > 0.0 && moon_vis > 0.0) {
         vec2 muv = vec2(-dot(dir, sun_right), dot(dir, sun_up_vec)) / dot(dir, moon_dir);
         vec2 tex_uv = muv / 0.13 + 0.5;
-        float in_range = float(tex_uv.x >= 0.0 && tex_uv.x <= 1.0 && tex_uv.y >= 0.0 && tex_uv.y <= 1.0);
+        float edge = 1.0 - smoothstep(0.0, 0.04, min(min(tex_uv.x, 1.0 - tex_uv.x), min(tex_uv.y, 1.0 - tex_uv.y)));
+        float in_range = float(tex_uv.x >= -0.01 && tex_uv.x <= 1.01 && tex_uv.y >= -0.01 && tex_uv.y <= 1.01);
         vec4 texel = texture(sun_texture, tex_uv);
-        float alpha = texel.a * in_range;
+        float alpha = texel.a * (1.0 - edge * 0.4) * in_range;
         vec3 moon_tint = vec3(0.5, 0.65, 1.0);
-        float halo = pow(moon_dot, 80.0) * 0.04;
+        float halo = exp(-length(muv) * 5.0) * 0.02;
         base_sky += (texel.rgb * moon_tint * alpha * 1.5 + halo) * moon_vis * moon_dim;
     }
 

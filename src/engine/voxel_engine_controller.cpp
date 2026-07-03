@@ -330,6 +330,7 @@ double  VoxelEngineController::get_day_time() const { return environment_control
 
 void VoxelEngineController::set_time(double t) { set_day_time(t); }
 double VoxelEngineController::get_time() const { return get_day_time(); }
+godot::Vector3 VoxelEngineController::get_sun_direction() const { return environment_controller.get_sun_direction(); }
 
 void VoxelEngineController::set_day_night_cycle_enabled(bool enabled) { environment_controller.set_day_night_cycle_enabled(enabled); }
 bool VoxelEngineController::get_day_night_cycle_enabled() const { return environment_controller.get_day_night_cycle_enabled(); }

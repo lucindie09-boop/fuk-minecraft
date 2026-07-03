@@ -215,6 +215,7 @@ void ChunkManager::set_day_time(double t) { controller->set_day_time(t); }
 double ChunkManager::get_day_time() const { return controller->get_day_time(); }
 void ChunkManager::set_time(double t) { controller->set_time(t); }
 double ChunkManager::get_time() const { return controller->get_time(); }
+Vector3 ChunkManager::get_sun_direction() const { return controller->get_sun_direction(); }
 
 void ChunkManager::set_day_night_cycle_enabled(bool enabled) { controller->set_day_night_cycle_enabled(enabled); }
 bool ChunkManager::get_day_night_cycle_enabled() const { return controller->get_day_night_cycle_enabled(); }
@@ -258,6 +259,7 @@ void ChunkManager::_bind_methods() {
 ClassDB::bind_method(D_METHOD("set_time", "time"), &ChunkManager::set_time);
 ClassDB::bind_method(D_METHOD("get_time"), &ChunkManager::get_time);
 ClassDB::bind_method(D_METHOD("toggle_day_night_cycle"), &ChunkManager::toggle_day_night_cycle);
+ClassDB::bind_method(D_METHOD("get_sun_direction"), &ChunkManager::get_sun_direction);
 
     // Block ID constants (exposed to GDScript so block types can be referenced without hardcoding)
 #define BIND_BLOCK_CONSTANT(name, id) ClassDB::bind_integer_constant("ChunkManager", "", #name, id)

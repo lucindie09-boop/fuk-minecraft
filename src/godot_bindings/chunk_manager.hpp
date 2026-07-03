@@ -116,6 +116,7 @@ void set_day_time(double t);
 double get_day_time() const;
 void set_time(double t);
 double get_time() const;
+godot::Vector3 get_sun_direction() const;
 
     void set_day_night_cycle_enabled(bool enabled);
     bool get_day_night_cycle_enabled() const;

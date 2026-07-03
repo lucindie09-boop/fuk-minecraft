@@ -39,6 +39,7 @@ public:
 
 void set_day_time(double t) { day_night.set_time(t); update_shader_parameters(); }
 double get_day_time() const { return day_night.get_time(); }
+godot::Vector3 get_sun_direction() const { return day_night.get_sun_direction(); }
 
     void set_player_light_enabled(bool enabled) { player_light.set_enabled(enabled); }
     bool get_player_light_enabled() const { return player_light.get_enabled(); }
