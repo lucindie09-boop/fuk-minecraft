@@ -60,7 +60,7 @@ VoxelEngineController::VoxelEngineController()
     mesh_manager.set_mesh_render_distance(render_distance);
     LodSettings lod_settings;
     lod_settings.lod0_radius = 8;
-    lod_settings.lod1_radius = 24;
+    lod_settings.lod1_radius = 16;
     lod_settings.enabled = true;
     mesh_manager.set_lod_settings(lod_settings);
 }

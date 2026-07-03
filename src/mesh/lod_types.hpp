@@ -21,7 +21,7 @@ enum class ChunkRenderLod : uint8_t {
 
 struct LodSettings {
     int32_t lod0_radius = 8;
-    int32_t lod1_radius = 20;
+    int32_t lod1_radius = 16;
     int32_t merge_shift = 1;
     int32_t downsample_step = 2;
     int32_t hysteresis = 2;
