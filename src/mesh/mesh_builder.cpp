@@ -275,6 +275,19 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
                             int32_t nx = x + kDirectionOffsets[dir_idx][0];
                             int32_t ny = y + kDirectionOffsets[dir_idx][1];
                             int32_t nz = z + kDirectionOffsets[dir_idx][2];
+
+                            // If this direction goes outside the chunk and the neighbor
+                            // chunk doesn't exist yet, skip the face — it'll be generated
+                            // on rebuild when the neighbor arrives.
+                            if ((ny < 0 && !accessor.neg_y) ||
+                                (ny >= CHUNK_HEIGHT && !accessor.pos_y) ||
+                                (nx < 0 && !accessor.neg_x) ||
+                                (nx >= CHUNK_WIDTH && !accessor.pos_x) ||
+                                (nz < 0 && !accessor.neg_z) ||
+                                (nz >= CHUNK_DEPTH && !accessor.pos_z)) {
+                                continue;
+                            }
+
                             BlockID neighbor = accessor.get_block(nx, ny, nz);
                             if (!should_cull_against_neighbor(chunk, block_id, neighbor, dir, x, y, z, registry)) {
                                 add_face(chunk, accessor, x, y, z, dir, block_id, registry);

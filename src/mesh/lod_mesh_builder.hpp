@@ -1,6 +1,7 @@
 #ifndef FUK_MINECRAFT_LOD_MESH_BUILDER_HPP
 #define FUK_MINECRAFT_LOD_MESH_BUILDER_HPP
 
+#include "core/chunk_data.hpp"
 #include "core/chunk_map.hpp"
 #include "mesh/lod_types.hpp"
 #include "mesh/mesh_builder.hpp"

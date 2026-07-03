@@ -209,7 +209,10 @@ void LodController::queue_transition(LodTransitionKind kind, uint64_t group_key,
                                      LodLevel target_level,
                                      int32_t merge_shift,
                                      int32_t downsample_step) {
-    if (static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
+    // Always allow SplitToIndividual — those are time-critical (player is close).
+    // Throttle only merge/rebuild so distant-chunk grouping doesn't starve splits.
+    if (kind != LodTransitionKind::SplitToIndividual &&
+        static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
         return;
     }
     pending_transitions.push_back(LodTransition{

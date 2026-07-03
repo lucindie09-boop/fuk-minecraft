@@ -91,7 +91,16 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                     }
 
                     BlockID neighbor = accessor.get_block(x, nybase, z);
-                    bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
+
+                    // If this is the top/bottom y-slice and the neighbor chunk doesn't
+                    // exist, skip the face entirely — it'll be added on rebuild when the
+                    // neighbor appears.
+                    const bool missing_y_boundary =
+                        (direction == FaceDirection::Top && y == CHUNK_HEIGHT - 1 && !accessor.pos_y) ||
+                        (direction == FaceDirection::Bottom && y == 0 && !accessor.neg_y);
+
+                    bool cull = missing_y_boundary ||
+                        should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
 
                     if (cull) {
                         flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
@@ -268,6 +277,14 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                                     break;
                                 default: break;
                             }
+                        } else {
+                            // Neighbor chunk doesn't exist on this side — skip face.
+                            // The chunk will be dirtied when the neighbor eventually loads
+                            // and the face will be generated correctly then.
+                            flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
+                                                 current_block, current_light_key, current_rotation, registry);
+                            merge_start = -1;
+                            continue;
                         }
                     } else {
                         neighbor = chunk.get_block_unsafe(x + center_nx_off, y, z + center_nz_off);

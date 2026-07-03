@@ -63,7 +63,6 @@ mouse_click_right={
 
 [rendering]
 
-occlusion_culling/bvh_build_quality=0
 occlusion_culling/jitter_projection=false
 reflections/sky_reflections/texture_array_reflections=false
 reflections/specular_occlusion/enabled=false

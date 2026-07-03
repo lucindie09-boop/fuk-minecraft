@@ -47,12 +47,13 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
   - Updated `mesh_types.hpp`, `chunk_types.hpp`, `mesh_builder.hpp/cpp`, `mesh_builder_faces.cpp` for water vertex routing.
   - Updated `mesh_manager.cpp`, `mesh_manager_lod.cpp` for two-surface upload (surface 0 opaque, surface 1 water).
   - Updated `world_updater.cpp` to pass water material.
-  - Beer-Lambert depth absorption removed (caused invisible water); simplified to `water_color.a * edge_fade` for now.
+  - Beer-Lambert depth absorption via `depth_tex` + non-linear depth difference; tuned absorption=4.0, floor=0.35.
 - **Fixed LOD mesh builders dropping water data**: `lod_mesh_builder.cpp` and `merged_mesh_builder.cpp` now copy `water_vertices`/`water_indices` from the builder into the merged/downsampled output (fixes water missing at LOD group distance).
 - **Fixed `side_lowered_offset` in `mesh_builder_faces.cpp`**: was checking the HORIZONTAL neighbor for `top_face_offset` instead of the block BELOW (y-1). When water (offset=0.12) sat adjacent to wet sand (offset=0.0625), the water's offset collapsed the wet sand side face to ~0.12 units tall (2 pixels).
+- **Fixed LOD lighting (day/night cycle)**: replaced hardcoded `sky_light=15`/`light=15` in `fill_downsampled_chunk` and `fill_face_neighbor` with actual sampled values from the macro-cell center block via new helper `sample_macro_cell_light`.
 
 ### In Progress
-- Water shader Beer-Lambert depth absorption temporarily removed (depth texture reconstruction was causing invisible water; simplified for now)
+- (none)
 
 ### Blocked
 - (none)
@@ -70,7 +71,6 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `PalStorage::section_get`/`section_set` are generic static helpers used by both block and light accessors, reducing code duplication.
 
 ## Next Steps
-- Re-add Beer-Lambert depth absorption to water shader once stable.
 - Verify memory consumption in-game with ~10k loaded chunks.
 - Confirm no regression in light propagation correctness.
 
