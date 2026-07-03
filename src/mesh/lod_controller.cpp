@@ -10,6 +10,7 @@ namespace VoxelEngine {
 
 void LodController::clear() {
     groups.clear();
+    pending_group_retries.clear();
     pending_transitions.clear();
     ring_stats = {};
     last_player_cx = INT32_MIN;
@@ -399,23 +400,84 @@ bool LodController::update(int32_t player_cx, int32_t player_cy, int32_t player_
         uint64_t member_keys[8]{};
         int32_t member_count = 0;
         if (!collect_group_members(ax, ay, az, member_keys, member_count)) {
-            get_or_create_group(ax, ay, az);
+            pending_group_retries.insert(group_key);
             continue;
+        }
+
+        LodLevel resolved_level = desired_level;
+        bool can_merge_group = true;
+        for (int32_t i = 0; i < member_count; ++i) {
+            int32_t mcx, mcy, mcz;
+            ChunkMap::decode_chunk_key(member_keys[i], mcx, mcy, mcz);
+            ChunkRenderData* member_data = chunk_map->get_chunk_render_data(mcx, mcy, mcz);
+            if (!member_data || !member_data->data) {
+                can_merge_group = false;
+                break;
+            }
+            if (member_data->effective_lod == LodLevel::Individual) {
+                can_merge_group = false;
+                break;
+            }
+            // Delay the first grouped LOD handoff until every member chunk has
+            // completed at least one individual mesh upload. This avoids hiding
+            // freshly generated chunks behind a group instance while their initial
+            // render state is still settling.
+            if (!member_data->mesh_rid.is_valid() ||
+                member_data->is_mesh_dirty ||
+                member_data->pending_mesh_builds.load(std::memory_order_acquire) > 0 ||
+                member_data->pending_mesh_uploads.load(std::memory_order_acquire) > 0) {
+                can_merge_group = false;
+                break;
+            }
+            if (static_cast<uint8_t>(member_data->effective_lod) < static_cast<uint8_t>(resolved_level)) {
+                resolved_level = member_data->effective_lod;
+            }
         }
 
         LodGroupRenderData* group = get_group(group_key);
+        if (!can_merge_group) {
+            if (group && group->instance_rid.is_valid() && split_groups.insert(group_key).second) {
+                queue_transition(LodTransitionKind::SplitToIndividual, group_key,
+                                 0, 0, 0, LodLevel::Individual);
+            }
+            continue;
+        }
         if (!group) {
-            queue_transition(LodTransitionKind::MergeGroup, group_key, ax, ay, az, desired_level);
+            queue_transition(LodTransitionKind::MergeGroup, group_key, ax, ay, az, resolved_level);
             continue;
         }
 
-        if (group->level != desired_level) {
-            queue_transition(LodTransitionKind::RebuildGroup, group_key, ax, ay, az, desired_level);
+        if (group->level != resolved_level) {
+            queue_transition(LodTransitionKind::RebuildGroup, group_key, ax, ay, az, resolved_level);
             continue;
         }
 
         if (!group->instance_rid.is_valid() || group->is_dirty) {
-            queue_transition(LodTransitionKind::MergeGroup, group_key, ax, ay, az, desired_level);
+            queue_transition(LodTransitionKind::MergeGroup, group_key, ax, ay, az, resolved_level);
+        }
+    }
+
+    if (!pending_group_retries.empty()) {
+        std::vector<uint64_t> completed;
+        for (uint64_t retry_key : pending_group_retries) {
+            if (static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
+                break;
+            }
+            int32_t ax, ay, az;
+            ChunkMap::decode_chunk_key(retry_key, ax, ay, az);
+            uint64_t member_keys[8]{};
+            int32_t member_count = 0;
+            if (!collect_group_members(ax, ay, az, member_keys, member_count)) {
+                continue;
+            }
+            get_or_create_group(ax, ay, az);
+            auto it = desired_group_levels.find(retry_key);
+            const LodLevel level = it != desired_group_levels.end() ? it->second : LodLevel::MergedFull;
+            queue_transition(LodTransitionKind::MergeGroup, retry_key, ax, ay, az, level);
+            completed.push_back(retry_key);
+        }
+        for (uint64_t key : completed) {
+            pending_group_retries.erase(key);
         }
     }
 

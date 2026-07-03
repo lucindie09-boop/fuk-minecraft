@@ -96,7 +96,6 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
         int32_t  visible_in_sweep        = 0;
         int32_t  total_in_sweep          = 0;
 
-        auto lock = chunk_world->get_chunk_map().lock_all();
         while (frustum_checks < max_frustum_checks &&
                frustum_generations < std::max(dynamic_max_generations / 2, 1) &&
                chunk_world->get_scheduler().can_enqueue(budgets.completed_queue_backlog)) {
@@ -118,7 +117,7 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
             ++visible_in_sweep;
 
             uint64_t key = chunk_world->get_chunk_map().get_chunk_key(cx, cy, cz);
-            if (chunk_world->get_chunk_map().contains_fast(key)) continue;
+            if (chunk_world->get_chunk_map().contains(key)) continue;
 
             int32_t chunk_bottom = cy * CHUNK_HEIGHT;
             int32_t chunk_top    = (cy + 1) * CHUNK_HEIGHT;
@@ -129,12 +128,10 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
                 if (chunk_bottom > surface_h + 32.0f) continue;
             }
 
-            { auto _ = std::move(lock);
             if (generate_chunk(cx, cy, cz, epoch)) {
                 ++frustum_generations;
                 generation_sweep_generated = true;
-            } }
-            lock = chunk_world->get_chunk_map().lock_all();
+            }
         }
         if (total_in_sweep > 0) {
             visible_chunk_ratio_ = static_cast<float>(visible_in_sweep) / static_cast<float>(total_in_sweep);
@@ -146,7 +143,6 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
         size_t   checks              = 0;
         int32_t  generations_this_frame = 0;
 
-        auto lock = chunk_world->get_chunk_map().lock_all();
         while (checks < max_checks_per_frame &&
                generations_this_frame < dynamic_max_generations &&
                chunk_world->get_scheduler().can_enqueue(budgets.completed_queue_backlog)) {
@@ -168,7 +164,7 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
             int32_t cz = pcz + offset.z;
 
             uint64_t key = chunk_world->get_chunk_map().get_chunk_key(cx, cy, cz);
-            if (chunk_world->get_chunk_map().contains_fast(key)) {
+            if (chunk_world->get_chunk_map().contains(key)) {
                 continue;
             }
 
@@ -181,14 +177,10 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
                 if (chunk_bottom > surface_h + 32.0f) continue;
             }
 
-            { auto _ = std::move(lock);
-
             if (generate_chunk(cx, cy, cz, epoch)) {
                 ++generations_this_frame;
                 generation_sweep_generated = true;
-            } }
-
-            lock = chunk_world->get_chunk_map().lock_all();
+            }
         }
     }
 }

@@ -69,6 +69,37 @@ PackedBuiltMeshData pack_vertex_array_lod(const std::vector<Vertex>& vertices, c
     return packed;
 }
 
+int32_t axis_distance_to_range(int32_t value, int32_t min_value, int32_t max_value) {
+    if (value < min_value) {
+        return min_value - value;
+    }
+    if (value > max_value) {
+        return value - max_value;
+    }
+    return 0;
+}
+
+bool is_group_visible_in_range(int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz,
+                               int32_t merge_size, int32_t render_distance, int32_t vertical_buffer,
+                               int32_t player_cx, int32_t player_cy, int32_t player_cz) {
+    if (render_distance <= 0 || player_cx == INT32_MIN) {
+        return true;
+    }
+
+    const int32_t max_cx = anchor_cx + merge_size - 1;
+    const int32_t max_cy = anchor_cy + merge_size - 1;
+    const int32_t max_cz = anchor_cz + merge_size - 1;
+    const int32_t dx = axis_distance_to_range(player_cx, anchor_cx, max_cx);
+    const int32_t dz = axis_distance_to_range(player_cz, anchor_cz, max_cz);
+
+    if ((dx * dx + dz * dz) > (render_distance * render_distance)) {
+        return false;
+    }
+
+    return player_cy >= (anchor_cy - vertical_buffer) &&
+           player_cy <= (max_cy + vertical_buffer);
+}
+
 struct GroupMeshBuildTask : Task {
     ChunkMap* chunk_map = nullptr;
     ChunkScheduler* chunk_scheduler = nullptr;
@@ -258,6 +289,8 @@ void MeshManager::free_group_render_data(LodGroupRenderData& group) {
         rs->free_rid(group.instance_rid);
         group.instance_rid = RID();
     }
+    group.mesh_content_hash = 0;
+    group.material_set = false;
 }
 
 void MeshManager::release_group_to_individual(LodGroupRenderData* group) {
@@ -537,7 +570,9 @@ void MeshManager::apply_rebuild_transition(const LodTransition& transition, uint
         return;
     }
 
-    free_group_render_data(*group);
+    // Keep the current group mesh/instance alive until the replacement upload lands.
+    // Freeing it here leaves every member hidden while the async rebuild runs, which
+    // shows up in-game as LOD groups disappearing or partially popping out.
     group->level = transition.target_level;
     group->is_dirty = true;
     apply_merge_transition(transition, epoch);
@@ -709,13 +744,16 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
 
         // 4.4 Instance budget cap: skip group instance if anchor beyond render distance
         // Uses same 2D horizontal distance + vertical buffer logic as the LOD classifier
-        bool group_within_range = true;
-        if (mesh_render_distance > 0 && last_player_chunk_x != INT32_MIN) {
-            const int32_t dx = completed.anchor_cx - last_player_chunk_x;
-            const int32_t dz = completed.anchor_cz - last_player_chunk_z;
-            const int32_t dy = std::abs(completed.anchor_cy - last_player_chunk_y);
-            group_within_range = (dx*dx + dz*dz) <= (mesh_render_distance * mesh_render_distance) && dy <= 2;
-        }
+        const bool group_within_range = is_group_visible_in_range(
+            completed.anchor_cx,
+            completed.anchor_cy,
+            completed.anchor_cz,
+            merge_size,
+            mesh_render_distance,
+            settings.vertical_buffer,
+            last_player_chunk_x,
+            last_player_chunk_y,
+            last_player_chunk_z);
 
         if (!group_within_range) {
             if (group->instance_rid.is_valid()) {
@@ -743,7 +781,11 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
             }
         }
 
-        if (group_within_range) {
+        const bool group_instance_ready = group_within_range &&
+                                          group->instance_rid.is_valid() &&
+                                          group->mesh_rid.is_valid();
+        const bool keep_individual_members = group_within_range && !group_instance_ready;
+        if (group_instance_ready) {
             rs->instance_set_visible(group->instance_rid, true);
         }
 
@@ -751,11 +793,24 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
             int32_t mcx, mcy, mcz;
             ChunkMap::decode_chunk_key(group->member_keys[i], mcx, mcy, mcz);
             ChunkRenderData* member_data = chunk_map->get_chunk_render_data(mcx, mcy, mcz);
-            if (member_data) {
+            if (!member_data) {
+                continue;
+            }
+            if (group_instance_ready) {
                 member_data->render_lod = ChunkRenderLod::HiddenInGroup;
                 hide_chunk_instance(member_data);
-                member_data->pending_mesh_uploads.fetch_sub(1, std::memory_order_relaxed);
+            } else if (keep_individual_members) {
+                member_data->render_lod = ChunkRenderLod::Individual;
+                member_data->lod_group_key = 0;
+                member_data->current_lod = LodLevel::Individual;
+                member_data->effective_lod = LodLevel::Individual;
+                show_chunk_instance(member_data, mcx, mcy, mcz);
+                queue_immediate_dirty_chunk(mcx, mcy, mcz);
+            } else {
+                member_data->render_lod = ChunkRenderLod::HiddenInGroup;
+                hide_chunk_instance(member_data);
             }
+            member_data->pending_mesh_uploads.fetch_sub(1, std::memory_order_relaxed);
         }
 
         ++uploads_this_frame;

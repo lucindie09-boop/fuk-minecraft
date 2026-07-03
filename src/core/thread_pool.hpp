@@ -66,25 +66,19 @@ public:
             else
                 q.normal.emplace(std::move(task));
         }
+        total_queue_size_.fetch_add(1, std::memory_order_relaxed);
+        if (high_priority) {
+            high_priority_queue_size_.fetch_add(1, std::memory_order_relaxed);
+        }
         q.cv.notify_one();
     }
 
     [[nodiscard]] std::size_t get_queue_size() const {
-        std::size_t total = 0;
-        for (auto& q : queues_) {
-            std::unique_lock<std::mutex> lock(q.mtx);
-            total += q.high_pri.size() + q.normal.size();
-        }
-        return total;
+        return total_queue_size_.load(std::memory_order_relaxed);
     }
 
     [[nodiscard]] std::size_t get_high_priority_queue_size() const {
-        std::size_t total = 0;
-        for (auto& q : queues_) {
-            std::unique_lock<std::mutex> lock(q.mtx);
-            total += q.high_pri.size();
-        }
-        return total;
+        return high_priority_queue_size_.load(std::memory_order_relaxed);
     }
 
     [[nodiscard]] std::size_t get_worker_count() const noexcept {
@@ -126,10 +120,12 @@ private:
                 if (!q.high_pri.empty()) {
                     task = std::move(q.high_pri.front());
                     q.high_pri.pop();
+                    high_priority_queue_size_.fetch_sub(1, std::memory_order_relaxed);
                 } else {
                     task = std::move(q.normal.front());
                     q.normal.pop();
                 }
+                total_queue_size_.fetch_sub(1, std::memory_order_relaxed);
             }
             task->execute();
         }
@@ -144,6 +140,8 @@ private:
     std::deque<PerWorker> queues_;
     std::atomic<bool> stop_flag_;
     std::atomic<std::size_t> next_worker_;
+    std::atomic<std::size_t> total_queue_size_{0};
+    std::atomic<std::size_t> high_priority_queue_size_{0};
 };
 
 } // namespace VoxelEngine

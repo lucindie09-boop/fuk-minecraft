@@ -24,13 +24,28 @@ public:
         immediate_dirty_mesh_pending.clear();
         skip_next_dirty_mesh_rebuild.clear();
         urgent_mesh_chunks.clear();
+        player_chunk_x_ = INT32_MIN;
+        player_chunk_y_ = INT32_MIN;
+        player_chunk_z_ = INT32_MIN;
+        frustum_ = nullptr;
+        priority_revision_ = 0;
     }
 
     void queue_dirty_chunk(uint64_t key, int32_t dist_sq, bool urgent) {
         if (!dirty_mesh_pending.insert(key).second) {
             return;
         }
-        dirty_mesh_queue.push({key, dist_sq, urgent});
+        DirtyChunkEntry entry;
+        entry.key = key;
+        entry.dist_sq = dist_sq;
+        entry.urgent = urgent || is_urgent(key);
+        entry.priority_revision = priority_revision_;
+        if (frustum_ && player_chunk_x_ != INT32_MIN) {
+            int32_t cx, cy, cz;
+            ChunkMap::decode_chunk_key(key, cx, cy, cz);
+            entry.in_frustum = frustum_->is_chunk_visible(cx, cy, cz);
+        }
+        dirty_mesh_queue.push(entry);
     }
 
     void queue_immediate_dirty_chunk(uint64_t key, bool is_already_dirty) {
@@ -57,27 +72,11 @@ public:
 
     void reprioritize(int32_t player_chunk_x, int32_t player_chunk_y, int32_t player_chunk_z,
                       const Frustum* frustum = nullptr) {
-        if (dirty_mesh_queue.empty()) {
-            return;
-        }
-
-        std::priority_queue<DirtyChunkEntry, std::vector<DirtyChunkEntry>, std::greater<DirtyChunkEntry>> reprioritized;
-        while (!dirty_mesh_queue.empty()) {
-            DirtyChunkEntry entry = dirty_mesh_queue.top();
-            dirty_mesh_queue.pop();
-
-            int32_t cx, cy, cz;
-            ChunkMap::decode_chunk_key(entry.key, cx, cy, cz);
-            const int32_t dx = cx - player_chunk_x;
-            const int32_t dy = cy - player_chunk_y;
-            const int32_t dz = cz - player_chunk_z;
-            entry.dist_sq = dx * dx + dy * dy + dz * dz;
-            entry.urgent = entry.urgent || is_urgent(entry.key);
-            entry.in_frustum = frustum ? frustum->is_chunk_visible(cx, cy, cz) : false;
-            reprioritized.push(entry);
-        }
-
-        dirty_mesh_queue = std::move(reprioritized);
+        player_chunk_x_ = player_chunk_x;
+        player_chunk_y_ = player_chunk_y;
+        player_chunk_z_ = player_chunk_z;
+        frustum_ = frustum;
+        ++priority_revision_;
     }
 
     // Process the mesh queues. Calls the provided callback for each chunk that needs rebuilding.
@@ -112,6 +111,21 @@ template<typename RebuildCallback>
 
             DirtyChunkEntry entry = dirty_mesh_queue.top();
             dirty_mesh_queue.pop();
+
+            if (entry.priority_revision != priority_revision_ && player_chunk_x_ != INT32_MIN) {
+                int32_t cx, cy, cz;
+                ChunkMap::decode_chunk_key(entry.key, cx, cy, cz);
+                const int32_t dx = cx - player_chunk_x_;
+                const int32_t dy = cy - player_chunk_y_;
+                const int32_t dz = cz - player_chunk_z_;
+                entry.dist_sq = dx * dx + dy * dy + dz * dz;
+                entry.urgent = entry.urgent || is_urgent(entry.key);
+                entry.in_frustum = frustum_ ? frustum_->is_chunk_visible(cx, cy, cz) : false;
+                entry.priority_revision = priority_revision_;
+                dirty_mesh_queue.push(entry);
+                continue;
+            }
+
             dirty_mesh_pending.erase(entry.key);
             if (skip_next_dirty_mesh_rebuild.erase(entry.key) > 0) {
                 continue;
@@ -145,6 +159,11 @@ private:
     std::unordered_set<uint64_t> immediate_dirty_mesh_pending;
     std::unordered_set<uint64_t> skip_next_dirty_mesh_rebuild;
     std::unordered_set<uint64_t> urgent_mesh_chunks;
+    int32_t player_chunk_x_ = INT32_MIN;
+    int32_t player_chunk_y_ = INT32_MIN;
+    int32_t player_chunk_z_ = INT32_MIN;
+    const Frustum* frustum_ = nullptr;
+    uint32_t priority_revision_ = 0;
 };
 
 } // namespace VoxelEngine

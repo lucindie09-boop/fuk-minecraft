@@ -64,23 +64,42 @@ BuiltMeshData MergedMeshBuilder::build_merged(const ChunkMap& chunk_map,
                     continue;
                 }
 
-                ChunkRenderData* neighbors[6] = {};
-                ChunkRenderData* diag[4] = {};
-                chunk_map.get_extended_neighbors(cx, cy, cz, neighbors, diag);
+                ChunkRenderData* all_neighbors[26] = {};
+                chunk_map.get_all_neighbors(cx, cy, cz, all_neighbors);
+
+                auto data_or_null = [](ChunkRenderData* rd) -> const ChunkData* {
+                    return (rd && rd->data) ? rd->data.get() : nullptr;
+                };
 
                 builder.clear();
                 builder.build_mesh(
                     *render_data->data,
-                    neighbors[0] && neighbors[0]->data ? neighbors[0]->data.get() : nullptr,
-                    neighbors[1] && neighbors[1]->data ? neighbors[1]->data.get() : nullptr,
-                    neighbors[2] && neighbors[2]->data ? neighbors[2]->data.get() : nullptr,
-                    neighbors[3] && neighbors[3]->data ? neighbors[3]->data.get() : nullptr,
-                    neighbors[4] && neighbors[4]->data ? neighbors[4]->data.get() : nullptr,
-                    neighbors[5] && neighbors[5]->data ? neighbors[5]->data.get() : nullptr,
-                    diag[0] && diag[0]->data ? diag[0]->data.get() : nullptr,
-                    diag[1] && diag[1]->data ? diag[1]->data.get() : nullptr,
-                    diag[2] && diag[2]->data ? diag[2]->data.get() : nullptr,
-                    diag[3] && diag[3]->data ? diag[3]->data.get() : nullptr
+                    data_or_null(all_neighbors[0]),  // neg_x
+                    data_or_null(all_neighbors[1]),  // pos_x
+                    data_or_null(all_neighbors[2]),  // neg_y
+                    data_or_null(all_neighbors[3]),  // pos_y
+                    data_or_null(all_neighbors[4]),  // neg_z
+                    data_or_null(all_neighbors[5]),  // pos_z
+                    data_or_null(all_neighbors[6]),  // neg_x_neg_z
+                    data_or_null(all_neighbors[7]),  // neg_x_pos_z
+                    data_or_null(all_neighbors[8]),  // pos_x_neg_z
+                    data_or_null(all_neighbors[9]),  // pos_x_pos_z
+                    data_or_null(all_neighbors[10]), // neg_x_neg_y
+                    data_or_null(all_neighbors[11]), // pos_x_neg_y
+                    data_or_null(all_neighbors[12]), // neg_x_pos_y
+                    data_or_null(all_neighbors[13]), // pos_x_pos_y
+                    data_or_null(all_neighbors[14]), // neg_y_neg_z
+                    data_or_null(all_neighbors[15]), // neg_y_pos_z
+                    data_or_null(all_neighbors[16]), // pos_y_neg_z
+                    data_or_null(all_neighbors[17]), // pos_y_pos_z
+                    data_or_null(all_neighbors[18]), // neg_x_neg_y_neg_z
+                    data_or_null(all_neighbors[19]), // pos_x_neg_y_neg_z
+                    data_or_null(all_neighbors[20]), // neg_x_pos_y_neg_z
+                    data_or_null(all_neighbors[21]), // pos_x_pos_y_neg_z
+                    data_or_null(all_neighbors[22]), // neg_x_neg_y_pos_z
+                    data_or_null(all_neighbors[23]), // pos_x_neg_y_pos_z
+                    data_or_null(all_neighbors[24]), // neg_x_pos_y_pos_z
+                    data_or_null(all_neighbors[25])  // pos_x_pos_y_pos_z
                 );
 
                 append_mesh(

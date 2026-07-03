@@ -12,6 +12,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <atomic>
 
 namespace VoxelEngine {
 
@@ -83,6 +84,25 @@ public:
         return sl;
     }
 
+    template<size_t N>
+    ShardLock lock_keys(const uint64_t (&keys)[N]) const {
+        ShardLock sl;
+        if constexpr (N == 0) {
+            return sl;
+        }
+        bool seen[kNumShards] = {};
+        for (size_t i = 0; i < N; ++i) {
+            seen[key_to_shard(keys[i])] = true;
+        }
+        sl.locks_.reserve(kNumShards);
+        for (size_t i = 0; i < kNumShards; ++i) {
+            if (seen[i]) {
+                sl.locks_.emplace_back(shards_[i].mutex);
+            }
+        }
+        return sl;
+    }
+
     ShardLock lock_all() const {
         ShardLock sl;
         sl.locks_.reserve(kNumShards);
@@ -145,11 +165,7 @@ public:
     }
 
     [[nodiscard]] size_t size() const {
-        auto all = lock_all();
-        size_t total = 0;
-        for (auto& s : shards_)
-            total += s.chunks.size();
-        return total;
+        return chunk_count_.load(std::memory_order_relaxed);
     }
 
     // -- Fast-path accessors (caller must hold a ShardLock on the relevant shard) --
@@ -192,18 +208,25 @@ public:
         auto all = lock_all();
         for (auto& s : shards_)
             s.chunks.clear();
+        chunk_count_.store(0, std::memory_order_relaxed);
     }
 
     void erase(uint64_t key) {
         auto& s = shards_[key_to_shard(key)];
         std::unique_lock lock(s.mutex);
-        s.chunks.erase(key);
+        if (s.chunks.erase(key) > 0) {
+            chunk_count_.fetch_sub(1, std::memory_order_relaxed);
+        }
     }
 
     void insert(uint64_t key, std::unique_ptr<ChunkRenderData> render_data) {
         auto& s = shards_[key_to_shard(key)];
         std::unique_lock lock(s.mutex);
-        s.chunks[key] = std::move(render_data);
+        auto [it, inserted] = s.chunks.insert_or_assign(key, std::move(render_data));
+        (void)it;
+        if (inserted) {
+            chunk_count_.fetch_add(1, std::memory_order_relaxed);
+        }
     }
 
     void reserve(size_t n) {
@@ -219,6 +242,7 @@ public:
         if (it == s.chunks.end()) return nullptr;
         auto result = std::move(it->second);
         s.chunks.erase(it);
+        chunk_count_.fetch_sub(1, std::memory_order_relaxed);
         return result;
     }
 
@@ -231,6 +255,7 @@ public:
         if (!predicate(*it->second)) return nullptr;
         auto result = std::move(it->second);
         s.chunks.erase(it);
+        chunk_count_.fetch_sub(1, std::memory_order_relaxed);
         return result;
     }
 
@@ -245,7 +270,7 @@ public:
             get_chunk_key(cx,     cy,     cz - 1),
             get_chunk_key(cx,     cy,     cz + 1)
         };
-        auto sl = lock_keys(std::vector<uint64_t>(keys, keys + 6));
+        auto sl = lock_keys(keys);
         for (int i = 0; i < 6; ++i) {
             auto it = shards_[key_to_shard(keys[i])].chunks.find(keys[i]);
             out[i] = (it != shards_[key_to_shard(keys[i])].chunks.end()) ? it->second.get() : nullptr;
@@ -267,7 +292,7 @@ public:
             get_chunk_key(cx + 1, cy,     cz - 1),
             get_chunk_key(cx + 1, cy,     cz + 1)
         };
-        auto sl = lock_keys(std::vector<uint64_t>(keys, keys + 10));
+        auto sl = lock_keys(keys);
         for (int i = 0; i < 6; ++i) {
             auto it = shards_[key_to_shard(keys[i])].chunks.find(keys[i]);
             ortho[i] = (it != shards_[key_to_shard(keys[i])].chunks.end()) ? it->second.get() : nullptr;
@@ -315,7 +340,7 @@ public:
             get_chunk_key(cx - 1, cy + 1, cz + 1),     //24: neg_x_pos_y_pos_z
             get_chunk_key(cx + 1, cy + 1, cz + 1)      //25: pos_x_pos_y_pos_z
         };
-        auto sl = lock_keys(std::vector<uint64_t>(keys, keys + 26));
+        auto sl = lock_keys(keys);
         for (int i = 0; i < 26; ++i) {
             auto it = shards_[key_to_shard(keys[i])].chunks.find(keys[i]);
             out[i] = (it != shards_[key_to_shard(keys[i])].chunks.end()) ? it->second.get() : nullptr;
@@ -331,7 +356,7 @@ public:
             get_chunk_key(cx,     cy,     cz - 1),
             get_chunk_key(cx,     cy,     cz + 1)
         };
-        auto sl = lock_keys(std::vector<uint64_t>(keys, keys + 6));
+        auto sl = lock_keys(keys);
         for (int i = 0; i < 6; ++i) {
             auto it = shards_[key_to_shard(keys[i])].chunks.find(keys[i]);
             out[i] = (it != shards_[key_to_shard(keys[i])].chunks.end()) ? it->second->data.get() : nullptr;
@@ -431,6 +456,7 @@ private:
     };
 
     mutable std::array<Shard, kNumShards> shards_;
+    std::atomic<size_t> chunk_count_{0};
 
     size_t key_to_shard(uint64_t key) const noexcept {
         return key % kNumShards;

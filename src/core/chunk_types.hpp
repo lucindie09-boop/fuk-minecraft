@@ -110,6 +110,7 @@ struct DirtyChunkEntry {
     int32_t dist_sq = 0;
     bool urgent = false;
     bool in_frustum = false;
+    uint32_t priority_revision = 0;
     bool operator>(const DirtyChunkEntry& other) const {
         if (urgent != other.urgent) return !urgent && other.urgent;
         if (in_frustum != other.in_frustum) return !in_frustum && other.in_frustum;

@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace VoxelEngine {
@@ -54,6 +55,7 @@ private:
     const Frustum* frustum_ = nullptr;
     LodSettings lod_settings{};
     std::unordered_map<uint64_t, std::unique_ptr<LodGroupRenderData>> groups;
+    std::unordered_set<uint64_t> pending_group_retries;
     std::vector<LodTransition> pending_transitions;
     LodRingStats ring_stats{};
 

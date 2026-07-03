@@ -61,7 +61,6 @@ void GenerationScheduler::update(bool is_editor, int32_t active_render_distance,
         size_t   checks              = 0;
         int32_t  generations_this_frame = 0;
 
-        auto lock = chunk_world->get_chunk_map().lock_all();
         while (checks < max_checks_per_frame &&
                generations_this_frame < dynamic_max_generations &&
                chunk_world->get_scheduler().can_enqueue(budgets.completed_queue_backlog)) {
@@ -83,7 +82,7 @@ void GenerationScheduler::update(bool is_editor, int32_t active_render_distance,
             int32_t cz = pcz + offset.z;
 
             uint64_t key = chunk_world->get_chunk_map().get_chunk_key(cx, cy, cz);
-            if (chunk_world->get_chunk_map().contains_fast(key)) {
+            if (chunk_world->get_chunk_map().contains(key)) {
                 continue;
             }
 
@@ -96,14 +95,10 @@ void GenerationScheduler::update(bool is_editor, int32_t active_render_distance,
                 if (chunk_bottom > surface_h + 32.0f) continue;
             }
 
-            { auto _ = std::move(lock);
-
             if (generate_chunk(cx, cy, cz, epoch)) {
                 ++generations_this_frame;
                 generation_sweep_generated = true;
-            } }
-
-            lock = chunk_world->get_chunk_map().lock_all();
+            }
         }
     }
 }
