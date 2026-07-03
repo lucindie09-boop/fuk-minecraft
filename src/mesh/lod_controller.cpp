@@ -399,6 +399,7 @@ bool LodController::update(int32_t player_cx, int32_t player_cy, int32_t player_
         uint64_t member_keys[8]{};
         int32_t member_count = 0;
         if (!collect_group_members(ax, ay, az, member_keys, member_count)) {
+            get_or_create_group(ax, ay, az);
             continue;
         }
 
