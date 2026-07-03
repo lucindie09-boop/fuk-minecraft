@@ -61,12 +61,13 @@ void vertex(){
 
 void fragment(){
 
-    vec3 tex_coord=vec3(UV,custom1_attr.r);
-    vec4 color=texture(texture_array,tex_coord,mipmap_bias);
+    float layer=custom1_attr.r;
+    vec2 water_uv = UV + vec2(TIME * 0.02, TIME * 0.01);
+    vec2 final_uv = mix(UV, water_uv, step(abs(layer - 11.0), 0.5));
+    vec3 tex_coord = vec3(final_uv, layer);
+    vec4 color = texture(texture_array, tex_coord, mipmap_bias);
 
     float ao=custom1_attr.g;
-
-    float layer=custom1_attr.r;
 
     bool is_water=abs(layer-11.0)<0.5;
     bool is_leaves=false;
