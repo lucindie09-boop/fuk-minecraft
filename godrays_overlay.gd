@@ -47,27 +47,27 @@ func _process(_delta: float) -> void:
 	var sun_facing: float = cam_forward.dot(sun_dir)
 	var sun_facing_fade: float = smoothstep(FRONT_FADE_START, FRONT_FADE_END, sun_facing)
 	var sun_horizon_fade: float = smoothstep(-HORIZON_FADE, HORIZON_FADE, sun_dir.y)
-	var sun_visibility: float = sun_facing_fade * sun_horizon_fade
-	if sun_visibility > 0.0:
-		var sun_world_pos: Vector3 = camera.global_position + sun_dir * SUN_DISTANCE
-		var screen_pos: Vector2 = camera.unproject_position(sun_world_pos)
-		var sun_uv: Vector2 = screen_pos / viewport_size
-		shader_material.set_shader_parameter("sun_screen_uv", sun_uv)
-		shader_material.set_shader_parameter("sun_visibility", sun_visibility)
-	else:
-		shader_material.set_shader_parameter("sun_visibility", 0.0)
+	var sun_visibility: float = 0.0
+	if sun_facing > 0.0:
+		sun_visibility = sun_facing_fade * sun_horizon_fade
+		if sun_visibility > 0.0:
+			var sun_world_pos: Vector3 = camera.global_position + sun_dir * SUN_DISTANCE
+			var screen_pos: Vector2 = camera.unproject_position(sun_world_pos)
+			var sun_uv: Vector2 = screen_pos / viewport_size
+			shader_material.set_shader_parameter("sun_screen_uv", sun_uv)
+	shader_material.set_shader_parameter("sun_visibility", sun_visibility)
 
 	# --- Moon (opposite of sun) ---
 	var moon_dir: Vector3 = -sun_dir
 	var moon_facing: float = cam_forward.dot(moon_dir)
 	var moon_facing_fade: float = smoothstep(FRONT_FADE_START, FRONT_FADE_END, moon_facing)
 	var moon_horizon_fade: float = smoothstep(-HORIZON_FADE, HORIZON_FADE, moon_dir.y)
-	var moon_visibility: float = moon_facing_fade * moon_horizon_fade
-	if moon_visibility > 0.0:
-		var moon_world_pos: Vector3 = camera.global_position + moon_dir * SUN_DISTANCE
-		var screen_pos: Vector2 = camera.unproject_position(moon_world_pos)
-		var moon_uv: Vector2 = screen_pos / viewport_size
-		shader_material.set_shader_parameter("moon_screen_uv", moon_uv)
-		shader_material.set_shader_parameter("moon_visibility", moon_visibility)
-	else:
-		shader_material.set_shader_parameter("moon_visibility", 0.0)
+	var moon_visibility: float = 0.0
+	if moon_facing > 0.0:
+		moon_visibility = moon_facing_fade * moon_horizon_fade
+		if moon_visibility > 0.0:
+			var moon_world_pos: Vector3 = camera.global_position + moon_dir * SUN_DISTANCE
+			var screen_pos: Vector2 = camera.unproject_position(moon_world_pos)
+			var moon_uv: Vector2 = screen_pos / viewport_size
+			shader_material.set_shader_parameter("moon_screen_uv", moon_uv)
+	shader_material.set_shader_parameter("moon_visibility", moon_visibility)
