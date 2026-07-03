@@ -264,6 +264,9 @@ void LodController::recompute_ring_stats() {
 }
 
 bool LodController::has_incomplete_groups() const {
+    if (!pending_group_retries.empty()) {
+        return true;
+    }
     for (const auto& entry : groups) {
         const LodGroupRenderData& group = *entry.second;
         if (group.instance_rid.is_valid() && !group.is_dirty) {
@@ -301,6 +304,27 @@ void LodController::queue_incomplete_group_merges() {
             ? LodTransitionKind::RebuildGroup
             : LodTransitionKind::MergeGroup;
         queue_transition(kind, entry.first, group.anchor_cx, group.anchor_cy, group.anchor_cz, group.level);
+    }
+
+    // Also retry membership-failed groups every frame (no 300-frame wait)
+    std::vector<uint64_t> ready;
+    for (uint64_t retry_key : pending_group_retries) {
+        if (static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
+            break;
+        }
+        int32_t ax, ay, az;
+        ChunkMap::decode_chunk_key(retry_key, ax, ay, az);
+        uint64_t member_keys[8]{};
+        int32_t member_count = 0;
+        if (!collect_group_members(ax, ay, az, member_keys, member_count)) {
+            continue;
+        }
+        get_or_create_group(ax, ay, az);
+        queue_transition(LodTransitionKind::MergeGroup, retry_key, ax, ay, az, LodLevel::MergedFull);
+        ready.push_back(retry_key);
+    }
+    for (uint64_t key : ready) {
+        pending_group_retries.erase(key);
     }
 }
 
