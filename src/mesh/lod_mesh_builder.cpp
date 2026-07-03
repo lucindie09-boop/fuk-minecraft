@@ -58,7 +58,9 @@ void fill_downsampled_chunk(ChunkData& chunk,
                             int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz,
                             int32_t merge_shift,
                             int32_t downsample_step) {
-    const int32_t macro_width = CHUNK_WIDTH / downsample_step;
+    const int32_t merge_size = lod_merge_size(merge_shift);
+    const int32_t merged_width = CHUNK_WIDTH * merge_size;
+    const int32_t macro_width = merged_width / downsample_step;
     for (int32_t z = 0; z < macro_width; ++z) {
         for (int32_t y = 0; y < macro_width; ++y) {
             for (int32_t x = 0; x < macro_width; ++x) {

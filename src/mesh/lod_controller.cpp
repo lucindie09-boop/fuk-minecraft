@@ -113,13 +113,24 @@ LodLevel LodController::apply_hysteresis(LodLevel current, LodLevel target, int3
 }
 
 bool LodController::collect_group_members(int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz,
-                                          uint64_t out_keys[8], int32_t& out_count) const {
+                                          int32_t merge_shift,
+                                          std::array<uint64_t, kMaxLodGroupMembers>& out_keys,
+                                          int32_t& out_count) const {
     if (!chunk_map) {
         out_count = 0;
         return false;
     }
+    if (!lod_merge_shift_supported(merge_shift)) {
+        out_count = 0;
+        return false;
+    }
 
-    const int32_t merge_size = lod_merge_size(lod_settings.merge_shift);
+    const int32_t merge_size = lod_merge_size(merge_shift);
+    if (lod_member_capacity_for_shift(merge_shift) > kMaxLodGroupMembers) {
+        out_count = 0;
+        return false;
+    }
+
     out_count = 0;
     for (int32_t oz = 0; oz < merge_size; ++oz) {
         for (int32_t oy = 0; oy < merge_size; ++oy) {
@@ -128,14 +139,14 @@ bool LodController::collect_group_members(int32_t anchor_cx, int32_t anchor_cy, 
                 const int32_t cy = anchor_cy + oy;
                 const int32_t cz = anchor_cz + oz;
                 ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, cy, cz);
-                if (!render_data || !render_data->data) {
-                    return false;
+                if (!render_data || !render_data->data || render_data->data->is_all_air()) {
+                    continue;
                 }
                 out_keys[out_count++] = chunk_map->get_chunk_key(cx, cy, cz);
             }
         }
     }
-    return out_count == merge_size * merge_size * merge_size;
+    return out_count > 0;
 }
 
 LodGroupRenderData* LodController::get_group(uint64_t group_key) {
@@ -148,14 +159,14 @@ const LodGroupRenderData* LodController::get_group(uint64_t group_key) const {
     return it != groups.end() ? it->second.get() : nullptr;
 }
 
-LodGroupRenderData* LodController::get_or_create_group(int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz) {
-    const uint64_t group_key = chunk_map->get_chunk_key(anchor_cx, anchor_cy, anchor_cz);
+LodGroupRenderData* LodController::get_or_create_group(uint64_t group_key, int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz) {
     auto it = groups.find(group_key);
     if (it != groups.end()) {
         return it->second.get();
     }
 
     auto group = std::make_unique<LodGroupRenderData>();
+    group->group_key = group_key;
     group->anchor_cx = anchor_cx;
     group->anchor_cy = anchor_cy;
     group->anchor_cz = anchor_cz;
@@ -170,12 +181,20 @@ void LodController::remove_group(uint64_t group_key) {
 
 void LodController::mark_groups_dirty_for_chunk(int32_t cx, int32_t cy, int32_t cz) {
     if (!chunk_map) return;
-    int32_t ax, ay, az;
-    lod_align_anchor(cx, cy, cz, lod_settings.merge_shift, ax, ay, az);
-    const uint64_t group_key = chunk_map->get_chunk_key(ax, ay, az);
-    LodGroupRenderData* group = get_group(group_key);
-    if (group && group->instance_rid.is_valid()) {
-        group->is_dirty = true;
+    const LodLevel levels[] = {LodLevel::MergedFull, LodLevel::MergedDownsampled};
+    for (LodLevel level : levels) {
+        const int32_t merge_shift = lod_level_merge_shift(lod_settings, level);
+        if (!lod_merge_shift_supported(merge_shift)) {
+            continue;
+        }
+        int32_t ax, ay, az;
+        lod_align_anchor(cx, cy, cz, merge_shift, ax, ay, az);
+        const uint64_t anchor_key = chunk_map->get_chunk_key(ax, ay, az);
+        const uint64_t group_key = make_lod_group_key(anchor_key, merge_shift, level);
+        LodGroupRenderData* group = get_group(group_key);
+        if (group && group->instance_rid.is_valid()) {
+            group->is_dirty = true;
+        }
     }
 }
 
@@ -187,7 +206,9 @@ void LodController::for_each_group(const std::function<void(uint64_t, LodGroupRe
 
 void LodController::queue_transition(LodTransitionKind kind, uint64_t group_key,
                                      int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz,
-                                     LodLevel target_level) {
+                                     LodLevel target_level,
+                                     int32_t merge_shift,
+                                     int32_t downsample_step) {
     if (static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
         return;
     }
@@ -198,6 +219,8 @@ void LodController::queue_transition(LodTransitionKind kind, uint64_t group_key,
         anchor_cy,
         anchor_cz,
         target_level,
+        merge_shift,
+        downsample_step,
     });
 }
 
@@ -227,6 +250,8 @@ void LodController::split_group_on_edit(uint64_t group_key, std::vector<LodTrans
         group->anchor_cy,
         group->anchor_cz,
         LodLevel::Individual,
+        group->merge_shift,
+        group->downsample_step,
     });
 }
 
@@ -236,7 +261,10 @@ void LodController::recompute_ring_stats() {
         return;
     }
 
-    chunk_map->for_each([&](uint64_t /*key*/, const std::unique_ptr<ChunkRenderData>& render_data) {
+    std::unordered_set<uint64_t> lod1_group_keys;
+    std::unordered_set<uint64_t> lod2_group_keys;
+
+    chunk_map->for_each([&](uint64_t key, const std::unique_ptr<ChunkRenderData>& render_data) {
         if (!render_data->data || render_data->data->is_all_air()) {
             return;
         }
@@ -248,13 +276,26 @@ void LodController::recompute_ring_stats() {
                 }
                 break;
             case LodLevel::MergedFull:
-                ++ring_stats.lod1_groups;
+            case LodLevel::MergedDownsampled: {
+                int32_t cx, cy, cz;
+                ChunkMap::decode_chunk_key(key, cx, cy, cz);
+                const int32_t merge_shift = lod_level_merge_shift(lod_settings, render_data->effective_lod);
+                int32_t ax, ay, az;
+                lod_align_anchor(cx, cy, cz, merge_shift, ax, ay, az);
+                const uint64_t anchor_key = chunk_map->get_chunk_key(ax, ay, az);
+                const uint64_t group_key = make_lod_group_key(anchor_key, merge_shift, render_data->effective_lod);
+                if (render_data->effective_lod == LodLevel::MergedFull) {
+                    lod1_group_keys.insert(group_key);
+                } else {
+                    lod2_group_keys.insert(group_key);
+                }
                 break;
-            case LodLevel::MergedDownsampled:
-                ++ring_stats.lod2_groups;
-                break;
+            }
         }
     });
+
+    ring_stats.lod1_groups = static_cast<int32_t>(lod1_group_keys.size());
+    ring_stats.lod2_groups = static_cast<int32_t>(lod2_group_keys.size());
 
     for (const auto& entry : groups) {
         if (entry.second->instance_rid.is_valid()) {
@@ -303,24 +344,26 @@ void LodController::queue_incomplete_group_merges() {
         const LodTransitionKind kind = group.instance_rid.is_valid()
             ? LodTransitionKind::RebuildGroup
             : LodTransitionKind::MergeGroup;
-        queue_transition(kind, entry.first, group.anchor_cx, group.anchor_cy, group.anchor_cz, group.level);
+        queue_transition(kind, entry.first, group.anchor_cx, group.anchor_cy, group.anchor_cz,
+                         group.level, group.merge_shift, group.downsample_step);
     }
 
     // Also retry membership-failed groups every frame (no 300-frame wait)
     std::vector<uint64_t> ready;
-    for (uint64_t retry_key : pending_group_retries) {
+    for (const auto& [retry_key, retry_transition] : pending_group_retries) {
         if (static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
             break;
         }
-        int32_t ax, ay, az;
-        ChunkMap::decode_chunk_key(retry_key, ax, ay, az);
-        uint64_t member_keys[8]{};
+        std::array<uint64_t, kMaxLodGroupMembers> member_keys{};
         int32_t member_count = 0;
-        if (!collect_group_members(ax, ay, az, member_keys, member_count)) {
+        if (!collect_group_members(retry_transition.anchor_cx, retry_transition.anchor_cy, retry_transition.anchor_cz,
+                                   retry_transition.merge_shift, member_keys, member_count)) {
             continue;
         }
-        get_or_create_group(ax, ay, az);
-        queue_transition(LodTransitionKind::MergeGroup, retry_key, ax, ay, az, LodLevel::MergedFull);
+        get_or_create_group(retry_key, retry_transition.anchor_cx, retry_transition.anchor_cy, retry_transition.anchor_cz);
+        queue_transition(LodTransitionKind::MergeGroup, retry_key,
+                         retry_transition.anchor_cx, retry_transition.anchor_cy, retry_transition.anchor_cz,
+                         retry_transition.target_level, retry_transition.merge_shift, retry_transition.downsample_step);
         ready.push_back(retry_key);
     }
     for (uint64_t key : ready) {
@@ -338,6 +381,8 @@ void LodController::collect_all_group_splits(std::vector<LodTransition>& out_tra
             group.anchor_cy,
             group.anchor_cz,
             LodLevel::Individual,
+            group.merge_shift,
+            group.downsample_step,
         });
     }
 }
@@ -369,8 +414,16 @@ bool LodController::update(int32_t player_cx, int32_t player_cy, int32_t player_
 
     pending_transitions.clear();
 
-    const int32_t merge_size = lod_merge_size(lod_settings.merge_shift);
-    std::unordered_map<uint64_t, LodLevel> desired_group_levels;
+    struct DesiredGroupState {
+        uint64_t group_key = 0;
+        int32_t anchor_cx = 0;
+        int32_t anchor_cy = 0;
+        int32_t anchor_cz = 0;
+        int32_t merge_shift = 1;
+        int32_t downsample_step = 1;
+        LodLevel desired_level = LodLevel::MergedFull;
+    };
+    std::unordered_map<uint64_t, DesiredGroupState> desired_groups;
 
     std::unordered_set<uint64_t> split_groups;
 
@@ -392,43 +445,60 @@ bool LodController::update(int32_t player_cx, int32_t player_cy, int32_t player_
             if (render_data->render_lod == ChunkRenderLod::HiddenInGroup && render_data->lod_group_key != 0) {
                 if (split_groups.insert(render_data->lod_group_key).second) {
                     queue_transition(LodTransitionKind::SplitToIndividual, render_data->lod_group_key,
-                                     0, 0, 0, LodLevel::Individual);
+                                     0, 0, 0, LodLevel::Individual, 0, 1);
                 }
             }
             return;
         }
 
-        int32_t ax, ay, az;
-        lod_align_anchor(cx, cy, cz, lod_settings.merge_shift, ax, ay, az);
-        if (cx != ax || cy != ay || cz != az) {
+        const int32_t merge_shift = lod_level_merge_shift(lod_settings, effective);
+        if (!lod_merge_shift_supported(merge_shift)) {
             return;
         }
+        int32_t ax, ay, az;
+        lod_align_anchor(cx, cy, cz, merge_shift, ax, ay, az);
 
-        const uint64_t group_key = chunk_map->get_chunk_key(ax, ay, az);
-        auto it = desired_group_levels.find(group_key);
-        if (it == desired_group_levels.end()) {
-            desired_group_levels[group_key] = effective;
-        } else if (static_cast<uint8_t>(effective) < static_cast<uint8_t>(it->second)) {
-            it->second = effective;
+        const uint64_t anchor_key = chunk_map->get_chunk_key(ax, ay, az);
+        const uint64_t group_key = make_lod_group_key(anchor_key, merge_shift, effective);
+        auto it = desired_groups.find(group_key);
+        if (it == desired_groups.end()) {
+            desired_groups.emplace(group_key, DesiredGroupState{
+                group_key,
+                ax,
+                ay,
+                az,
+                merge_shift,
+                lod_level_downsample_step(lod_settings, effective),
+                effective,
+            });
+        } else if (static_cast<uint8_t>(effective) < static_cast<uint8_t>(it->second.desired_level)) {
+            it->second.desired_level = effective;
         }
     });
 
-    for (const auto& [group_key, desired_level] : desired_group_levels) {
+    for (const auto& [group_key, desired_group] : desired_groups) {
         if (static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
             break;
         }
 
-        int32_t ax, ay, az;
-        ChunkMap::decode_chunk_key(group_key, ax, ay, az);
-
-        uint64_t member_keys[8]{};
+        std::array<uint64_t, kMaxLodGroupMembers> member_keys{};
         int32_t member_count = 0;
-        if (!collect_group_members(ax, ay, az, member_keys, member_count)) {
-            pending_group_retries.insert(group_key);
+        if (!collect_group_members(desired_group.anchor_cx, desired_group.anchor_cy, desired_group.anchor_cz,
+                                   desired_group.merge_shift, member_keys, member_count)) {
+            pending_group_retries[group_key] = LodTransition{
+                LodTransitionKind::MergeGroup,
+                group_key,
+                desired_group.anchor_cx,
+                desired_group.anchor_cy,
+                desired_group.anchor_cz,
+                desired_group.desired_level,
+                desired_group.merge_shift,
+                desired_group.downsample_step,
+            };
             continue;
         }
 
-        LodLevel resolved_level = desired_level;
+        LodLevel resolved_level = desired_group.desired_level;
         bool can_merge_group = true;
         for (int32_t i = 0; i < member_count; ++i) {
             int32_t mcx, mcy, mcz;
@@ -438,6 +508,9 @@ bool LodController::update(int32_t player_cx, int32_t player_cy, int32_t player_
                 can_merge_group = false;
                 break;
             }
+            if (member_data->data->is_all_air()) {
+                continue;
+            }
             if (member_data->effective_lod == LodLevel::Individual) {
                 can_merge_group = false;
                 break;
@@ -446,7 +519,14 @@ bool LodController::update(int32_t player_cx, int32_t player_cy, int32_t player_
             // completed at least one individual mesh upload. This avoids hiding
             // freshly generated chunks behind a group instance while their initial
             // render state is still settling.
-            if (!member_data->mesh_rid.is_valid() ||
+            // Chunks with no standalone visible geometry should not block grouping:
+            // - all-air chunks never produce an individual mesh RID
+            // - buried fully-solid chunks also legitimately have no standalone mesh
+            const bool chunk_needs_mesh_rid =
+                member_data->data &&
+                !member_data->data->is_all_air() &&
+                !member_data->data->fully_solid();
+            if ((chunk_needs_mesh_rid && !member_data->mesh_rid.is_valid()) ||
                 member_data->is_mesh_dirty ||
                 member_data->pending_mesh_builds.load(std::memory_order_acquire) > 0 ||
                 member_data->pending_mesh_uploads.load(std::memory_order_acquire) > 0) {
@@ -462,42 +542,65 @@ bool LodController::update(int32_t player_cx, int32_t player_cy, int32_t player_
         if (!can_merge_group) {
             if (group && group->instance_rid.is_valid() && split_groups.insert(group_key).second) {
                 queue_transition(LodTransitionKind::SplitToIndividual, group_key,
-                                 0, 0, 0, LodLevel::Individual);
+                                 0, 0, 0, LodLevel::Individual, group->merge_shift, group->downsample_step);
+            }
+            if (!group) {
+                pending_group_retries[group_key] = LodTransition{
+                    LodTransitionKind::MergeGroup,
+                    group_key,
+                    desired_group.anchor_cx,
+                    desired_group.anchor_cy,
+                    desired_group.anchor_cz,
+                    resolved_level,
+                    desired_group.merge_shift,
+                    desired_group.downsample_step,
+                };
             }
             continue;
         }
         if (!group) {
-            queue_transition(LodTransitionKind::MergeGroup, group_key, ax, ay, az, resolved_level);
+            queue_transition(LodTransitionKind::MergeGroup, group_key,
+                             desired_group.anchor_cx, desired_group.anchor_cy, desired_group.anchor_cz,
+                             resolved_level, desired_group.merge_shift, desired_group.downsample_step);
             continue;
         }
 
-        if (group->level != resolved_level) {
-            queue_transition(LodTransitionKind::RebuildGroup, group_key, ax, ay, az, resolved_level);
+        if (group->level != resolved_level ||
+            group->merge_shift != desired_group.merge_shift ||
+            group->downsample_step != desired_group.downsample_step) {
+            queue_transition(LodTransitionKind::RebuildGroup, group_key,
+                             desired_group.anchor_cx, desired_group.anchor_cy, desired_group.anchor_cz,
+                             resolved_level, desired_group.merge_shift, desired_group.downsample_step);
             continue;
         }
 
         if (!group->instance_rid.is_valid() || group->is_dirty) {
-            queue_transition(LodTransitionKind::MergeGroup, group_key, ax, ay, az, resolved_level);
+            queue_transition(LodTransitionKind::MergeGroup, group_key,
+                             desired_group.anchor_cx, desired_group.anchor_cy, desired_group.anchor_cz,
+                             resolved_level, desired_group.merge_shift, desired_group.downsample_step);
         }
     }
 
     if (!pending_group_retries.empty()) {
         std::vector<uint64_t> completed;
-        for (uint64_t retry_key : pending_group_retries) {
+        for (const auto& [retry_key, retry_transition] : pending_group_retries) {
             if (static_cast<int32_t>(pending_transitions.size()) >= lod_settings.max_transitions_per_frame) {
                 break;
             }
-            int32_t ax, ay, az;
-            ChunkMap::decode_chunk_key(retry_key, ax, ay, az);
-            uint64_t member_keys[8]{};
+            std::array<uint64_t, kMaxLodGroupMembers> member_keys{};
             int32_t member_count = 0;
-            if (!collect_group_members(ax, ay, az, member_keys, member_count)) {
+            if (!collect_group_members(retry_transition.anchor_cx, retry_transition.anchor_cy, retry_transition.anchor_cz,
+                                       retry_transition.merge_shift, member_keys, member_count)) {
                 continue;
             }
-            get_or_create_group(ax, ay, az);
-            auto it = desired_group_levels.find(retry_key);
-            const LodLevel level = it != desired_group_levels.end() ? it->second : LodLevel::MergedFull;
-            queue_transition(LodTransitionKind::MergeGroup, retry_key, ax, ay, az, level);
+            get_or_create_group(retry_key, retry_transition.anchor_cx, retry_transition.anchor_cy, retry_transition.anchor_cz);
+            auto it = desired_groups.find(retry_key);
+            const LodLevel level = it != desired_groups.end() ? it->second.desired_level : retry_transition.target_level;
+            const int32_t merge_shift = it != desired_groups.end() ? it->second.merge_shift : retry_transition.merge_shift;
+            const int32_t downsample_step = it != desired_groups.end() ? it->second.downsample_step : retry_transition.downsample_step;
+            queue_transition(LodTransitionKind::MergeGroup, retry_key,
+                             retry_transition.anchor_cx, retry_transition.anchor_cy, retry_transition.anchor_cz,
+                             level, merge_shift, downsample_step);
             completed.push_back(retry_key);
         }
         for (uint64_t key : completed) {

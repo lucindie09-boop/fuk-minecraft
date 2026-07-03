@@ -114,7 +114,7 @@ struct GroupMeshBuildTask : Task {
     uint64_t epoch = 0;
     uint64_t mesh_job_serial = 0;
     bool high_priority = false;
-    uint64_t member_keys[8]{};
+    std::array<uint64_t, kMaxLodGroupMembers> member_keys{};
     int32_t member_count = 0;
 
     void unpin_members() {
@@ -189,9 +189,7 @@ struct GroupMeshBuildTask : Task {
         completed.water_mesh_data = std::move(water_mesh);
         completed.mesh_content_hash = content_hash;
         completed.member_count = member_count;
-        for (int32_t i = 0; i < member_count; ++i) {
-            completed.member_keys[i] = member_keys[i];
-        }
+        completed.member_keys = member_keys;
 
         chunk_scheduler->push_completed_group_mesh(std::move(completed), high_priority);
         render_group->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
@@ -321,14 +319,33 @@ void MeshManager::release_group_to_individual(LodGroupRenderData* group) {
         queue_immediate_dirty_chunk(cx, cy, cz);
     }
 
-    const uint64_t gk = chunk_map->get_chunk_key(group->anchor_cx, group->anchor_cy, group->anchor_cz);
-    lod_controller.remove_group(gk);
+    lod_controller.remove_group(group->group_key);
 }
 
 void MeshManager::set_lod_settings(const LodSettings& settings) {
+    LodSettings sanitized = settings;
+    if (!lod_merge_shift_supported(sanitized.lod1_merge_shift)) {
+        if (sanitized.lod1_merge_shift < 0) {
+            sanitized.lod1_merge_shift = 0;
+        } else {
+            sanitized.lod1_merge_shift = kMaxSupportedLodMergeShift;
+        }
+    }
+    if (!lod_merge_shift_supported(sanitized.lod2_merge_shift)) {
+        if (sanitized.lod2_merge_shift < 0) {
+            sanitized.lod2_merge_shift = 0;
+        } else {
+            sanitized.lod2_merge_shift = kMaxSupportedLodMergeShift;
+        }
+    }
+    const int32_t lod2_merge_size = lod_merge_size(sanitized.lod2_merge_shift);
+    if (sanitized.lod2_downsample_step < lod2_merge_size) {
+        sanitized.lod2_downsample_step = lod2_merge_size;
+    }
+
     const bool was_enabled = lod_controller.get_settings().enabled;
-    lod_controller.set_settings(settings);
-    if (was_enabled && !settings.enabled) {
+    lod_controller.set_settings(sanitized);
+    if (was_enabled && !sanitized.enabled) {
         disable_lod_and_split_all_groups();
     }
 }
@@ -487,22 +504,25 @@ void MeshManager::apply_merge_transition(const LodTransition& transition, uint64
         return;
     }
 
-    uint64_t member_keys[8]{};
+    std::array<uint64_t, kMaxLodGroupMembers> member_keys{};
     int32_t member_count = 0;
     if (!lod_controller.collect_group_members(transition.anchor_cx, transition.anchor_cy, transition.anchor_cz,
-                                            member_keys, member_count)) {
+                                              transition.merge_shift, member_keys, member_count)) {
         return;
     }
 
     LodGroupRenderData* group = lod_controller.get_or_create_group(
-        transition.anchor_cx, transition.anchor_cy, transition.anchor_cz);
+        transition.group_key, transition.anchor_cx, transition.anchor_cy, transition.anchor_cz);
+    group->group_key = transition.group_key;
+    group->anchor_cx = transition.anchor_cx;
+    group->anchor_cy = transition.anchor_cy;
+    group->anchor_cz = transition.anchor_cz;
     group->level = transition.target_level;
+    group->merge_shift = transition.merge_shift;
+    group->downsample_step = transition.downsample_step;
     group->member_count = member_count;
-    for (int32_t i = 0; i < member_count; ++i) {
-        group->member_keys[i] = member_keys[i];
-    }
+    group->member_keys = member_keys;
 
-    const uint64_t group_key = chunk_map->get_chunk_key(transition.anchor_cx, transition.anchor_cy, transition.anchor_cz);
     for (int32_t i = 0; i < member_count; ++i) {
         int32_t cx, cy, cz;
         ChunkMap::decode_chunk_key(member_keys[i], cx, cy, cz);
@@ -510,7 +530,7 @@ void MeshManager::apply_merge_transition(const LodTransition& transition, uint64
         if (!render_data) {
             continue;
         }
-        render_data->lod_group_key = group_key;
+        render_data->lod_group_key = transition.group_key;
         render_data->current_lod = transition.target_level;
         render_data->effective_lod = transition.target_level;
     }
@@ -540,7 +560,6 @@ void MeshManager::apply_merge_transition(const LodTransition& transition, uint64
 
     const uint64_t mesh_job_serial = group->mesh_job_serial.fetch_add(1, std::memory_order_acq_rel) + 1;
 
-    const LodSettings& settings = lod_controller.get_settings();
     auto task = std::make_unique<GroupMeshBuildTask>();
     task->chunk_map = chunk_map;
     task->chunk_scheduler = chunk_scheduler;
@@ -550,15 +569,13 @@ void MeshManager::apply_merge_transition(const LodTransition& transition, uint64
     task->anchor_cy = transition.anchor_cy;
     task->anchor_cz = transition.anchor_cz;
     task->level = transition.target_level;
-    task->merge_shift = settings.merge_shift;
-    task->downsample_step = settings.downsample_step;
+    task->merge_shift = transition.merge_shift;
+    task->downsample_step = transition.downsample_step;
     task->epoch = epoch;
     task->mesh_job_serial = mesh_job_serial;
     task->high_priority = false;
     task->member_count = member_count;
-    for (int32_t i = 0; i < member_count; ++i) {
-        task->member_keys[i] = member_keys[i];
-    }
+    task->member_keys = member_keys;
 
     thread_pool->enqueue_task(std::move(task), false);
 }
@@ -574,6 +591,8 @@ void MeshManager::apply_rebuild_transition(const LodTransition& transition, uint
     // Freeing it here leaves every member hidden while the async rebuild runs, which
     // shows up in-game as LOD groups disappearing or partially popping out.
     group->level = transition.target_level;
+    group->merge_shift = transition.merge_shift;
+    group->downsample_step = transition.downsample_step;
     group->is_dirty = true;
     apply_merge_transition(transition, epoch);
 }
@@ -622,8 +641,6 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
     arrays.resize(Mesh::ARRAY_MAX);
 
     const LodSettings& settings = lod_controller.get_settings();
-    const int32_t merge_size = lod_merge_size(settings.merge_shift);
-    const float group_width = static_cast<float>(CHUNK_WIDTH * merge_size);
 
     while (uploads_this_frame < max_uploads && elapsed_budget_ms < budget_ms) {
         bool high_priority = false;
@@ -661,6 +678,9 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
             }
             continue;
         }
+
+        const int32_t group_merge_size = lod_merge_size(group->merge_shift);
+        const float group_width = static_cast<float>(CHUNK_WIDTH * group_merge_size);
 
         if (completed.mesh_data.empty && completed.water_mesh_data.empty) {
             release_group_to_individual(group);
@@ -748,7 +768,7 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
             completed.anchor_cx,
             completed.anchor_cy,
             completed.anchor_cz,
-            merge_size,
+            group_merge_size,
             mesh_render_distance,
             settings.vertical_buffer,
             last_player_chunk_x,

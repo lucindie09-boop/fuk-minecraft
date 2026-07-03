@@ -66,7 +66,7 @@ struct CompletedGroupMesh {
     PackedBuiltMeshData mesh_data;
     PackedBuiltMeshData water_mesh_data;
     uint64_t mesh_content_hash = 0;
-    uint64_t member_keys[8]{};
+    std::array<uint64_t, kMaxLodGroupMembers> member_keys{};
     int32_t member_count = 0;
 };
 

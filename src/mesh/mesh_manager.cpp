@@ -689,9 +689,25 @@ WorldRenderStats MeshManager::gather_render_stats() {
 
     if (lod_controller.get_settings().enabled) {
         stats.lod = lod_controller.get_ring_stats();
+        stats.lod.pending_group_retries = static_cast<int32_t>(lod_controller.pending_group_retry_count());
+        stats.lod.pending_group_transitions = static_cast<int32_t>(lod_controller.pending_transition_count());
+        if (chunk_scheduler) {
+            stats.lod.completed_group_meshes = static_cast<int32_t>(chunk_scheduler->completed_group_mesh_count());
+        }
+        stats.lod.group_instances = 0;
         lod_controller.for_each_group([&](uint64_t /*key*/, const LodGroupRenderData& group) {
+            ++stats.lod.live_groups;
             if (group.instance_rid.is_valid()) {
                 ++stats.lod.group_instances;
+            }
+            if (group.is_dirty) {
+                ++stats.lod.dirty_groups;
+            }
+            if (group.pending_mesh_builds.load(std::memory_order_acquire) > 0) {
+                ++stats.lod.groups_building;
+            }
+            if (group.pending_mesh_uploads.load(std::memory_order_acquire) > 0) {
+                ++stats.lod.groups_uploading;
             }
         });
     }

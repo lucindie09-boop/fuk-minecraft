@@ -7,6 +7,7 @@
 #include "core/performance_timer.hpp"
 #include <functional>
 #include <memory>
+#include <array>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -29,7 +30,7 @@ public:
 
     LodGroupRenderData* get_group(uint64_t group_key);
     const LodGroupRenderData* get_group(uint64_t group_key) const;
-    LodGroupRenderData* get_or_create_group(int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz);
+    LodGroupRenderData* get_or_create_group(uint64_t group_key, int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz);
     void remove_group(uint64_t group_key);
     void for_each_group(const std::function<void(uint64_t, LodGroupRenderData&)>& fn);
 
@@ -40,7 +41,9 @@ public:
                                  int32_t render_distance) const;
 
     bool collect_group_members(int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz,
-                                uint64_t out_keys[8], int32_t& out_count) const;
+                               int32_t merge_shift,
+                               std::array<uint64_t, kMaxLodGroupMembers>& out_keys,
+                               int32_t& out_count) const;
 
     void split_group_on_edit(uint64_t group_key, std::vector<LodTransition>& out_transitions);
 
@@ -48,6 +51,8 @@ public:
     void queue_incomplete_group_merges();
     void collect_all_group_splits(std::vector<LodTransition>& out_transitions) const;
     void mark_groups_dirty_for_chunk(int32_t cx, int32_t cy, int32_t cz);
+    size_t pending_group_retry_count() const { return pending_group_retries.size(); }
+    size_t pending_transition_count() const { return pending_transitions.size(); }
 
 private:
     ChunkMap* chunk_map = nullptr;
@@ -55,7 +60,7 @@ private:
     const Frustum* frustum_ = nullptr;
     LodSettings lod_settings{};
     std::unordered_map<uint64_t, std::unique_ptr<LodGroupRenderData>> groups;
-    std::unordered_set<uint64_t> pending_group_retries;
+    std::unordered_map<uint64_t, LodTransition> pending_group_retries;
     std::vector<LodTransition> pending_transitions;
     LodRingStats ring_stats{};
 
@@ -74,7 +79,9 @@ private:
 
     void queue_transition(LodTransitionKind kind, uint64_t group_key,
                           int32_t anchor_cx, int32_t anchor_cy, int32_t anchor_cz,
-                          LodLevel target_level);
+                          LodLevel target_level,
+                          int32_t merge_shift,
+                          int32_t downsample_step);
 
     void recompute_ring_stats();
 };
