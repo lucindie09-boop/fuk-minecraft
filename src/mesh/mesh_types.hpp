@@ -45,10 +45,9 @@ struct BuiltMeshData {
 
 struct PackedBuiltMeshData {
     godot::PackedVector3Array vertices;
-    godot::PackedVector3Array normals;
     godot::PackedByteArray custom0;  // RGBA8_UNORM: light_r, light_g, light_b, sky_light
-    godot::PackedVector2Array uvs;
-    godot::PackedByteArray custom1;  // RG_HALF: texture_index, ao
+    godot::PackedByteArray custom1;  // RGBA8_UNORM: R=texture_index, G=ao, B=normal_encoded, A=0
+    godot::PackedByteArray custom2;  // RG_HALF: u, v
     godot::PackedInt32Array indices;
     bool empty = true;
 };

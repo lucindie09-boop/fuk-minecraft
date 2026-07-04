@@ -25,6 +25,15 @@ using namespace godot;
 namespace {
 constexpr int32_t kGreedyDisableBlockRadius = 16;
 
+static uint8_t encode_normal_dir(int8_t nx, int8_t ny, int8_t nz) {
+    if (ny > 0) return 0;
+    if (ny < 0) return 1;
+    if (nx > 0) return 2;
+    if (nx < 0) return 3;
+    if (nz > 0) return 4;
+    return 5;
+}
+
 PackedBuiltMeshData pack_vertex_array(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices) {
     PackedBuiltMeshData packed;
     if (vertices.empty() || indices.empty()) {
@@ -34,32 +43,29 @@ PackedBuiltMeshData pack_vertex_array(const std::vector<Vertex>& vertices, const
     packed.empty = false;
     const size_t n = vertices.size();
     packed.vertices.resize(n);
-    packed.normals.resize(n);
     packed.custom0.resize(n * 4);
-    packed.uvs.resize(n);
     packed.custom1.resize(n * 4);
+    packed.custom2.resize(n * 4);
     packed.indices.resize(indices.size());
 
     Vector3* v_ptr = packed.vertices.ptrw();
-    Vector3* n_ptr = packed.normals.ptrw();
     uint8_t* c0_ptr = packed.custom0.ptrw();
-    Vector2* uv_ptr = packed.uvs.ptrw();
+    uint8_t* c1_ptr = packed.custom1.ptrw();
     int32_t* idx_ptr = packed.indices.ptrw();
-
-    constexpr float kInv127 = 1.0f / 127.0f;
-    constexpr float kInv255 = 1.0f / 255.0f;
 
     for (size_t i = 0; i < n; i++) {
         const Vertex& v = vertices[i];
         v_ptr[i] = Vector3(v.x, v.y, v.z);
-        n_ptr[i] = Vector3(v.nx * kInv127, v.ny * kInv127, v.nz * kInv127);
         c0_ptr[i * 4 + 0] = v.light_r;
         c0_ptr[i * 4 + 1] = v.light_g;
         c0_ptr[i * 4 + 2] = v.light_b;
         c0_ptr[i * 4 + 3] = v.sky_light;
-        uv_ptr[i] = Vector2(v.u, v.v);
-        packed.custom1.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.texture_index));
-        packed.custom1.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.ao * kInv255));
+        c1_ptr[i * 4 + 0] = static_cast<uint8_t>(v.texture_index);
+        c1_ptr[i * 4 + 1] = v.ao;
+        c1_ptr[i * 4 + 2] = encode_normal_dir(v.nx, v.ny, v.nz);
+        c1_ptr[i * 4 + 3] = 0;
+        packed.custom2.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.u));
+        packed.custom2.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.v));
     }
     std::memcpy(idx_ptr, indices.data(), indices.size() * sizeof(int32_t));
     return packed;
@@ -270,24 +276,23 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
 
             int64_t fmt = 0;
             fmt |= RenderingServer::ARRAY_FORMAT_VERTEX;
-            fmt |= RenderingServer::ARRAY_FORMAT_NORMAL;
-            fmt |= RenderingServer::ARRAY_FORMAT_TEX_UV;
             fmt |= RenderingServer::ARRAY_FORMAT_INDEX;
             fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM0;
             fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RGBA8_UNORM) << RenderingServer::ARRAY_FORMAT_CUSTOM0_SHIFT;
             fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM1;
-            fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RG_HALF) << RenderingServer::ARRAY_FORMAT_CUSTOM1_SHIFT;
+            fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RGBA8_UNORM) << RenderingServer::ARRAY_FORMAT_CUSTOM1_SHIFT;
+            fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM2;
+            fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RG_HALF) << RenderingServer::ARRAY_FORMAT_CUSTOM2_SHIFT;
             fmt |= RenderingServer::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 
             // Surface 0: opaque
             int surface_index = 0;
             if (!completed.mesh_data.empty) {
                 arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
-                arrays[Mesh::ARRAY_TEX_UV] = completed.mesh_data.uvs;
-                arrays[Mesh::ARRAY_NORMAL] = completed.mesh_data.normals;
                 arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
                 arrays[Mesh::ARRAY_CUSTOM0] = completed.mesh_data.custom0;
                 arrays[Mesh::ARRAY_CUSTOM1] = completed.mesh_data.custom1;
+                arrays[Mesh::ARRAY_CUSTOM2] = completed.mesh_data.custom2;
 
                 if (perf_timer) {
                     ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
@@ -305,11 +310,10 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             // Surface 1: water (if present)
             if (!completed.water_mesh_data.empty) {
                 arrays[Mesh::ARRAY_VERTEX] = completed.water_mesh_data.vertices;
-                arrays[Mesh::ARRAY_TEX_UV] = completed.water_mesh_data.uvs;
-                arrays[Mesh::ARRAY_NORMAL] = completed.water_mesh_data.normals;
                 arrays[Mesh::ARRAY_INDEX] = completed.water_mesh_data.indices;
                 arrays[Mesh::ARRAY_CUSTOM0] = completed.water_mesh_data.custom0;
                 arrays[Mesh::ARRAY_CUSTOM1] = completed.water_mesh_data.custom1;
+                arrays[Mesh::ARRAY_CUSTOM2] = completed.water_mesh_data.custom2;
 
                 if (perf_timer) {
                     ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);

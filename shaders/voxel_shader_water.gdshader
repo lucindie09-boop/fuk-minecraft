@@ -53,10 +53,24 @@ varying vec3 view_direction;
 varying float fog_distance;
 varying vec4 custom0_attr;
 varying vec4 custom1_attr;
+varying vec4 custom2_attr;
+
+vec3 decode_normal(float encoded) {
+    int dir = int(encoded * 255.0 + 0.5);
+    vec3 normals[6] = vec3[](
+        vec3(0, 1, 0),
+        vec3(0, -1, 0),
+        vec3(1, 0, 0),
+        vec3(-1, 0, 0),
+        vec3(0, 0, 1),
+        vec3(0, 0, -1)
+    );
+    return normals[dir];
+}
 
 void vertex(){
     world_position=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;
-    world_normal=normalize((MODEL_MATRIX*vec4(NORMAL,0.0)).xyz);
+    world_normal=normalize((MODEL_MATRIX*vec4(decode_normal(CUSTOM1.b),0.0)).xyz);
 
     vec3 camera_position=INV_VIEW_MATRIX[3].xyz;
 
@@ -65,11 +79,12 @@ void vertex(){
     fog_distance=distance(world_position,camera_position);
     custom0_attr = CUSTOM0;
     custom1_attr = CUSTOM1;
+    custom2_attr = CUSTOM2;
 }
 
 void fragment(){
-    float layer=custom1_attr.r;
-    vec2 water_uv = UV + vec2(TIME * 0.02, TIME * 0.01);
+    float layer=custom1_attr.r * 255.0;
+    vec2 water_uv = custom2_attr.xy + vec2(TIME * 0.02, TIME * 0.01);
     vec3 tex_coord = vec3(water_uv, layer);
     vec4 color = texture(texture_array, tex_coord, mipmap_bias);
 

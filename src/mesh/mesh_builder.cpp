@@ -318,10 +318,15 @@ bool MeshBuilder::should_cull_against_neighbor(const ChunkData& chunk, BlockID c
          return false;
     }
     const BlockType& neighbor_type = registry.get_block(neighbor);
-    if (HasProperty(neighbor_type.properties, BlockProperty::Transparent)) {
-        if (current != neighbor) return false;
-    }
     const BlockType& current_type = registry.get_block(current);
+    if (HasProperty(neighbor_type.properties, BlockProperty::Transparent)) {
+        if (current != neighbor) {
+            if (!HasProperty(neighbor_type.properties, BlockProperty::Liquid) ||
+                !HasProperty(current_type.properties, BlockProperty::Liquid)) {
+                return false;
+            }
+        }
+    }
     if (current == neighbor && current_type.cull_against_same) return true;
     if (is_side_face(direction)) {
         float current_height = 1.0f - current_type.top_face_offset;
