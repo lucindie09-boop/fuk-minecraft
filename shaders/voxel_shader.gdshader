@@ -77,15 +77,10 @@ void vertex(){
 void fragment(){
 
     float layer=custom1_attr.r * 255.0;
-    vec2 water_uv = custom2_attr.xy + vec2(TIME * 0.02, TIME * 0.01);
-    vec2 final_uv = mix(custom2_attr.xy, water_uv, step(abs(layer - 11.0), 0.5));
-    vec3 tex_coord = vec3(final_uv, layer);
+    vec3 tex_coord = vec3(custom2_attr.xy, layer);
     vec4 color = texture(texture_array, tex_coord, mipmap_bias);
 
     float ao=custom1_attr.g;
-
-    bool is_water=abs(layer-11.0)<0.5;
-    bool is_leaves=false;
 
     vec3 block_light=custom0_attr.rgb;
 
@@ -125,58 +120,6 @@ void fragment(){
     );
 
     vec3 lit_color=color.rgb*combinedLight*ao;
-
-    if(is_leaves){
-
-        float backlit=
-            max(dot(world_normal,-sun_dir_norm),0.0);
-
-        float sss=
-            backlit*
-            backlit*
-            sky_light_intensity*
-            0.6;
-
-        lit_color+=
-            vec3(0.15,0.35,0.05)*
-            sss*
-            color.g;
-    }
-
-    if(is_water){
-
-        float shimmer=
-            sin(world_position.x*12.0+
-            world_position.z*8.0)*0.5+0.5;
-
-        shimmer*=
-            sin(world_position.x*7.0-
-            world_position.z*11.0+
-            1.5)*0.5+0.5;
-
-        lit_color*=1.0+shimmer*0.15;
-
-        lit_color+=
-            sky_light_color*
-            sky_light_intensity*
-            0.08;
-
-        // Sun glint: smooth specular highlight where the sun's reflection
-        // hits the water, strongest low on the horizon at sunrise/sunset.
-        // Uses the flat face normal (no per-pixel wave noise), so the
-        // highlight shape comes purely from how the view ray sweeps across
-        // the surface geometry -- same as a classic flat-plane specular
-        // highlight. No noise involved means no aliasing risk.
-        vec3 incident=normalize(view_direction);
-        vec3 reflect_dir=reflect(incident,world_normal);
-        float specAngle=max(dot(reflect_dir,sun_dir_norm),0.0);
-        float glint=
-            pow(specAngle,90.0)*1.2+
-            pow(specAngle,20.0)*0.25;
-        glint*=max(sky_light_intensity,0.05);
-
-        lit_color+=vec3(1.0,0.85,0.6)*glint;
-    }
 
     if(sky_light_intensity>0.1){
 
