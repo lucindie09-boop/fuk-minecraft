@@ -304,7 +304,7 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                     if (merge_start != -1) {
                         const bool same_block = block_id == current_block;
                         const bool within_distance = (y - merge_start) < kMaxGreedyMergeDistance;
-                        const bool same_light = light_key == current_light_key;
+                        const bool same_light = lights_similar_enough(light_key, current_light_key);
                         const bool same_rotation = rotation == current_rotation;
                         if (same_block && within_distance && same_light && same_rotation) {
                             continue;
