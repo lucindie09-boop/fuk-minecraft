@@ -191,18 +191,18 @@ String PerfReport::build(
         report += "    merges:       " + String::num_int64(greedy_v_stats.merge_successes) +
                   "/" + String::num_int64(greedy_v_stats.merge_attempts) +
                   " (" + String::num(merge_success_pct, 1) + "%)\n";
-        report += "    ao_reject:    mismatch=" + String::num_int64(greedy_v_stats.reject_ao_mismatch) +
-                  " occlusion=" + String::num_int64(greedy_v_stats.reject_ao_occlusion) + "\n";
-        const uint64_t continuation_rejects =
-            greedy_v_stats.reject_light_mismatch + greedy_v_stats.reject_rotation_mismatch +
-            greedy_v_stats.reject_block_mismatch +
-            greedy_v_stats.reject_distance_limit;
-        if (continuation_rejects > 0) {
-            report += "    split_run:    light=" + String::num_int64(greedy_v_stats.reject_light_mismatch) +
-                      " rotation=" + String::num_int64(greedy_v_stats.reject_rotation_mismatch) +
-                      " block=" + String::num_int64(greedy_v_stats.reject_block_mismatch) +
-                      " distance=" + String::num_int64(greedy_v_stats.reject_distance_limit) + "\n";
-        }
+    }
+    report += "    ao_reject:    mismatch=" + String::num_int64(greedy_v_stats.reject_ao_mismatch) +
+              " occlusion=" + String::num_int64(greedy_v_stats.reject_ao_occlusion) + "\n";
+    const uint64_t continuation_rejects =
+        greedy_v_stats.reject_light_mismatch + greedy_v_stats.reject_rotation_mismatch +
+        greedy_v_stats.reject_block_mismatch +
+        greedy_v_stats.reject_distance_limit;
+    if (continuation_rejects > 0) {
+        report += "    split_run:    light=" + String::num_int64(greedy_v_stats.reject_light_mismatch) +
+                  " rotation=" + String::num_int64(greedy_v_stats.reject_rotation_mismatch) +
+                  " block=" + String::num_int64(greedy_v_stats.reject_block_mismatch) +
+                  " distance=" + String::num_int64(greedy_v_stats.reject_distance_limit) + "\n";
     }
     // Chunk generation sub-timers
     double voxelization_avg = ChunkGenerator::get_perf_timer().get_avg(TimerID::Voxelization);
