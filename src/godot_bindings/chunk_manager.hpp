@@ -2,8 +2,6 @@
 #define FUK_MINECRAFT_CHUNK_MANAGER_HPP
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
-#include <godot_cpp/classes/occluder_instance3d.hpp>
-#include <godot_cpp/classes/box_occluder3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/node_path.hpp>
@@ -12,7 +10,6 @@
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <memory>
-#include <unordered_map>
 
 #include "core/performance_timer.hpp"
 #include "core/block_types.hpp"
@@ -149,16 +146,10 @@ protected:
     static void _bind_methods();
 
 private:
-    void update_occluders();
-
     std::unique_ptr<VoxelEngineController> controller;
     godot::NodePath player_path = godot::NodePath("../Player");
     godot::Node3D* cached_player = nullptr;
     godot::Camera3D* cached_camera = nullptr;
-    std::unordered_map<uint64_t, godot::OccluderInstance3D*> occluders_;
-    int32_t last_occluder_cx = INT32_MAX;
-    int32_t last_occluder_cy = INT32_MAX;
-    int32_t last_occluder_cz = INT32_MAX;
 };
 
 } // namespace VoxelEngine

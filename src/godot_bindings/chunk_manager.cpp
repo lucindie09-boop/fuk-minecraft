@@ -7,10 +7,6 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/variant/string.hpp>
-#include <cmath>
-#include <unordered_set>
-
-#include "core/chunk_coords.hpp"
 
 using namespace godot;
 using namespace VoxelEngine;
@@ -103,15 +99,9 @@ void ChunkManager::_process(double delta) {
 
     controller->update(delta, is_editor, player_pos, this);
     controller->get_environment_controller().update_environment(get_parent());
-    update_occluders();
 }
 
 void ChunkManager::_exit_tree() {
-    // Clean up occluder nodes
-    for (auto& kv : occluders_) {
-        kv.second->queue_free();
-    }
-    occluders_.clear();
     cached_player = nullptr;
     cached_camera = nullptr;
 }
@@ -248,67 +238,6 @@ godot::Color ChunkManager::get_night_sky_color() const { return controller->get_
 
 void ChunkManager::set_fog_density(double density) { controller->set_fog_density(density); }
 double ChunkManager::get_fog_density() const { return controller->get_fog_density(); }
-
-void ChunkManager::update_occluders() {
-    if (!cached_player) return;
-
-    godot::Vector3 pos = cached_player->get_global_position();
-    int32_t px = static_cast<int32_t>(std::floor(pos.x));
-    int32_t py = static_cast<int32_t>(std::floor(pos.y));
-    int32_t pz = static_cast<int32_t>(std::floor(pos.z));
-
-    int32_t cx, cy, cz, lx, ly, lz;
-    world_to_chunk_local(px, py, pz, cx, cy, cz, lx, ly, lz);
-
-    if (cx == last_occluder_cx && cy == last_occluder_cy && cz == last_occluder_cz) {
-        return;
-    }
-    last_occluder_cx = cx;
-    last_occluder_cy = cy;
-    last_occluder_cz = cz;
-
-    auto& chunk_map = controller->get_chunk_world().get_chunk_map();
-
-    std::unordered_set<uint64_t> wanted;
-    for (int32_t dx = -1; dx <= 1; ++dx) {
-        for (int32_t dy = -1; dy <= 1; ++dy) {
-            for (int32_t dz = -1; dz <= 1; ++dz) {
-                int32_t nx = cx + dx;
-                int32_t ny = cy + dy;
-                int32_t nz = cz + dz;
-                uint64_t key = chunk_map.get_chunk_key(nx, ny, nz);
-                ChunkRenderData* rd = chunk_map.get_chunk_render_data(nx, ny, nz);
-                if (rd && rd->data && rd->data->fully_solid()) {
-                    wanted.insert(key);
-                    auto it = occluders_.find(key);
-                    if (it == occluders_.end()) {
-                        OccluderInstance3D* occ = memnew(OccluderInstance3D);
-                        Ref<BoxOccluder3D> box;
-                        box.instantiate();
-                        box->set_size(godot::Vector3(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH));
-                        occ->set_occluder(box);
-                        occ->set_position(godot::Vector3(
-                            nx * CHUNK_WIDTH + CHUNK_WIDTH / 2.0f,
-                            ny * CHUNK_HEIGHT + CHUNK_HEIGHT / 2.0f,
-                            nz * CHUNK_DEPTH + CHUNK_DEPTH / 2.0f));
-                        add_child(occ);
-                        occluders_[key] = occ;
-                    }
-                }
-            }
-        }
-    }
-
-    auto it = occluders_.begin();
-    while (it != occluders_.end()) {
-        if (wanted.find(it->first) == wanted.end()) {
-            it->second->queue_free();
-            it = occluders_.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
 
 // -------------------------------------------------------------------------
 // _bind_methods
