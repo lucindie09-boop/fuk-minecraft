@@ -6,6 +6,7 @@
 #include <godot_cpp/classes/world3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 using namespace godot;
@@ -45,6 +46,7 @@ void ChunkManager::_ready() {
 
 void ChunkManager::_enter_tree() {
     controller->set_owner(this);
+    set_process(true);
     print_line("_enter_tree: called, is_inside_tree=" + String::num(is_inside_tree()));
     RenderingServer* rs = RenderingServer::get_singleton();
     Ref<World3D> world = get_world_3d();
@@ -69,7 +71,11 @@ void ChunkManager::_process(double delta) {
     if (is_editor && !controller->get_editor_enabled()) return;
 
     godot::Vector3 player_pos;
-    if (cached_player) {
+    godot::Camera3D* cam = Object::cast_to<godot::Camera3D>(get_viewport()->get_camera_3d());
+    if (cam) {
+        player_pos = cam->get_global_position();
+        cached_camera = cam;
+    } else if (cached_player) {
         player_pos = cached_player->get_global_position();
     } else if (!player_path.is_empty()) {
         Node* player_node = get_node_or_null(player_path);
@@ -81,11 +87,19 @@ void ChunkManager::_process(double delta) {
     }
 
     // Extract camera frustum planes for frustum-prioritized chunk loading
-    if (cached_player) {
-        if (!cached_camera) {
-            cached_camera = Object::cast_to<Camera3D>(cached_player->get_node_or_null(NodePath("Camera3D")));
+    if (cached_camera) {
+        godot::TypedArray<godot::Plane> frustum_planes = cached_camera->get_frustum();
+        if (frustum_planes.size() >= 6) {
+            std::array<godot::Plane, 6> planes;
+            for (int i = 0; i < 6; ++i) {
+                planes[i] = frustum_planes[i];
+            }
+            controller->update_frustum(planes);
         }
-        if (cached_camera) {
+    } else if (cached_player) {
+        cam = Object::cast_to<godot::Camera3D>(cached_player->get_node_or_null(NodePath("Camera3D")));
+        if (cam) {
+            cached_camera = cam;
             godot::TypedArray<godot::Plane> frustum_planes = cached_camera->get_frustum();
             if (frustum_planes.size() >= 6) {
                 std::array<godot::Plane, 6> planes;
@@ -169,7 +183,12 @@ bool ChunkManager::get_debug_enabled() const { return controller->get_debug_enab
 void ChunkManager::set_debug_print_interval(double interval) { controller->set_debug_print_interval(interval); }
 double ChunkManager::get_debug_print_interval() const { return controller->get_debug_print_interval(); }
 
-void ChunkManager::set_editor_enabled(bool enabled) { controller->set_editor_enabled(enabled); }
+void ChunkManager::set_editor_enabled(bool enabled) {
+    controller->set_editor_enabled(enabled);
+    if (enabled && controller->get_auto_update()) {
+        update_chunks();
+    }
+}
 bool ChunkManager::get_editor_enabled() const { return controller->get_editor_enabled(); }
 
 void ChunkManager::set_editor_render_distance(int32_t distance) { controller->set_editor_render_distance(distance); }
