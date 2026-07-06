@@ -52,6 +52,14 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - **Fixed `side_lowered_offset` in `mesh_builder_faces.cpp`**: was checking the HORIZONTAL neighbor for `top_face_offset` instead of the block BELOW (y-1). When water (offset=0.12) sat adjacent to wet sand (offset=0.0625), the water's offset collapsed the wet sand side face to ~0.12 units tall (2 pixels).
 - **Fixed LOD lighting (day/night cycle)**: replaced hardcoded `sky_light=15`/`light=15` in `fill_downsampled_chunk` and `fill_face_neighbor` with actual sampled values from the macro-cell center block via new helper `sample_macro_cell_light`.
 - **`pipelines_busy` no longer checks gen queue**: removed `worker_queue_size > 0` from `process_mesh_budgets` — the shared pool always has some backlog during initial loading, which previously forced reduced mesh budgets even when the pool was otherwise able to handle mesh work.
+- **Greedy_v single-pass refactor**: 4 separate vertical direction passes → one Y-sweep per column. Greedy_v: 2.684ms → 1.962ms.
+- **Solid cache fast path for fully-culled columns**: checks all 4 side cache entries before the 4-direction inner loop; interior columns with all-solid neighbors skip the loop entirely. Greedy_v further → 0.98ms (63% total reduction from baseline).
+- **Solid cache bypass for air neighbors**: uses cache to skip paletted-section `get_block_unsafe` when neighbor is air.
+- **Micro-optimizations**: `get_block` → `get_block_unsafe`; moved `light_key` fetch after cull check.
+- **Greedy_h top-face fast path**: for interior columns with non-air opaque neighbor above + Solid offset=0 block, skip neighbor lookup, cull check, light read, rotation lookup. Greedy_h: 0.817ms → 0.691ms (initial load).
+- **solid_cache stores BlockID (uint16_t) instead of bool**: center-block and neighbor reads bypass paletted-section accessor entirely. Eliminated boundary-switch for block neighbor lookup in greedy_v — all 4 neighbor reads are a single cache line. Greedy_h: 0.691ms → 0.519ms; greedy_v: 0.918ms → 0.816ms (initial).
+- **Removed `!has_occlusion` merge guard**: was preventing all vertical merges (AO < 1.0 on every side face). Now uniform-AO runs become merged quads. Greedy_v: 0.816ms → 0.727ms (initial). Merge_attempts=0 on flat terrain (all side faces culled by solid neighbors); visible at cliffs/chunk boundaries.
+- **Fixed `_process` for editor viewport**: `ChunkManager::_process()` now works in editor by resolving camera from editor viewport.
 
 ### In Progress
 - (none)
@@ -70,10 +78,15 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - Light reuses the same `PalSection` struct (palette + bit-width-adaptive indices) for uniform-light optimization.
 - Greedy mesher uses `get_block_unsafe()` + `get_light_packed_word_unsafe()` per-voxel access instead of raw pointers, avoiding thread-local shared buffers.
 - `PalStorage::section_get`/`section_set` are generic static helpers used by both block and light accessors, reducing code duplication.
+- **Single-pass vertical mesher**: all 4 side directions per voxel in one sweep; shares center block reads and section air-skip checks.
+- **Solid cache fast path**: interior columns only (not chunk boundaries); requires all 4 side neighbors non-air + block Solid with offset=0.
+- **Thread pool split REVERTED** (discussion only): splitting into gen (2) + mesh (13) starved gen throughput by 7×; single shared pool with high-priority mesh path handles contention correctly.
+- **solid_cache stores BlockID**: enables all center + neighbor block reads to bypass paletted section accessor; eliminated boundary-switch for block neighbor lookup in greedy_v; increased memory from 37KB to 74KB per builder (temporary, per-thread).
+- **Vertical merge no longer requires `!has_occlusion`**: uniform AO across a run produces correct merged quads regardless of occlusion value; was blocking EVERY interior-column side-face merge previously because AO < 1.0 on nearly all faces due to adjacent solid blocks. On flat terrain, merge_attempts=0 is expected (all side faces culled by neighbors); visible at terrain edges.
 
 ## Next Steps
-- Verify memory consumption in-game with ~10k loaded chunks.
-- Confirm no regression in light propagation correctness.
+- Verify no visual regression in side-face AO at cliff/chunk-boundary edges.
+- Confirm merge_attempts > 0 when exploring terrain with varied elevation.
 
 ## Critical Context
 - Chunk size is 32×32×32, world height is 1024 blocks.
@@ -84,6 +97,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - Collision resolver now uses the original binary-search approach.
 - Generator `insert` locks only one shard — no longer blocks readers on other shards.
 - Block + light memory per chunk: old 130KB → new ~1–20KB (uniform-heavy terrain). At ~9645 loaded chunks: total dropped from ~1.25GB to ~10–200MB.
+- **Performance numbers (current)**: 15 workers (RTX 3060 Ti, hw_concurrency - 1). Initial load ~9645 chunks in ~2s (4822/s). Steady-state: 0.012ms C++ overhead, ~1.5ms GPU, 630-680 FPS, ~1900 verts/chunk. Greedy_h: ~0.365-0.486ms. Greedy_v: ~0.517-0.727ms. Build_mesh: ~0.988-1.349ms.
 
 ## Relevant Files
 - `src/core/chunk_data.hpp`: `PaletteStorage` class with 8 × 16³ paletted sections for blocks + light, `PalSection` struct, read/write_index helpers, `section_get`/`section_set` generics
@@ -93,7 +107,9 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `src/core/frustum.hpp`: Frustum utility (AABB test, chunk visibility)
 - `src/mesh/lod_controller.hpp/cpp`: `effective_horizontal_dist_sq()`, `classify_target_lod()`, `apply_hysteresis()`
 - `src/mesh/mesh_manager.hpp/cpp`: `set_frustum()`, `update_lod()`
-- `src/mesh/mesh_builder_greedy.cpp`: Uses `get_block_unsafe()` + `get_light_packed_word_unsafe()` for neighbor lookups (thread-safe)
+- `src/mesh/mesh_builder_greedy.cpp`: greedy_h top-face fast path, greedy_v solid cache fast path, flush_vertical_merge merge condition
+- `src/mesh/mesh_builder.cpp`: solid_cache population now stores BlockID; non-greedy neighbor lookup simplified
+- `src/mesh/mesh_builder.hpp`: solid_cache type changed to uint16_t; GreedyVerticalStatsSnapshot struct
 - `src/world/world_updater.hpp/cpp`: `set_frustum()`, `visible_chunk_ratio_`, budgets, frustum pass
 - `src/engine/collision_resolver.hpp/cpp`: Binary-search collision (after DDA revert)
 - `src/core/frame_budgets.hpp`: Budget constants
@@ -110,3 +126,6 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `materials/voxel_material_water.tres`: Water ShaderMaterial resource
 - `src/render/material_manager.hpp/cpp`: `get_water_material()` lazy loading
 - `src/mesh/mesh_builder_faces.cpp`: Water face routing in `add_face`/`add_greedy_face`
+- `src/mesh/ambient_occlusion.cpp`: AO computation per face, used by flush_vertical_merge uniformity check
+- `src/debug/perf_report.cpp`: Merge stats display (conditional on merge_attempts > 0)
+- `src/core/thread_pool.hpp`: Per-worker round-robin FIFO + high-priority queue (shared pool, no gen/mesh split)

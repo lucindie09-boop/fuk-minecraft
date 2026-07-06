@@ -1,6 +1,7 @@
 #include "mesh/mesh_builder.hpp"
 #include "core/light_packing.hpp"
 #include <cstddef>
+#include <cstring>
 
 namespace VoxelEngine {
 
@@ -19,24 +20,13 @@ static inline bool lights_similar_enough(uint16_t a, uint16_t b) {
 void MeshBuilder::flush_horizontal_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                           int32_t z_start, int32_t z_end,
                                           int32_t y, int32_t x, FaceDirection direction,
-                                          BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry) {
+                                          BlockID block_id, uint16_t light_key, int rotation,
+                                          const float ao[4], const BlockRegistry& registry) {
     if (z_start < 0 || z_end <= z_start) return;
 
     if (z_end - z_start > 1) {
-        float first_ao[4];
-        ao.compute_face(accessor, x, y, z_start, direction, first_ao);
-        bool has_occlusion = (first_ao[0] < 1.0f || first_ao[1] < 1.0f || first_ao[2] < 1.0f || first_ao[3] < 1.0f);
-        bool uniform = true;
-        for (int32_t cz = z_start + 1; cz < z_end; ++cz) {
-            float block_ao[4];
-            this->ao.compute_face(accessor, x, y, cz, direction, block_ao);
-            if (block_ao[0] != first_ao[0] || block_ao[1] != first_ao[1] || block_ao[2] != first_ao[2] || block_ao[3] != first_ao[3]) {
-                uniform = false;
-                break;
-            }
-        }
-
-        if (uniform && !has_occlusion) {
+        bool has_occlusion = (ao[0] < 1.0f || ao[1] < 1.0f || ao[2] < 1.0f || ao[3] < 1.0f);
+        if (!has_occlusion) {
             Face face;
             face.x = x;
             face.y = y;
@@ -45,14 +35,13 @@ void MeshBuilder::flush_horizontal_merge(const ChunkData& chunk, const ChunkNeig
             face.block_id = block_id;
             face.u_max = 0;
             face.v_max = (z_end - 1) - z_start;
-            add_greedy_face(chunk, accessor, face, light_key, rotation, first_ao, registry);
-        } else {
-            for (int32_t cz = z_start; cz < z_end; ++cz) {
-                add_face(chunk, accessor, x, y, cz, direction, block_id, registry);
-            }
+            add_greedy_face(chunk, accessor, face, light_key, rotation, ao, registry);
+            return;
         }
-    } else {
-        add_face(chunk, accessor, x, y, z_start, direction, block_id, registry);
+    }
+
+    for (int32_t cz = z_start; cz < z_end; ++cz) {
+        add_face(chunk, accessor, x, y, cz, direction, block_id, registry);
     }
 }
 
@@ -63,7 +52,6 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
     }
 
     const int dir_idx = static_cast<int>(direction);
-    // Hoist direction offsets once; they are loop-invariant.
     const int32_t dx = kDirectionOffsets[dir_idx][0];
     const int32_t dy = kDirectionOffsets[dir_idx][1];
     const int32_t dz = kDirectionOffsets[dir_idx][2];
@@ -79,19 +67,18 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                 BlockID current_block = BlockIDs::AIR;
                 uint16_t current_light_key = 0;
                 int current_rotation = 0;
+                float current_ao[4]{};
 
                 for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
                     BlockID block_id = solid_cache[y][z + 1][x + 1];
 
                     if (block_id == BlockIDs::AIR) {
                         flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
-                                               current_block, current_light_key, current_rotation, registry);
+                                               current_block, current_light_key, current_rotation, current_ao, registry);
                         merge_start = -1;
                         continue;
                     }
 
-                    // Fast path: neighbor above is non-air, non-transparent, and this
-                    // block is solid → top face is always culled, skip remaining work.
                     if (direction == FaceDirection::Top && y < CHUNK_HEIGHT - 1
                         && solid_cache[y + 1][z + 1][x + 1] != BlockIDs::AIR) {
                         const BlockType& nbt = registry.get_block(solid_cache[y + 1][z + 1][x + 1]);
@@ -100,7 +87,7 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                             && bt.top_face_offset == 0.0f
                             && !HasProperty(nbt.properties, BlockProperty::Transparent)) {
                             flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
-                                                   current_block, current_light_key, current_rotation, registry);
+                                                   current_block, current_light_key, current_rotation, current_ao, registry);
                             merge_start = -1;
                             continue;
                         }
@@ -108,9 +95,6 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
 
                     BlockID neighbor = accessor.get_block(x, nybase, z);
 
-                    // If this is the top/bottom y-slice and the neighbor chunk doesn't
-                    // exist, skip the face entirely — it'll be added on rebuild when the
-                    // neighbor appears.
                     const bool missing_y_boundary =
                         (direction == FaceDirection::Top && y == CHUNK_HEIGHT - 1 && !accessor.pos_y) ||
                         (direction == FaceDirection::Bottom && y == 0 && !accessor.neg_y);
@@ -120,7 +104,7 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
 
                     if (cull) {
                         flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
-                                               current_block, current_light_key, current_rotation, registry);
+                                               current_block, current_light_key, current_rotation, current_ao, registry);
                         merge_start = -1;
                         continue;
                     }
@@ -128,25 +112,41 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                     int rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
                     const uint16_t light_key = accessor.get_light_packed(x + dx, nybase, z + dz);
 
-                    if (merge_start != -1 && block_id == current_block && (z - merge_start) < kMaxGreedyMergeDistance
-                        && lights_similar_enough(light_key, current_light_key) && rotation == current_rotation) {
+                    if (merge_start != -1 && block_id == current_block
+                        && (z - merge_start) < kMaxGreedyMergeDistance
+                        && lights_similar_enough(light_key, current_light_key)
+                        && rotation == current_rotation) {
+                        float block_ao[4];
+                        ao.compute_face(accessor, x, y, z, direction, block_ao);
+                        if (block_ao[0] == current_ao[0] && block_ao[1] == current_ao[1]
+                            && block_ao[2] == current_ao[2] && block_ao[3] == current_ao[3]) {
+                            continue;
+                        }
+                        flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
+                                               current_block, current_light_key, current_rotation, current_ao, registry);
+                        merge_start = z;
+                        current_block = block_id;
+                        current_rotation = rotation;
+                        current_light_key = light_key;
+                        memcpy(current_ao, block_ao, sizeof(current_ao));
                         continue;
                     }
 
                     if (merge_start != -1) {
                         flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
-                                               current_block, current_light_key, current_rotation, registry);
+                                               current_block, current_light_key, current_rotation, current_ao, registry);
                     }
 
                     merge_start = z;
                     current_block = block_id;
                     current_rotation = rotation;
                     current_light_key = light_key;
+                    ao.compute_face(accessor, x, y, z, direction, current_ao);
                 }
 
                 if (merge_start != -1) {
                     flush_horizontal_merge(chunk, accessor, merge_start, CHUNK_DEPTH, y, x, direction,
-                                           current_block, current_light_key, current_rotation, registry);
+                                           current_block, current_light_key, current_rotation, current_ao, registry);
                 }
             }
         }

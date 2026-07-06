@@ -41,7 +41,11 @@ func _process(_delta: float) -> void:
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return
 
+	# Dynamically reduce sample count at higher resolutions.
+	# 48 samples at 1080p, scaling down for larger viewports.
 	var shader_material := material as ShaderMaterial
+	var samples := maxi(16, int(48.0 * 1080.0 / max(viewport_size.y, 1.0)))
+	shader_material.set_shader_parameter("num_samples", samples)
 
 	# --- Sun ---
 	var sun_facing: float = cam_forward.dot(sun_dir)

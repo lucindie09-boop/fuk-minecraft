@@ -83,6 +83,8 @@ uint64_t reject_distance_limit = 0;
     MeshBuilder() {
         vertices.reserve(kVertexReserve);
         indices.reserve(kIndexReserve);
+        water_vertices.reserve(kVertexReserve);
+        water_indices.reserve(kIndexReserve);
     }
 
     BuiltMeshData build_mesh_data(
@@ -189,7 +191,7 @@ private:
     static constexpr float kWaterSurfaceDrop = 0.12f;
     static constexpr float kLoweredBlockOffset = 0.0625f;  // 1/16
     static constexpr int   kMaxGreedyMergeDistance = 32;
-    static constexpr size_t kVertexReserve = CHUNK_VOLUME * 2 + 4096;
+    static constexpr size_t kVertexReserve = CHUNK_VOLUME * 6 * 4;
     static constexpr size_t kIndexReserve  = kVertexReserve * 3 / 2;
 
     // -------------------------------------------------------------------------
@@ -362,9 +364,10 @@ const BlockRegistry& registry) const;
     // Passive greedy meshing (heavy — defined in .cpp)
     // -------------------------------------------------------------------------
     void flush_horizontal_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                int32_t x_start, int32_t x_end,
-                                int32_t y, int32_t z, FaceDirection direction,
-                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
+                                int32_t z_start, int32_t z_end,
+                                int32_t y, int32_t x, FaceDirection direction,
+                                BlockID block_id, uint16_t light_key, int rotation,
+                                const float ao[4], const BlockRegistry& registry);
 
     void passive_greedy_mesh_horizontal(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                         FaceDirection direction, const BlockRegistry& registry);

@@ -92,6 +92,8 @@ void MeshBuilder::clear() {
     water_indices.clear();
     vertices.reserve(kVertexReserve);
     indices.reserve(kIndexReserve);
+    water_vertices.reserve(kVertexReserve);
+    water_indices.reserve(kIndexReserve);
 greedy_v_stats_local = {};
 }
 
