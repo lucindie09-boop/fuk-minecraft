@@ -60,7 +60,7 @@ script = ExtResource("2_uu6xs")
 environment = SubResource("Environment_uu6xs")
 
 [node name="ChunkManager" type="ChunkManager" parent="." unique_id=318602554]
-render_distance = 50
+render_distance = 32
 player_position = Vector3(0, 280, 0)
 debug_enabled = false
 smooth_lighting = true

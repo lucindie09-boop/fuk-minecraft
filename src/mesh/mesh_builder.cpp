@@ -176,21 +176,21 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
             for (int32_t y = y0; y < y1; y++) {
                 for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
                     for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
-                        solid_cache[y][z][x] = chunk.get_block_unsafe(x - 1, y, z - 1) != BlockIDs::AIR;
+                        solid_cache[y][z][x] = chunk.get_block_unsafe(x - 1, y, z - 1);
                     }
                 }
             }
         }
 
-        // X boundaries
+        // X boundaries — store the actual BlockID (or BlockIDs::AIR if neighbor null)
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
                 solid_cache[y][z][0] = neighbor_x_neg
-                    ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - 1, y, z - 1) != BlockIDs::AIR
-                    : false;
+                    ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - 1, y, z - 1)
+                    : BlockIDs::AIR;
                 solid_cache[y][z][SC_W - 1] = neighbor_x_pos
-                    ? neighbor_x_pos->get_block_unsafe(0, y, z - 1) != BlockIDs::AIR
-                    : false;
+                    ? neighbor_x_pos->get_block_unsafe(0, y, z - 1)
+                    : BlockIDs::AIR;
             }
         }
 
@@ -198,28 +198,28 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
                 solid_cache[y][0][x] = neighbor_z_neg
-                    ? neighbor_z_neg->get_block_unsafe(x - 1, y, CHUNK_DEPTH - 1) != BlockIDs::AIR
-                    : false;
+                    ? neighbor_z_neg->get_block_unsafe(x - 1, y, CHUNK_DEPTH - 1)
+                    : BlockIDs::AIR;
                 solid_cache[y][SC_D - 1][x] = neighbor_z_pos
-                    ? neighbor_z_pos->get_block_unsafe(x - 1, y, 0) != BlockIDs::AIR
-                    : false;
+                    ? neighbor_z_pos->get_block_unsafe(x - 1, y, 0)
+                    : BlockIDs::AIR;
             }
         }
 
         // Four corner columns (x=0 or SC_W-1, z=0 or SC_D-1)
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             solid_cache[y][0][0] = neg_x_neg_z
-                ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - 1, y, CHUNK_DEPTH - 1) != BlockIDs::AIR
-                : false;
+                ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - 1, y, CHUNK_DEPTH - 1)
+                : BlockIDs::AIR;
             solid_cache[y][0][SC_W - 1] = pos_x_neg_z
-                ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - 1) != BlockIDs::AIR
-                : false;
+                ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - 1)
+                : BlockIDs::AIR;
             solid_cache[y][SC_D - 1][0] = neg_x_pos_z
-                ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - 1, y, 0) != BlockIDs::AIR
-                : false;
+                ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - 1, y, 0)
+                : BlockIDs::AIR;
             solid_cache[y][SC_D - 1][SC_W - 1] = pos_x_pos_z
-                ? pos_x_pos_z->get_block_unsafe(0, y, 0) != BlockIDs::AIR
-                : false;
+                ? pos_x_pos_z->get_block_unsafe(0, y, 0)
+                : BlockIDs::AIR;
         }
     }
 
@@ -243,8 +243,8 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
             for (int32_t y = y0; y < y1; y++) {
                 for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
                     for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-                        if (!solid_cache[y][z + 1][x + 1]) continue;
-                        const BlockID block_id = chunk.get_block_unsafe(x, y, z);
+                        const BlockID block_id = solid_cache[y][z + 1][x + 1];
+                        if (block_id == BlockIDs::AIR) continue;
                         bool all_surrounded = true;
                         for (int i = 0; i < 6; i++) {
                             int32_t nx = x + kDirectionOffsets[i][0];
@@ -256,9 +256,7 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
                                 all_surrounded = false;
                                 break;
                             }
-                            BlockID neighbor = solid_cache[ny][nz + 1][nx + 1]
-                                ? chunk.get_block_unsafe(nx, ny, nz)
-                                : BlockIDs::AIR;
+                            BlockID neighbor = solid_cache[ny][nz + 1][nx + 1];
                             if (!should_cull_against_neighbor(chunk, block_id, neighbor, kAllDirections[i], x, y, z, registry)) {
                                 all_surrounded = false;
                                 break;

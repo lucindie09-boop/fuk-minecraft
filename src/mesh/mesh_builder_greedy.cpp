@@ -81,7 +81,7 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                 int current_rotation = 0;
 
                 for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-                    BlockID block_id = chunk.get_block_unsafe(x, y, z);
+                    BlockID block_id = solid_cache[y][z + 1][x + 1];
 
                     if (block_id == BlockIDs::AIR) {
                         flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
@@ -93,9 +93,8 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                     // Fast path: neighbor above is non-air, non-transparent, and this
                     // block is solid → top face is always culled, skip remaining work.
                     if (direction == FaceDirection::Top && y < CHUNK_HEIGHT - 1
-                        && solid_cache[y + 1][z + 1][x + 1]) {
-                        BlockID nb = chunk.get_block_unsafe(x, y + 1, z);
-                        const BlockType& nbt = registry.get_block(nb);
+                        && solid_cache[y + 1][z + 1][x + 1] != BlockIDs::AIR) {
+                        const BlockType& nbt = registry.get_block(solid_cache[y + 1][z + 1][x + 1]);
                         const BlockType& bt = registry.get_block(block_id);
                         if (HasProperty(bt.properties, BlockProperty::Solid)
                             && bt.top_face_offset == 0.0f
@@ -262,7 +261,7 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                 }
 
                 for (int32_t y = y0; y < y1; y++) {
-                    BlockID block_id = chunk.get_block_unsafe(x, y, z);
+                    BlockID block_id = solid_cache[y][z + 1][x + 1];
 
                     if (block_id == BlockIDs::AIR) {
                         for (int d = 0; d < kDirCount; d++) {
@@ -279,8 +278,10 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                     // is an opaque solid → all faces are culled, skip direction loop.
                     const int sx0 = x + 1 - 1, sx1 = x + 1 + 1;
                     const int sz0 = z + 1 - 1, sz1 = z + 1 + 1;
-                    if (solid_cache[y][z + 1][sx0] & solid_cache[y][z + 1][sx1]
-                        & solid_cache[y][sz0][x + 1] & solid_cache[y][sz1][x + 1]
+                    if ((solid_cache[y][z + 1][sx0] != BlockIDs::AIR)
+                        & (solid_cache[y][z + 1][sx1] != BlockIDs::AIR)
+                        & (solid_cache[y][sz0][x + 1] != BlockIDs::AIR)
+                        & (solid_cache[y][sz1][x + 1] != BlockIDs::AIR)
                         && !boundary[0] && !boundary[1] && !boundary[2] && !boundary[3]) {
                         const BlockType& bt = registry.get_block(block_id);
                         if (HasProperty(bt.properties, BlockProperty::Solid)
@@ -301,31 +302,14 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
 
                         const int sx = x + 1 + kNxOff[d];
                         const int sz = z + 1 + kNzOff[d];
-                        const bool nb_non_air = solid_cache[y][sz][sx];
+                        const BlockID neighbor = solid_cache[y][sz][sx];
 
-                        if (!nb_non_air && boundary[d] && !kBChunks[d]) {
+                        if (neighbor == BlockIDs::AIR && boundary[d] && !kBChunks[d]) {
                             flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
                                                 kDirs[d], dst.current_block, dst.current_light_key,
                                                 dst.current_rotation, registry);
                             dst.merge_start = -1;
                             continue;
-                        }
-
-                        BlockID neighbor;
-                        if (nb_non_air) {
-                            if (boundary[d]) {
-                                switch (kDirs[d]) {
-                                    case FaceDirection::Right: neighbor = kBChunks[d]->get_block_unsafe(0, y, z); break;
-                                    case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(31, y, z); break;
-                                    case FaceDirection::Front: neighbor = kBChunks[d]->get_block_unsafe(x, y, 0); break;
-                                    case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, 31); break;
-                                    default: break;
-                                }
-                            } else {
-                                neighbor = chunk.get_block_unsafe(x + kNxOff[d], y, z + kNzOff[d]);
-                            }
-                        } else {
-                            neighbor = BlockIDs::AIR;
                         }
 
                         bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, kDirs[d], x, y, z, registry);

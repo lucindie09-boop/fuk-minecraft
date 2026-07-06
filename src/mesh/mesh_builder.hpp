@@ -259,8 +259,10 @@ private:
     std::vector<uint32_t> water_indices;
     // Layout is [y][z][x] (not [x][z][y]) so that scans with x as the inner
     // loop variable (passive_greedy_mesh_horizontal) read sequential memory
-    // instead of striding by SC_W * SC_D each step
-    std::array<std::array<std::array<uint8_t, SC_W>, SC_D>, CHUNK_HEIGHT> solid_cache{};
+    // instead of striding by SC_W * SC_D each step.
+    // Stores BlockID of the block at chunk position (x-1, y, z-1) for interior
+    // entries, or the neighbor-chunk block for boundary entries.
+    std::array<std::array<std::array<uint16_t, SC_W>, SC_D>, CHUNK_HEIGHT> solid_cache{};
 
     // Neighbor chunk accessor for cross-chunk block/light access.
     ChunkNeighborAccessor accessor;
