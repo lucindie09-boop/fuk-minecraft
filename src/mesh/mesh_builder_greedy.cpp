@@ -264,15 +264,24 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         const BlockType& bt = registry.get_block(block_id);
                         if (HasProperty(bt.properties, BlockProperty::Solid)
                             && bt.top_face_offset == 0.0f) {
-                            for (int d = 0; d < kDirCount; d++) {
-                                auto& dst = dirs[d];
-                                flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
-                                                    kDirs[d], dst.current_block, dst.current_light_key,
-                                                    dst.current_rotation, dst.current_ao, registry);
-                                dst.merge_start = -1;
-                                dst.ao_valid = false;
+                            const BlockType& n_xneg = registry.get_block_fast(solid_cache[y][z + 1][sx0]);
+                            const BlockType& n_xpos = registry.get_block_fast(solid_cache[y][z + 1][sx1]);
+                            const BlockType& n_zneg = registry.get_block_fast(solid_cache[y][sz0][x + 1]);
+                            const BlockType& n_zpos = registry.get_block_fast(solid_cache[y][sz1][x + 1]);
+                            if (n_xneg.top_face_offset == 0.0f
+                                & n_xpos.top_face_offset == 0.0f
+                                & n_zneg.top_face_offset == 0.0f
+                                & n_zpos.top_face_offset == 0.0f) {
+                                for (int d = 0; d < kDirCount; d++) {
+                                    auto& dst = dirs[d];
+                                    flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                        kDirs[d], dst.current_block, dst.current_light_key,
+                                                        dst.current_rotation, dst.current_ao, registry);
+                                    dst.merge_start = -1;
+                                    dst.ao_valid = false;
+                                }
+                                continue;
                             }
-                            continue;
                         }
                     }
 
