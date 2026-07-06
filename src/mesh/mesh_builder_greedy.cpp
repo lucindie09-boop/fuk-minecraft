@@ -159,42 +159,22 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
 void MeshBuilder::flush_vertical_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                           int32_t y_start, int32_t y_end,
                                           int32_t x, int32_t z, FaceDirection direction,
-                                          BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry) {
+                                          BlockID block_id, uint16_t light_key, int rotation,
+                                          const float ao[4], const BlockRegistry& registry) {
     if (y_start < 0 || y_end <= y_start) return;
 
     if (y_end - y_start > 1) {
-
-++greedy_v_stats_local.merge_attempts;
-float first_ao[4];
-ao.compute_face (accessor, x, y_start, z, direction, first_ao);
-bool uniform = true;
-for (int32_t cy = y_start + 1; cy < y_end; ++cy) {
-float block_ao[4];
-this->ao.compute_face (accessor, x, cy, z, direction, block_ao); if (block_ao[0] != first_ao[0] || block_ao[1] != first_ao[1] ||
-block_ao [2] != first_ao[2] || block_ao[3] != first_ao[3]) { uniform = false;
-                break;
-            }
-        }
-
-if (uniform) {
-++greedy_v_stats_local.merge_successes;
-            Face face;
-            face.x = x;
-            face.y = y_start;
-            face.z = z;
-            face.direction = direction;
-            face.block_id = block_id;
-            face.u_max = 0;
-            face.v_max = (y_end - 1) - y_start;
-add_greedy_face (chunk, accessor, face, light_key, rotation, first_ao, registry);
-} else {
-    if (!uniform) {
-        ++greedy_v_stats_local.reject_ao_mismatch;
-    }
-    for (int32_t cy = y_start; cy < y_end; ++cy) {
-        add_face(chunk, accessor, x, cy, z, direction, block_id, registry);
-    }
-}
+        ++greedy_v_stats_local.merge_attempts;
+        ++greedy_v_stats_local.merge_successes;
+        Face face;
+        face.x = x;
+        face.y = y_start;
+        face.z = z;
+        face.direction = direction;
+        face.block_id = block_id;
+        face.u_max = 0;
+        face.v_max = (y_end - 1) - y_start;
+        add_greedy_face(chunk, accessor, face, light_key, rotation, ao, registry);
     } else {
         add_face(chunk, accessor, x, y_start, z, direction, block_id, registry);
     }
@@ -229,6 +209,8 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
         BlockID current_block = BlockIDs::AIR;
         uint16_t current_light_key = 0;
         int current_rotation = 0;
+        float current_ao[4]{};
+        bool ao_valid = false;
     };
 
     for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
@@ -250,8 +232,9 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         auto& dst = dirs[d];
                         flush_vertical_merge(chunk, accessor, dst.merge_start, y0, x, z,
                                             kDirs[d], dst.current_block, dst.current_light_key,
-                                            dst.current_rotation, registry);
+                                            dst.current_rotation, dst.current_ao, registry);
                         dst.merge_start = -1;
+                        dst.ao_valid = false;
                     }
                     continue;
                 }
@@ -264,14 +247,13 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                             auto& dst = dirs[d];
                             flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
                                                 kDirs[d], dst.current_block, dst.current_light_key,
-                                                dst.current_rotation, registry);
+                                                dst.current_rotation, dst.current_ao, registry);
                             dst.merge_start = -1;
+                            dst.ao_valid = false;
                         }
                         continue;
                     }
 
-                    // Fast path: all 4 side neighbors are non-air and this block
-                    // is an opaque solid → all faces are culled, skip direction loop.
                     const int sx0 = x + 1 - 1, sx1 = x + 1 + 1;
                     const int sz0 = z + 1 - 1, sz1 = z + 1 + 1;
                     if ((solid_cache[y][z + 1][sx0] != BlockIDs::AIR)
@@ -286,8 +268,9 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                                 auto& dst = dirs[d];
                                 flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
                                                     kDirs[d], dst.current_block, dst.current_light_key,
-                                                    dst.current_rotation, registry);
+                                                    dst.current_rotation, dst.current_ao, registry);
                                 dst.merge_start = -1;
+                                dst.ao_valid = false;
                             }
                             continue;
                         }
@@ -303,8 +286,9 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         if (neighbor == BlockIDs::AIR && boundary[d] && !kBChunks[d]) {
                             flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
                                                 kDirs[d], dst.current_block, dst.current_light_key,
-                                                dst.current_rotation, registry);
+                                                dst.current_rotation, dst.current_ao, registry);
                             dst.merge_start = -1;
+                            dst.ao_valid = false;
                             continue;
                         }
 
@@ -312,8 +296,9 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         if (cull) {
                             flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
                                                 kDirs[d], dst.current_block, dst.current_light_key,
-                                                dst.current_rotation, registry);
+                                                dst.current_rotation, dst.current_ao, registry);
                             dst.merge_start = -1;
+                            dst.ao_valid = false;
                             continue;
                         }
 
@@ -338,6 +323,26 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                             const bool same_light = lights_similar_enough(light_key, dst.current_light_key);
                             const bool same_rotation = rotation == dst.current_rotation;
                             if (same_block && within_distance && same_light && same_rotation) {
+                                float block_ao[4];
+                                this->ao.compute_face(accessor, x, y, z, kDirs[d], block_ao);
+                                if (!dst.ao_valid) {
+                                    this->ao.compute_face(accessor, x, dst.merge_start, z, kDirs[d], dst.current_ao);
+                                    dst.ao_valid = true;
+                                }
+                                if (block_ao[0] == dst.current_ao[0] && block_ao[1] == dst.current_ao[1]
+                                    && block_ao[2] == dst.current_ao[2] && block_ao[3] == dst.current_ao[3]) {
+                                    continue;
+                                }
+                                ++greedy_v_stats_local.reject_ao_mismatch;
+                                flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                    kDirs[d], dst.current_block, dst.current_light_key,
+                                                    dst.current_rotation, dst.current_ao, registry);
+                                dst.merge_start = y;
+                                dst.current_block = block_id;
+                                dst.current_rotation = rotation;
+                                dst.current_light_key = light_key;
+                                memcpy(dst.current_ao, block_ao, sizeof(dst.current_ao));
+                                dst.ao_valid = true;
                                 continue;
                             }
                             if (!same_block) {
@@ -351,13 +356,14 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                             }
                             flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
                                                 kDirs[d], dst.current_block, dst.current_light_key,
-                                                dst.current_rotation, registry);
+                                                dst.current_rotation, dst.current_ao, registry);
                         }
 
                         dst.merge_start = y;
                         dst.current_block = block_id;
                         dst.current_rotation = rotation;
                         dst.current_light_key = light_key;
+                        dst.ao_valid = false;
                     }
                 }
             }
@@ -367,7 +373,7 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                 if (dst.merge_start != -1) {
                     flush_vertical_merge(chunk, accessor, dst.merge_start, CHUNK_HEIGHT, x, z,
                                         kDirs[d], dst.current_block, dst.current_light_key,
-                                        dst.current_rotation, registry);
+                                        dst.current_rotation, dst.current_ao, registry);
                 }
             }
         }

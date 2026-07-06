@@ -378,7 +378,8 @@ const BlockRegistry& registry) const;
     void flush_vertical_merge(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                 int32_t y_start, int32_t y_end,
                                 int32_t x, int32_t z, FaceDirection direction,
-                                BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
+                                BlockID block_id, uint16_t light_key, int rotation,
+                                const float ao[4], const BlockRegistry& registry);
 
     void passive_greedy_mesh_vertical(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
                                         const BlockRegistry& registry);
