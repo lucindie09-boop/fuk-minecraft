@@ -97,6 +97,7 @@ private:
     void recover_stuck_lod_chunks();
     void disable_lod_and_split_all_groups();
     void free_group_render_data(LodGroupRenderData& group);
+    void update_group_visibility();
     PackedBuiltMeshData pack_built_mesh(const BuiltMeshData& built_mesh);
 
     ChunkMap* chunk_map = nullptr;

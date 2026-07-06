@@ -427,6 +427,31 @@ void MeshManager::recover_stuck_lod_chunks() {
     });
 }
 
+void MeshManager::update_group_visibility() {
+    if (last_player_chunk_x == INT32_MIN) {
+        return;
+    }
+
+    const LodSettings& settings = lod_controller.get_settings();
+    RenderingServer* rs = RenderingServer::get_singleton();
+
+    lod_controller.for_each_group([&](uint64_t /*group_key*/, LodGroupRenderData& group) {
+        const int32_t merge_size = lod_merge_size(group.merge_shift);
+        const bool visible = is_group_visible_in_range(
+            group.anchor_cx, group.anchor_cy, group.anchor_cz,
+            merge_size,
+            mesh_render_distance,
+            settings.vertical_buffer,
+            last_player_chunk_x, last_player_chunk_y, last_player_chunk_z);
+
+        if (!visible && group.instance_rid.is_valid()) {
+            rs->instance_set_visible(group.instance_rid, false);
+        } else if (visible && group.instance_rid.is_valid() && group.mesh_rid.is_valid()) {
+            rs->instance_set_visible(group.instance_rid, true);
+        }
+    });
+}
+
 void MeshManager::update_lod(int32_t render_distance, bool force_rescan) {
     if (last_player_chunk_x == INT32_MIN) {
         return;
@@ -454,6 +479,8 @@ void MeshManager::update_lod(int32_t render_distance, bool force_rescan) {
     if (rescanned || !lod_controller.get_pending_transitions().empty()) {
         process_lod_transitions(async_epoch ? async_epoch->load(std::memory_order_acquire) : 0);
     }
+
+    update_group_visibility();
 
     recover_stuck_lod_chunks();
 }
