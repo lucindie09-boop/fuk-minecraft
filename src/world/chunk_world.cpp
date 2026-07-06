@@ -305,6 +305,44 @@ apply_pending_placements(key, completed.chunk_x, completed.chunk_y, completed.ch
 
 if (mesh_manager) {
     mesh_manager->notify_chunk_installed(completed.chunk_x, completed.chunk_y, completed.chunk_z);
+
+    // Newly loaded chunk may provide boundary data that changes neighbor meshes.
+    // Queue dirtied neighbor chunks for remesh so they don't retain holes where
+    // boundary faces were skipped at first build (when this chunk was missing).
+    const int32_t ncx = completed.chunk_x;
+    const int32_t ncy = completed.chunk_y;
+    const int32_t ncz = completed.chunk_z;
+    uint64_t neighbor_keys[7] = {
+        key,
+        chunk_map.get_chunk_key(ncx - 1, ncy,     ncz    ),
+        chunk_map.get_chunk_key(ncx + 1, ncy,     ncz    ),
+        chunk_map.get_chunk_key(ncx,     ncy - 1, ncz    ),
+        chunk_map.get_chunk_key(ncx,     ncy + 1, ncz    ),
+        chunk_map.get_chunk_key(ncx,     ncy,     ncz - 1),
+        chunk_map.get_chunk_key(ncx,     ncy,     ncz + 1)
+    };
+    auto lock = chunk_map.lock_keys(std::vector<uint64_t>(neighbor_keys, neighbor_keys + 7));
+    ChunkData* installed_chunk = chunk_map.get_chunk_data_fast(ncx, ncy, ncz);
+    if (installed_chunk) {
+        const int32_t kOff[6][3] = {
+            {-1, 0, 0}, {1, 0, 0},
+            {0,-1, 0}, {0, 1, 0},
+            {0, 0,-1}, {0, 0, 1}
+        };
+        const FaceDirection kDirs[6] = {
+            FaceDirection::Left, FaceDirection::Right,
+            FaceDirection::Bottom, FaceDirection::Top,
+            FaceDirection::Back, FaceDirection::Front
+        };
+        for (int i = 0; i < 6; ++i) {
+            ChunkData* neighbor = chunk_map.get_chunk_data_fast(
+                ncx + kOff[i][0], ncy + kOff[i][1], ncz + kOff[i][2]);
+            if (should_dirty_neighbor(neighbor, kDirs[i], installed_chunk)) {
+                mesh_manager->queue_dirty_chunk(
+                    ncx + kOff[i][0], ncy + kOff[i][1], ncz + kOff[i][2]);
+            }
+        }
+    }
 }
 
 if (light_propagator) {
