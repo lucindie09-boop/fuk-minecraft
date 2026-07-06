@@ -90,6 +90,23 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
                         continue;
                     }
 
+                    // Fast path: neighbor above is non-air, non-transparent, and this
+                    // block is solid → top face is always culled, skip remaining work.
+                    if (direction == FaceDirection::Top && y < CHUNK_HEIGHT - 1
+                        && solid_cache[y + 1][z + 1][x + 1]) {
+                        BlockID nb = chunk.get_block_unsafe(x, y + 1, z);
+                        const BlockType& nbt = registry.get_block(nb);
+                        const BlockType& bt = registry.get_block(block_id);
+                        if (HasProperty(bt.properties, BlockProperty::Solid)
+                            && bt.top_face_offset == 0.0f
+                            && !HasProperty(nbt.properties, BlockProperty::Transparent)) {
+                            flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
+                                                   current_block, current_light_key, current_rotation, registry);
+                            merge_start = -1;
+                            continue;
+                        }
+                    }
+
                     BlockID neighbor = accessor.get_block(x, nybase, z);
 
                     // If this is the top/bottom y-slice and the neighbor chunk doesn't
