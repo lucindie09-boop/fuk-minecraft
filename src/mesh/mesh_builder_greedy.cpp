@@ -95,12 +95,7 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
 
                     BlockID neighbor = accessor.get_block(x, nybase, z);
 
-                    const bool missing_y_boundary =
-                        (direction == FaceDirection::Top && y == CHUNK_HEIGHT - 1 && !accessor.pos_y) ||
-                        (direction == FaceDirection::Bottom && y == 0 && !accessor.neg_y);
-
-                    bool cull = missing_y_boundary ||
-                        should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
+                    bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
 
                     if (cull) {
                         flush_horizontal_merge(chunk, accessor, merge_start, z, y, x, direction,
