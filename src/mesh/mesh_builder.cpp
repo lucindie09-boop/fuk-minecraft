@@ -233,10 +233,7 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
         }
         {
             ScopedTimer greedy_v_timer(perf_timer, TimerID::GreedyMeshVertical);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Right, registry);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Left, registry);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Front, registry);
-            passive_greedy_mesh_vertical(chunk, accessor, FaceDirection::Back, registry);
+            passive_greedy_mesh_vertical(chunk, accessor, registry);
         }
     } else {
         for (int32_t s = 0; s < CHUNK_SECTIONS; s++) {

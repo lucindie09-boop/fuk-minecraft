@@ -256,10 +256,8 @@ void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t
     const int32_t loaded_count_post = static_cast<int32_t>(chunk_world->get_chunk_map().size());
     const bool is_initial_loading = loaded_count_post < budgets.loading_threshold;
 
-    const size_t worker_queue_size = thread_pool ? thread_pool->get_queue_size() : 0;
     const size_t generating_count = chunk_world->get_scheduler().generating_count();
     const bool pipelines_busy =
-        worker_queue_size > 0 ||
         generating_count > 0 ||
         chunk_world->get_scheduler().completed_chunk_count() > 0 ||
         (mesh_manager && mesh_manager->has_pending_mesh_work());

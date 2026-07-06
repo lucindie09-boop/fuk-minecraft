@@ -51,6 +51,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - **Fixed LOD mesh builders dropping water data**: `lod_mesh_builder.cpp` and `merged_mesh_builder.cpp` now copy `water_vertices`/`water_indices` from the builder into the merged/downsampled output (fixes water missing at LOD group distance).
 - **Fixed `side_lowered_offset` in `mesh_builder_faces.cpp`**: was checking the HORIZONTAL neighbor for `top_face_offset` instead of the block BELOW (y-1). When water (offset=0.12) sat adjacent to wet sand (offset=0.0625), the water's offset collapsed the wet sand side face to ~0.12 units tall (2 pixels).
 - **Fixed LOD lighting (day/night cycle)**: replaced hardcoded `sky_light=15`/`light=15` in `fill_downsampled_chunk` and `fill_face_neighbor` with actual sampled values from the macro-cell center block via new helper `sample_macro_cell_light`.
+- **`pipelines_busy` no longer checks gen queue**: removed `worker_queue_size > 0` from `process_mesh_budgets` — the shared pool always has some backlog during initial loading, which previously forced reduced mesh budgets even when the pool was otherwise able to handle mesh work.
 
 ### In Progress
 - (none)

@@ -376,7 +376,7 @@ const BlockRegistry& registry) const;
                                 BlockID block_id, uint16_t light_key, int rotation, const BlockRegistry& registry);
 
     void passive_greedy_mesh_vertical(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                        FaceDirection direction, const BlockRegistry& registry);
+                                        const BlockRegistry& registry);
 
 };
 

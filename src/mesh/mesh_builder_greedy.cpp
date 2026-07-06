@@ -189,149 +189,189 @@ add_greedy_face (chunk, accessor, face, light_key, rotation, first_ao, registry)
 }
 
 void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const ChunkNeighborAccessor& accessor,
-                                                FaceDirection direction, const BlockRegistry& registry) {
-    if (direction == FaceDirection::Top || direction == FaceDirection::Bottom) {
-        return;
-    }
+                                                const BlockRegistry& registry) {
+    const ChunkData* right_chunk = accessor.pos_x;
+    const ChunkData* left_chunk = accessor.neg_x;
+    const ChunkData* front_chunk = accessor.pos_z;
+    const ChunkData* back_chunk = accessor.neg_z;
 
-    const int dir_idx = static_cast<int>(direction);
-    constexpr std::size_t kYStride = CHUNK_WIDTH;
-    constexpr std::size_t kZStride = CHUNK_WIDTH * CHUNK_HEIGHT;
+    static constexpr int kDirCount = 4;
+    static constexpr FaceDirection kDirs[kDirCount] = {
+        FaceDirection::Right, FaceDirection::Left,
+        FaceDirection::Front, FaceDirection::Back
+    };
+    static constexpr int kDirIndices[kDirCount] = {
+        static_cast<int>(FaceDirection::Right),
+        static_cast<int>(FaceDirection::Left),
+        static_cast<int>(FaceDirection::Front),
+        static_cast<int>(FaceDirection::Back)
+    };
+    static constexpr int kNxOff[kDirCount] = {1, -1, 0, 0};
+    static constexpr int kNzOff[kDirCount] = {0, 0, 1, -1};
+    const ChunkData* kBChunks[kDirCount] = {
+        right_chunk, left_chunk, front_chunk, back_chunk
+    };
 
-    const ChunkData* boundary_chunk = nullptr;
-    const std::ptrdiff_t local_neighbor_offset =
-        direction == FaceDirection::Right ? 1 :
-        direction == FaceDirection::Left ? -1 :
-        direction == FaceDirection::Front ? static_cast<std::ptrdiff_t>(kZStride) : -static_cast<std::ptrdiff_t>(kZStride);
-    switch (direction) {
-        case FaceDirection::Right: boundary_chunk = accessor.pos_x; break;
-        case FaceDirection::Left: boundary_chunk = accessor.neg_x; break;
-        case FaceDirection::Front: boundary_chunk = accessor.pos_z; break;
-        case FaceDirection::Back: boundary_chunk = accessor.neg_z; break;
-        default: break;
-    }
-
-    // Neighbor offset in the same chunk (for non-boundary columns)
-    int center_nx_off = 0, center_nz_off = 0;
-    switch (direction) {
-        case FaceDirection::Right: center_nx_off = 1; break;
-        case FaceDirection::Left:  center_nx_off = -1; break;
-        case FaceDirection::Front: center_nz_off = 1; break;
-        case FaceDirection::Back:  center_nz_off = -1; break;
-        default: break;
-    }
+    struct DirMergeState {
+        int32_t merge_start = -1;
+        BlockID current_block = BlockIDs::AIR;
+        uint16_t current_light_key = 0;
+        int current_rotation = 0;
+    };
 
     for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
         for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-            int32_t merge_start = -1;
-            BlockID current_block = BlockIDs::AIR;
-            uint16_t current_light_key = 0;
-            int current_rotation = 0;
+            DirMergeState dirs[kDirCount];
 
-            const bool boundary_column =
-                (direction == FaceDirection::Right && x == CHUNK_WIDTH - 1) ||
-                (direction == FaceDirection::Left && x == 0) ||
-                (direction == FaceDirection::Front && z == CHUNK_DEPTH - 1) ||
-                (direction == FaceDirection::Back && z == 0);
+            const bool boundary[kDirCount] = {
+                (x == CHUNK_WIDTH - 1),  // Right
+                (x == 0),                 // Left
+                (z == CHUNK_DEPTH - 1),  // Front
+                (z == 0)                 // Back
+            };
 
             for (int32_t s = 0; s < CHUNK_SECTIONS; ++s) {
                 int32_t y0 = s * SECTION_HEIGHT;
                 int32_t y1 = y0 + SECTION_HEIGHT;
                 if (chunk.is_section_all_air(s)) {
-                    flush_vertical_merge(chunk, accessor, merge_start, y0, x, z, direction,
-                                        current_block, current_light_key, current_rotation, registry);
-                    merge_start = -1;
+                    for (int d = 0; d < kDirCount; d++) {
+                        auto& dst = dirs[d];
+                        flush_vertical_merge(chunk, accessor, dst.merge_start, y0, x, z,
+                                            kDirs[d], dst.current_block, dst.current_light_key,
+                                            dst.current_rotation, registry);
+                        dst.merge_start = -1;
+                    }
                     continue;
                 }
 
                 for (int32_t y = y0; y < y1; y++) {
-                    BlockID block_id = chunk.get_block(x, y, z);
+                    BlockID block_id = chunk.get_block_unsafe(x, y, z);
 
                     if (block_id == BlockIDs::AIR) {
-                        flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
-                                            current_block, current_light_key, current_rotation, registry);
-                        merge_start = -1;
+                        for (int d = 0; d < kDirCount; d++) {
+                            auto& dst = dirs[d];
+                            flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                kDirs[d], dst.current_block, dst.current_light_key,
+                                                dst.current_rotation, registry);
+                            dst.merge_start = -1;
+                        }
                         continue;
                     }
 
-                    BlockID neighbor = BlockIDs::AIR;
-                    uint16_t light_key = 0;
-                    if (boundary_column) {
-                        if (boundary_chunk) {
-                            switch (direction) {
-                                case FaceDirection::Right:
-                                    neighbor = boundary_chunk->get_block_unsafe(0, y, z);
-                                    light_key = boundary_chunk->get_light_packed_word_unsafe(0, y, z);
-                                    break;
-                                case FaceDirection::Left:
-                                    neighbor = boundary_chunk->get_block_unsafe(31, y, z);
-                                    light_key = boundary_chunk->get_light_packed_word_unsafe(31, y, z);
-                                    break;
-                                case FaceDirection::Front:
-                                    neighbor = boundary_chunk->get_block_unsafe(x, y, 0);
-                                    light_key = boundary_chunk->get_light_packed_word_unsafe(x, y, 0);
-                                    break;
-                                case FaceDirection::Back:
-                                    neighbor = boundary_chunk->get_block_unsafe(x, y, 31);
-                                    light_key = boundary_chunk->get_light_packed_word_unsafe(x, y, 31);
-                                    break;
+                    // Fast path: all 4 side neighbors are non-air and this block
+                    // is an opaque solid → all faces are culled, skip direction loop.
+                    const int sx0 = x + 1 - 1, sx1 = x + 1 + 1;
+                    const int sz0 = z + 1 - 1, sz1 = z + 1 + 1;
+                    if (solid_cache[y][z + 1][sx0] & solid_cache[y][z + 1][sx1]
+                        & solid_cache[y][sz0][x + 1] & solid_cache[y][sz1][x + 1]
+                        && !boundary[0] && !boundary[1] && !boundary[2] && !boundary[3]) {
+                        const BlockType& bt = registry.get_block(block_id);
+                        if (HasProperty(bt.properties, BlockProperty::Solid)
+                            && bt.top_face_offset == 0.0f) {
+                            for (int d = 0; d < kDirCount; d++) {
+                                auto& dst = dirs[d];
+                                flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                    kDirs[d], dst.current_block, dst.current_light_key,
+                                                    dst.current_rotation, registry);
+                                dst.merge_start = -1;
+                            }
+                            continue;
+                        }
+                    }
+
+                    for (int d = 0; d < kDirCount; d++) {
+                        auto& dst = dirs[d];
+
+                        const int sx = x + 1 + kNxOff[d];
+                        const int sz = z + 1 + kNzOff[d];
+                        const bool nb_non_air = solid_cache[y][sz][sx];
+
+                        if (!nb_non_air && boundary[d] && !kBChunks[d]) {
+                            flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                kDirs[d], dst.current_block, dst.current_light_key,
+                                                dst.current_rotation, registry);
+                            dst.merge_start = -1;
+                            continue;
+                        }
+
+                        BlockID neighbor;
+                        if (nb_non_air) {
+                            if (boundary[d]) {
+                                switch (kDirs[d]) {
+                                    case FaceDirection::Right: neighbor = kBChunks[d]->get_block_unsafe(0, y, z); break;
+                                    case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(31, y, z); break;
+                                    case FaceDirection::Front: neighbor = kBChunks[d]->get_block_unsafe(x, y, 0); break;
+                                    case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, 31); break;
+                                    default: break;
+                                }
+                            } else {
+                                neighbor = chunk.get_block_unsafe(x + kNxOff[d], y, z + kNzOff[d]);
+                            }
+                        } else {
+                            neighbor = BlockIDs::AIR;
+                        }
+
+                        bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, kDirs[d], x, y, z, registry);
+                        if (cull) {
+                            flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                kDirs[d], dst.current_block, dst.current_light_key,
+                                                dst.current_rotation, registry);
+                            dst.merge_start = -1;
+                            continue;
+                        }
+
+                        uint16_t light_key = 0;
+                        if (boundary[d]) {
+                            switch (kDirs[d]) {
+                                case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(0, y, z); break;
+                                case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(31, y, z); break;
+                                case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, 0); break;
+                                case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, 31); break;
                                 default: break;
                             }
                         } else {
-                            // Neighbor chunk doesn't exist on this side — skip face.
-                            // The chunk will be dirtied when the neighbor eventually loads
-                            // and the face will be generated correctly then.
-                            flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
-                                                 current_block, current_light_key, current_rotation, registry);
-                            merge_start = -1;
-                            continue;
+                            light_key = chunk.get_light_packed_word_unsafe(x + kNxOff[d], y, z + kNzOff[d]);
                         }
-                    } else {
-                        neighbor = chunk.get_block_unsafe(x + center_nx_off, y, z + center_nz_off);
-                        light_key = chunk.get_light_packed_word_unsafe(x + center_nx_off, y, z + center_nz_off);
-                    }
 
-                    bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, direction, x, y, z, registry);
-                    if (cull) {
-                        flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
-                                            current_block, current_light_key, current_rotation, registry);
-                        merge_start = -1;
-                        continue;
-                    }
+                        const int rotation = get_face_rotation(block_id, x, y, z, kDirs[d], kDirIndices[d]);
 
-                    const int rotation = get_face_rotation(block_id, x, y, z, direction, dir_idx);
-
-                    if (merge_start != -1) {
-                        const bool same_block = block_id == current_block;
-                        const bool within_distance = (y - merge_start) < kMaxGreedyMergeDistance;
-                        const bool same_light = lights_similar_enough(light_key, current_light_key);
-                        const bool same_rotation = rotation == current_rotation;
-                        if (same_block && within_distance && same_light && same_rotation) {
-                            continue;
+                        if (dst.merge_start != -1) {
+                            const bool same_block = block_id == dst.current_block;
+                            const bool within_distance = (y - dst.merge_start) < kMaxGreedyMergeDistance;
+                            const bool same_light = lights_similar_enough(light_key, dst.current_light_key);
+                            const bool same_rotation = rotation == dst.current_rotation;
+                            if (same_block && within_distance && same_light && same_rotation) {
+                                continue;
+                            }
+                            if (!same_block) {
+                                ++greedy_v_stats_local.reject_block_mismatch;
+                            } else if (!same_light) {
+                                ++greedy_v_stats_local.reject_light_mismatch;
+                            } else if (!same_rotation) {
+                                ++greedy_v_stats_local.reject_rotation_mismatch;
+                            } else if (!within_distance) {
+                                ++greedy_v_stats_local.reject_distance_limit;
+                            }
+                            flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                kDirs[d], dst.current_block, dst.current_light_key,
+                                                dst.current_rotation, registry);
                         }
-                        if (!same_block) {
-                            ++greedy_v_stats_local.reject_block_mismatch;
-                        } else if (!same_light) {
-                            ++greedy_v_stats_local.reject_light_mismatch;
-                        } else if (!same_rotation) {
-                            ++greedy_v_stats_local.reject_rotation_mismatch;
-                        } else if (!within_distance) {
-                            ++greedy_v_stats_local.reject_distance_limit;
-                        }
-                        flush_vertical_merge(chunk, accessor, merge_start, y, x, z, direction,
-                                            current_block, current_light_key, current_rotation, registry);
-                    }
 
-                    merge_start = y;
-                    current_block = block_id;
-                    current_rotation = rotation;
-                    current_light_key = light_key;
+                        dst.merge_start = y;
+                        dst.current_block = block_id;
+                        dst.current_rotation = rotation;
+                        dst.current_light_key = light_key;
+                    }
                 }
             }
 
-            if (merge_start != -1) {
-                flush_vertical_merge(chunk, accessor, merge_start, CHUNK_HEIGHT, x, z, direction,
-                                     current_block, current_light_key, current_rotation, registry);
+            for (int d = 0; d < kDirCount; d++) {
+                auto& dst = dirs[d];
+                if (dst.merge_start != -1) {
+                    flush_vertical_merge(chunk, accessor, dst.merge_start, CHUNK_HEIGHT, x, z,
+                                        kDirs[d], dst.current_block, dst.current_light_key,
+                                        dst.current_rotation, registry);
+                }
             }
         }
     }
