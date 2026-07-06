@@ -167,7 +167,6 @@ void MeshBuilder::flush_vertical_merge(const ChunkData& chunk, const ChunkNeighb
 ++greedy_v_stats_local.merge_attempts;
 float first_ao[4];
 ao.compute_face (accessor, x, y_start, z, direction, first_ao);
-bool has_occlusion = (first_ao[0] < 1.0f || first_ao[1] < 1.0f || first_ao[2] < 1.0f || first_ao[3] < 1.0f);
 bool uniform = true;
 for (int32_t cy = y_start + 1; cy < y_end; ++cy) {
 float block_ao[4];
@@ -177,7 +176,7 @@ block_ao [2] != first_ao[2] || block_ao[3] != first_ao[3]) { uniform = false;
             }
         }
 
-if (uniform && !has_occlusion) {
+if (uniform) {
 ++greedy_v_stats_local.merge_successes;
             Face face;
             face.x = x;
@@ -191,9 +190,6 @@ add_greedy_face (chunk, accessor, face, light_key, rotation, first_ao, registry)
 } else {
     if (!uniform) {
         ++greedy_v_stats_local.reject_ao_mismatch;
-    }
-    if (has_occlusion) {
-        ++greedy_v_stats_local.reject_ao_occlusion;
     }
     for (int32_t cy = y_start; cy < y_end; ++cy) {
         add_face(chunk, accessor, x, cy, z, direction, block_id, registry);
