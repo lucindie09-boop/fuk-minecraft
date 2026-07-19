@@ -724,6 +724,30 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
             continue;
         }
 
+        // The build that just completed was queued against the membership/LOD state
+        // from a few frames ago. If the player has since moved close enough that a
+        // member chunk now wants full Individual detail, finalizing this stale mesh
+        // would forcibly hide that chunk's own detailed mesh behind the merged
+        // instance again - and nothing else will undo that until the next LOD
+        // rescan (chunk-boundary crossing or ~5s periodic sweep), which reads as
+        // "the LOD block never clears" if the player lingers near the boundary.
+        // Bail out to individual rendering instead of finalizing a stale merge.
+        bool member_now_wants_individual = false;
+        for (int32_t i = 0; i < group->member_count; ++i) {
+            int32_t mcx, mcy, mcz;
+            ChunkMap::decode_chunk_key(group->member_keys[i], mcx, mcy, mcz);
+            ChunkRenderData* member_data = chunk_map->get_chunk_render_data(mcx, mcy, mcz);
+            if (member_data && member_data->effective_lod == LodLevel::Individual) {
+                member_now_wants_individual = true;
+                break;
+            }
+        }
+        if (member_now_wants_individual) {
+            release_group_to_individual(group);
+            ++uploads_this_frame;
+            continue;
+        }
+
         const int32_t group_merge_size = lod_merge_size(group->merge_shift);
         const float group_width = static_cast<float>(CHUNK_WIDTH * group_merge_size);
 
