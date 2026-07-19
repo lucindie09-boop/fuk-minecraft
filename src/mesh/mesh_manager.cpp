@@ -617,18 +617,38 @@ void MeshManager::mark_chunk_urgent(int32_t cx, int32_t cy, int32_t cz) {
 void MeshManager::reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz, const Frustum* frustum) {
     mesh_queue.reprioritize(player_cx, player_cy, player_cz, frustum);
 
-    // LOD boundary detection: re-mesh chunks that crossed LOD boundary
-    if (lod_distance > 0 && chunk_map) {
-        chunk_map->for_each([&](uint64_t key, const std::unique_ptr<ChunkRenderData>& render_data) {
-            int32_t cx, cy, cz;
-            ChunkMap::decode_chunk_key(key, cx, cy, cz);
-            float target = compute_chunk_detail_level(cx, cy, cz);
-            if (target != render_data->last_built_detail_level && !render_data->is_mesh_dirty) {
-                render_data->is_mesh_dirty = true;
-                render_data->mesh_version++;
-                queue_dirty_chunk(cx, cy, cz);
+    if (lod_distance <= 0 || !chunk_map) return;
+
+    const int32_t lod = lod_distance;
+    const int32_t lod_shell_min = lod > 0 ? lod - 1 : 0;
+    const int32_t lod_shell_max = lod + 1;
+    const int32_t vert_range = 10;
+
+    int32_t queued = 0;
+    constexpr int32_t kMaxLodRemeshPerFrame = 128;
+
+    for (int32_t dx = -lod_shell_max; dx <= lod_shell_max && queued < kMaxLodRemeshPerFrame; ++dx) {
+        for (int32_t dz = -lod_shell_max; dz <= lod_shell_max && queued < kMaxLodRemeshPerFrame; ++dz) {
+            for (int32_t dy = -vert_range; dy <= vert_range && queued < kMaxLodRemeshPerFrame; ++dy) {
+                int32_t dist = std::max({std::abs(dx), std::abs(dy), std::abs(dz)});
+                if (dist < lod_shell_min || dist > lod_shell_max) continue;
+
+                int32_t cx = player_cx + dx;
+                int32_t cy = player_cy + dy;
+                int32_t cz = player_cz + dz;
+
+                ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, cy, cz);
+                if (!render_data) continue;
+
+                float target = compute_chunk_detail_level(cx, cy, cz);
+                if (target != render_data->last_built_detail_level && !render_data->is_mesh_dirty) {
+                    render_data->is_mesh_dirty = true;
+                    render_data->mesh_version++;
+                    queue_dirty_chunk(cx, cy, cz);
+                    ++queued;
+                }
             }
-        });
+        }
     }
 }
 
