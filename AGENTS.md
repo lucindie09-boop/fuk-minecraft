@@ -60,6 +60,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - **solid_cache stores BlockID (uint16_t) instead of bool**: center-block and neighbor reads bypass paletted-section accessor entirely. Eliminated boundary-switch for block neighbor lookup in greedy_v — all 4 neighbor reads are a single cache line. Greedy_h: 0.691ms → 0.519ms; greedy_v: 0.918ms → 0.816ms (initial).
 - **Removed `!has_occlusion` merge guard**: was preventing all vertical merges (AO < 1.0 on every side face). Now uniform-AO runs become merged quads. Greedy_v: 0.816ms → 0.727ms (initial). Merge_attempts=0 on flat terrain (all side faces culled by solid neighbors); visible at cliffs/chunk boundaries.
 - **Fixed `_process` for editor viewport**: `ChunkManager::_process()` now works in editor by resolving camera from editor viewport.
+- **Fixed stale solid_cache entries causing missing faces**: `solid_cache` was not zeroed between MeshBuilder reuse; all-air sections left stale BlockIDs from previous builds. The fast-path read these stale values, got wrong block types from the registry, and made incorrect face-culling decisions. Fixed by zeroing `solid_cache` at build start in `build_mesh()`.
 
 ### In Progress
 - (none)
@@ -81,7 +82,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - **Single-pass vertical mesher**: all 4 side directions per voxel in one sweep; shares center block reads and section air-skip checks.
 - **Solid cache fast path**: interior columns only (not chunk boundaries); requires all 4 side neighbors non-air + block Solid with offset=0.
 - **Thread pool split REVERTED** (discussion only): splitting into gen (2) + mesh (13) starved gen throughput by 7×; single shared pool with high-priority mesh path handles contention correctly.
-- **solid_cache stores BlockID**: enables all center + neighbor block reads to bypass paletted section accessor; eliminated boundary-switch for block neighbor lookup in greedy_v; increased memory from 37KB to 74KB per builder (temporary, per-thread).
+- **solid_cache stores BlockID**: enables all center + neighbor block reads to bypass paletted section accessor; eliminated boundary-switch for block neighbor lookup in greedy_v; increased memory from 37KB to 74KB per builder (temporary, per-thread). Requires zeroing at build start — stale BlockIDs from previous builds cause wrong registry lookups in all-air sections.
 - **Vertical merge no longer requires `!has_occlusion`**: uniform AO across a run produces correct merged quads regardless of occlusion value; was blocking EVERY interior-column side-face merge previously because AO < 1.0 on nearly all faces due to adjacent solid blocks. On flat terrain, merge_attempts=0 is expected (all side faces culled by neighbors); visible at terrain edges.
 
 ## Next Steps

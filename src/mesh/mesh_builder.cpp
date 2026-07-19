@@ -127,6 +127,9 @@ void MeshBuilder::build_mesh(const ChunkData& chunk,
 ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
 
     clear();
+    for (auto& plane : solid_cache)
+        for (auto& row : plane)
+            row.fill(0);
 
     // Initialize the neighbor accessor
     accessor.center = &chunk;
