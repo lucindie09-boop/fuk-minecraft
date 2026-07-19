@@ -1,5 +1,5 @@
 ## Goal
-Implement frustum-prioritized chunk loading across generation, meshing, unload, LOD, and budget pipelines, with sharded chunk map locking and palette-compressed chunk storage.
+Implement frustum-prioritized chunk loading across generation, meshing, unload, and budget pipelines, with sharded chunk map locking and palette-compressed chunk storage.
 
 ## Constraints & Preferences
 - Bias toward minimal, high-impact changes that reuse existing infrastructure.
@@ -15,8 +15,6 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - Modified `WorldUpdater::update_unload()` to defer unloading of visible chunks beyond render distance.
 - Added `VoxelEngineController::update_frustum()` that forwards to `WorldUpdater`.
 - Added camera resolution and `Camera3D::get_frustum()` call in `ChunkManager::_process()`.
-- Frustum-aware LOD: `effective_horizontal_dist_sq()` scales distance by 0.6× for visible chunks; `classify_target_lod()` and `apply_hysteresis()` both use it.
-- Frustum threaded: `MeshManager::set_frustum()` → `LodController::set_frustum()`; called in `WorldUpdater::update()` before `update_lod()`.
 - Dynamic mesh budget: `visible_chunk_ratio_` counted during frustum pass scales `mesh_rebuild_budget` and `upload_budget` from 0.5× (sparse) to 1.0× (full).
 - Collision: binary-search approach (3D DDA reverted after bug reports).
 - Updated `PERFORMANCE_REVIEW.md`, `README.md`.
@@ -45,12 +43,11 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
   - Created `materials/voxel_material_water.tres` referencing water shader.
   - Added `get_water_material()` to `MaterialManager`.
   - Updated `mesh_types.hpp`, `chunk_types.hpp`, `mesh_builder.hpp/cpp`, `mesh_builder_faces.cpp` for water vertex routing.
-  - Updated `mesh_manager.cpp`, `mesh_manager_lod.cpp` for two-surface upload (surface 0 opaque, surface 1 water).
+  - Updated `mesh_manager.cpp` for two-surface upload (surface 0 opaque, surface 1 water).
   - Updated `world_updater.cpp` to pass water material.
   - Beer-Lambert depth absorption via `depth_tex` + non-linear depth difference; tuned absorption=4.0, floor=0.35.
-- **Fixed LOD mesh builders dropping water data**: `lod_mesh_builder.cpp` and `merged_mesh_builder.cpp` now copy `water_vertices`/`water_indices` from the builder into the merged/downsampled output (fixes water missing at LOD group distance).
+- **Fixed water shader parameters**: `material_manager.cpp` now pushes sky/fog/player-light parameters to both terrain and water materials every frame (previously only terrain received updates; water had stale baked-in values).
 - **Fixed `side_lowered_offset` in `mesh_builder_faces.cpp`**: was checking the HORIZONTAL neighbor for `top_face_offset` instead of the block BELOW (y-1). When water (offset=0.12) sat adjacent to wet sand (offset=0.0625), the water's offset collapsed the wet sand side face to ~0.12 units tall (2 pixels).
-- **Fixed LOD lighting (day/night cycle)**: replaced hardcoded `sky_light=15`/`light=15` in `fill_downsampled_chunk` and `fill_face_neighbor` with actual sampled values from the macro-cell center block via new helper `sample_macro_cell_light`.
 - **`pipelines_busy` no longer checks gen queue**: removed `worker_queue_size > 0` from `process_mesh_budgets` — the shared pool always has some backlog during initial loading, which previously forced reduced mesh budgets even when the pool was otherwise able to handle mesh work.
 - **Greedy_v single-pass refactor**: 4 separate vertical direction passes → one Y-sweep per column. Greedy_v: 2.684ms → 1.962ms.
 - **Solid cache fast path for fully-culled columns**: checks all 4 side cache entries before the 4-direction inner loop; interior columns with all-solid neighbors skip the loop entirely. Greedy_v further → 0.98ms (63% total reduction from baseline).
@@ -61,6 +58,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - **Removed `!has_occlusion` merge guard**: was preventing all vertical merges (AO < 1.0 on every side face). Now uniform-AO runs become merged quads. Greedy_v: 0.816ms → 0.727ms (initial). Merge_attempts=0 on flat terrain (all side faces culled by solid neighbors); visible at cliffs/chunk boundaries.
 - **Fixed `_process` for editor viewport**: `ChunkManager::_process()` now works in editor by resolving camera from editor viewport.
 - **Fixed stale solid_cache entries causing missing faces**: `solid_cache` was not zeroed between MeshBuilder reuse; all-air sections left stale BlockIDs from previous builds. The fast-path read these stale values, got wrong block types from the registry, and made incorrect face-culling decisions. Fixed by zeroing `solid_cache` at build start in `build_mesh()`.
+- **Removed LOD system entirely**: deleted `lod_controller`, `lod_types`, `lod_mesh_builder`, `merged_mesh_builder`, `mesh_manager_lod` files (2,435 lines). Removed `CompletedGroupMesh` struct, `ChunkRenderLod`/`LodLevel` enums, group mesh queues, and all LOD transition/group/render code from `MeshManager`, `ChunkScheduler`, `WorldUpdater`, `VoxelEngineController`, and `ChunkRenderData`.
 
 ### In Progress
 - (none)
@@ -71,7 +69,6 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 ## Key Decisions
 - Use `Camera3D::get_frustum()` for direct 6-plane extraction in world space.
 - Two-phase generation: dedicated frustum-priority pass first, then distance-sorted sweep.
-- LOD boost via distance scaling (0.6×) rather than ad-hoc level promotion, for hysteresis compatibility.
 - Collision reverted to original binary-search approach (DDA approach caused side-face ghosting).
 - Sharded locking uses 64 shards with per-shard `unordered_map` and `shared_mutex`. Hash is `key % 64` (maps to z chunk coordinate).
 - Hot paths that issue many sequential reads (light propagation, dirty neighbor checks) batch-lock to avoid per-call mutex overhead.
@@ -91,7 +88,6 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 
 ## Critical Context
 - Chunk size is 32×32×32, world height is 1024 blocks.
-- LOD settings: `lod0_radius=8`, `lod1_radius=24`, vertical_buffer=2, hysteresis=2.
 - `Camera3D::get_frustum()` returns `TypedArray<Plane>` (6 planes, world-space, normals pointing inward).
 - Frustum is recalculated every frame.
 - `acquire_shared_lock()` removed from `ChunkMap`. Callers use `lock_keys()`, `lock_all()`, or auto-locking methods.
@@ -106,8 +102,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `src/core/chunk_map.hpp`: Sharded locking (64 shards, `ShardLock`, `lock_keys`, `lock_all`, auto-locking methods)
 - `src/core/chunk_coords.hpp`: Constants (`CHUNK_WIDTH`, `SECTION_HEIGHT`, `SUBCHUNK_SIZE`, `NUM_SUBCHUNKS`)
 - `src/core/frustum.hpp`: Frustum utility (AABB test, chunk visibility)
-- `src/mesh/lod_controller.hpp/cpp`: `effective_horizontal_dist_sq()`, `classify_target_lod()`, `apply_hysteresis()`
-- `src/mesh/mesh_manager.hpp/cpp`: `set_frustum()`, `update_lod()`
+- `src/mesh/mesh_manager.hpp/cpp`: Per-chunk mesh builds, upload, instance management
 - `src/mesh/mesh_builder_greedy.cpp`: greedy_h top-face fast path, greedy_v solid cache fast path, flush_vertical_merge merge condition
 - `src/mesh/mesh_builder.cpp`: solid_cache population now stores BlockID; non-greedy neighbor lookup simplified
 - `src/mesh/mesh_builder.hpp`: solid_cache type changed to uint16_t; GreedyVerticalStatsSnapshot struct
@@ -116,7 +111,7 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `src/core/frame_budgets.hpp`: Budget constants
 - `src/core/chunk_types.hpp`: `DirtyChunkEntry` with `in_frustum` field
 - `src/mesh/mesh_queue.hpp`: Priority queue with `in_frustum`
-- `src/mesh/mesh_types.hpp`: LOD types
+- `src/mesh/mesh_types.hpp`: `Vertex`, `BuiltMeshData`, `PackedBuiltMeshData`, `WorldRenderStats`
 - `src/godot_bindings/chunk_manager.cpp`: Camera frustum extraction entry point
 - `src/engine/voxel_engine_controller.hpp/cpp`: Bridges frustum from ChunkManager to WorldUpdater
 - `src/lighting/light_propagator.cpp`: Uses `lock_all()` + fast methods for propagation
@@ -125,8 +120,8 @@ Implement frustum-prioritized chunk loading across generation, meshing, unload, 
 - `src/world/generation_scheduler.cpp` / `world_updater.cpp`: Uses auto-locking `contains`
 - `shaders/voxel_shader_water.gdshader`: Water shader variant (edge fade, shimmer, sun glint)
 - `materials/voxel_material_water.tres`: Water ShaderMaterial resource
-- `src/render/material_manager.hpp/cpp`: `get_water_material()` lazy loading
+- `src/render/material_manager.hpp/cpp`: `get_water_material()` lazy loading; pushes sky/fog/player-light to both terrain and water
 - `src/mesh/mesh_builder_faces.cpp`: Water face routing in `add_face`/`add_greedy_face`
 - `src/mesh/ambient_occlusion.cpp`: AO computation per face, used by flush_vertical_merge uniformity check
-- `src/debug/perf_report.cpp`: Merge stats display (conditional on merge_attempts > 0)
+- `src/debug/perf_report.cpp`: Render stats display
 - `src/core/thread_pool.hpp`: Per-worker round-robin FIFO + high-priority queue (shared pool, no gen/mesh split)
