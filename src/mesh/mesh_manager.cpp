@@ -585,6 +585,10 @@ void MeshManager::queue_dirty_chunk(int32_t cx, int32_t cy, int32_t cz) {
 
 void MeshManager::queue_immediate_dirty_chunk(int32_t cx, int32_t cy, int32_t cz) {
     if (!chunk_map) return;
+    ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, cy, cz);
+    if (render_data) {
+        render_data->is_mesh_dirty = true;
+    }
     uint64_t key = chunk_map->get_chunk_key(cx, cy, cz);
     mesh_queue.queue_immediate_dirty_chunk(key, mesh_queue.is_pending(key));
 }
