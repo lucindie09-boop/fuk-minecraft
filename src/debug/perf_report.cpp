@@ -56,32 +56,7 @@ String PerfReport::build(
     report += "Loaded chunks: " + String::num_int64(loaded_chunk_count) + "\n";
     report += "--- Render ---\n";
     report += "  Visible instances: " + String::num_int64(render_stats.visible_instances) +
-              "  Hidden: " + String::num_int64(render_stats.hidden_instances) +
               "  Meshes: " + String::num_int64(render_stats.mesh_rids) + "\n";
-    if (render_stats.lod.lod0_chunks > 0 || render_stats.lod.lod1_groups > 0 ||
-        render_stats.lod.lod2_groups > 0 || render_stats.lod.group_instances > 0) {
-        report += "--- LOD ---\n";
-        report += "  LOD0 chunks: " + String::num_int64(render_stats.lod.lod0_chunks) +
-                  "  LOD1 groups: " + String::num_int64(render_stats.lod.lod1_groups) +
-                  "  LOD2 groups: " + String::num_int64(render_stats.lod.lod2_groups) + "\n";
-        report += "  Group instances: " + String::num_int64(render_stats.lod.group_instances) + "\n";
-        report += "  Group state: live=" + String::num_int64(render_stats.lod.live_groups) +
-                  " dirty=" + String::num_int64(render_stats.lod.dirty_groups) +
-                  " retry=" + String::num_int64(render_stats.lod.pending_group_retries) +
-                  " transitions=" + String::num_int64(render_stats.lod.pending_group_transitions) + "\n";
-        report += "  Group jobs: build=" + String::num_int64(render_stats.lod.groups_building) +
-                  " upload=" + String::num_int64(render_stats.lod.groups_uploading) +
-                  " completed=" + String::num_int64(render_stats.lod.completed_group_meshes) + "\n";
-    }
-    if (perf_timer.get_count(TimerID::LodUpdate) > 0) {
-        report += "  lod_update: avg=" + String::num(perf_timer.get_avg(TimerID::LodUpdate), 3) + "ms\n";
-    }
-    if (perf_timer.get_count(TimerID::GroupMeshBuild) > 0) {
-        report += "  group_mesh_build: avg=" + String::num(perf_timer.get_avg(TimerID::GroupMeshBuild), 3) + "ms\n";
-    }
-    if (perf_timer.get_count(TimerID::GroupMeshUpload) > 0) {
-        report += "  group_mesh_upload: avg=" + String::num(perf_timer.get_avg(TimerID::GroupMeshUpload), 3) + "ms\n";
-    }
 
     report += "--- per-frame breakdown ---\n";
     report += "  player_pos_update: avg=" + String::num(perf_timer.get_avg(TimerID::PlayerPosUpdate), 3) + "ms\n";

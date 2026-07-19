@@ -43,20 +43,6 @@ void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_proce
     }
     mesh_manager->set_frustum(frustum.is_initialized() ? &frustum : nullptr);
 
-    // Process completed group meshes BEFORE LOD transitions so stale completions
-    // from in-flight builds don't re-hide chunks that update_lod() is about to split.
-    if (mesh_manager->get_lod_settings().enabled && material_manager) {
-        mesh_manager->process_completed_group_meshes_standalone(
-            epoch,
-            budgets.processing_budget_ms,
-            4,
-            material_manager->get_material(),
-            material_manager->get_water_material()
-        );
-    }
-
-    mesh_manager->update_lod(active_render_distance, chunk_changed);
-
     update_generation(is_editor, active_render_distance, epoch, player_chunk_x, player_chunk_y, player_chunk_z, chunk_changed);
     update_unload(active_render_distance, player_chunk_x, player_chunk_y, player_chunk_z, chunk_changed);
     process_mesh_budgets(is_editor, epoch, chunks_processed_total, active_render_distance, delta);

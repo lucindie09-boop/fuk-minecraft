@@ -58,14 +58,6 @@ VoxelEngineController::VoxelEngineController()
     world_updater.set_render_distance(render_distance);
     world_updater.set_editor_render_distance(editor_render_distance);
     mesh_manager.set_mesh_render_distance(render_distance);
-    LodSettings lod_settings;
-    lod_settings.lod0_radius = 8;
-    lod_settings.lod1_radius = 24;
-    lod_settings.lod1_merge_shift = 1;
-    lod_settings.lod2_merge_shift = 2;
-    lod_settings.lod2_downsample_step = 4;
-    lod_settings.enabled = true;
-    mesh_manager.set_lod_settings(lod_settings);
 }
 
 VoxelEngineController::~VoxelEngineController() {

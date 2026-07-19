@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 #include "core/performance_timer.hpp"
-#include "mesh/lod_types.hpp"
+#include "mesh/mesh_types.hpp"
 
 namespace VoxelEngine {
 

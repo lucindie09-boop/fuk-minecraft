@@ -9,8 +9,6 @@
 #include "core/thread_pool.hpp"
 #include "core/performance_timer.hpp"
 #include <godot_cpp/classes/shader_material.hpp>
-#include "mesh/lod_types.hpp"
-#include "mesh/lod_controller.hpp"
 #include <memory>
 #include <cstdint>
 
@@ -18,10 +16,10 @@ namespace VoxelEngine {
 
 class MeshManager {
 public:
-    void set_chunk_map(ChunkMap* cm) { chunk_map = cm; lod_controller.set_chunk_map(cm); }
+    void set_chunk_map(ChunkMap* cm) { chunk_map = cm; }
     void set_chunk_scheduler(ChunkScheduler* cs) { chunk_scheduler = cs; }
     void set_thread_pool(ThreadPool* tp) { thread_pool = tp; }
-    void set_performance_timer(PerformanceTimer* pt) { perf_timer = pt; lod_controller.set_performance_timer(pt); }
+    void set_performance_timer(PerformanceTimer* pt) { perf_timer = pt; }
     void set_async_epoch(std::atomic<uint64_t>* ae) { async_epoch = ae; }
     void set_owner(godot::Node* node) { owner = node; }
 
@@ -38,23 +36,11 @@ public:
     }
 
     void set_mesh_render_distance(int32_t rd) { mesh_render_distance = rd; }
-    void set_lod_settings(const LodSettings& settings);
-    void set_frustum(const Frustum* frustum) { lod_controller.set_frustum(frustum); }
-    const LodSettings& get_lod_settings() const { return lod_controller.get_settings(); }
-    LodController& get_lod_controller() { return lod_controller; }
-    const LodController& get_lod_controller() const { return lod_controller; }
-
-    void update_lod(int32_t render_distance, bool force_rescan = false);
-    void process_lod_transitions(uint64_t epoch);
-    void split_lod_group_for_edit(uint64_t group_key);
+    void set_frustum(const Frustum* /*frustum*/) {}
 
     void process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads,
                                    const godot::Ref<godot::ShaderMaterial>& material,
                                    const godot::Ref<godot::ShaderMaterial>& water_material);
-    void process_completed_group_meshes_standalone(uint64_t epoch, double budget_ms, int32_t max_uploads,
-                                                   const godot::Ref<godot::ShaderMaterial>& material,
-                                                   const godot::Ref<godot::ShaderMaterial>& water_material);
-    void notify_chunk_installed(int32_t cx, int32_t cy, int32_t cz) { lod_controller.mark_groups_dirty_for_chunk(cx, cy, cz); }
 
     void rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, uint64_t epoch,
                                          ChunkRenderData* render_data,
@@ -83,21 +69,8 @@ public:
     WorldRenderStats gather_render_stats();
 
 private:
-    void process_completed_group_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads,
-                                        const godot::Ref<godot::ShaderMaterial>& material,
-                                        const godot::Ref<godot::ShaderMaterial>& water_material,
-                                        int32_t& uploads_this_frame,
-                                        double elapsed_budget_ms);
-    void apply_split_transition(const LodTransition& transition, uint64_t epoch);
-    void apply_merge_transition(const LodTransition& transition, uint64_t epoch);
-    void apply_rebuild_transition(const LodTransition& transition, uint64_t epoch);
     void hide_chunk_instance(ChunkRenderData* render_data);
     void show_chunk_instance(ChunkRenderData* render_data, int32_t cx, int32_t cy, int32_t cz);
-    void release_group_to_individual(LodGroupRenderData* group);
-    void recover_stuck_lod_chunks();
-    void disable_lod_and_split_all_groups();
-    void free_group_render_data(LodGroupRenderData& group);
-    void update_group_visibility();
     PackedBuiltMeshData pack_built_mesh(const BuiltMeshData& built_mesh);
 
     ChunkMap* chunk_map = nullptr;
@@ -115,9 +88,6 @@ private:
     int32_t last_player_block_z = INT32_MIN;
     int32_t mesh_render_distance = 0;
     bool smooth_lighting_enabled = false;
-    int32_t lod_periodic_rescan_counter = 0;
-    bool needs_stuck_recovery_ = true;
-    LodController lod_controller;
 };
 
 } // namespace VoxelEngine

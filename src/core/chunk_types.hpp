@@ -2,7 +2,6 @@
 #define FUK_MINECRAFT_CHUNK_TYPES_HPP
 #include "core/chunk_data.hpp"
 #include "mesh/mesh_types.hpp"
-#include "mesh/lod_types.hpp"
 #include <godot_cpp/variant/rid.hpp>
 #include <memory>
 #include <atomic>
@@ -20,10 +19,6 @@ struct ChunkRenderData {
     std::atomic<int> pending_mesh_builds{0};
     std::atomic<int> pending_mesh_uploads{0};
     std::atomic<uint64_t> mesh_job_serial{0};
-    ChunkRenderLod render_lod = ChunkRenderLod::Individual;
-    LodLevel current_lod = LodLevel::Individual;
-    LodLevel effective_lod = LodLevel::Individual;
-    uint64_t lod_group_key = 0;
     
     // Version stamps for skipping redundant mesh builds
     uint32_t mesh_version = 1;
@@ -54,21 +49,6 @@ struct CompletedMesh {
     PackedBuiltMeshData mesh_data;
     PackedBuiltMeshData water_mesh_data;
     uint64_t mesh_content_hash = 0;
-};
-
-struct CompletedGroupMesh {
-    int32_t anchor_cx = 0;
-    int32_t anchor_cy = 0;
-    int32_t anchor_cz = 0;
-    uint64_t epoch = 0;
-    uint64_t group_key = 0;
-    uint64_t mesh_job_serial = 0;
-    LodGroupRenderData* source_group = nullptr;
-    PackedBuiltMeshData mesh_data;
-    PackedBuiltMeshData water_mesh_data;
-    uint64_t mesh_content_hash = 0;
-    std::array<uint64_t, kMaxLodGroupMembers> member_keys{};
-    int32_t member_count = 0;
 };
 
 // -------------------------------------------------------------------------

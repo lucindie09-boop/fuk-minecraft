@@ -52,6 +52,11 @@ struct PackedBuiltMeshData {
     bool empty = true;
 };
 
+struct WorldRenderStats {
+    int32_t visible_instances = 0;
+    int32_t mesh_rids = 0;
+};
+
 } // namespace VoxelEngine
 
 #endif // FUK_MINECRAFT_MESH_TYPES_HPP

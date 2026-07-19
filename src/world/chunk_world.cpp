@@ -304,8 +304,6 @@ apply_pending_placements(key, completed.chunk_x, completed.chunk_y, completed.ch
             chunk_map.insert(key, std::move(render_data));
 
 if (mesh_manager) {
-    mesh_manager->notify_chunk_installed(completed.chunk_x, completed.chunk_y, completed.chunk_z);
-
     // Newly loaded chunk may provide boundary data that changes neighbor meshes.
     // Queue dirtied neighbor chunks for remesh so they don't retain holes where
     // boundary faces were skipped at first build (when this chunk was missing).

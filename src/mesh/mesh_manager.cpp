@@ -340,7 +340,7 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             const int32_t dy = std::abs(completed.chunk_y - last_player_chunk_y);
             within_render_distance = (dx*dx + dz*dz) <= (mesh_render_distance * mesh_render_distance) && dy <= 10;
         }
-        const bool show_instance = render_data->render_lod != ChunkRenderLod::HiddenInGroup && within_render_distance;
+        const bool show_instance = within_render_distance;
         if (render_data->instance_rid.is_valid()) {
             rs->instance_set_visible(render_data->instance_rid, show_instance);
         } else if (show_instance) {
@@ -370,8 +370,6 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
         uploads_this_frame++;
     }
     }
-
-    process_completed_group_meshes(epoch, budget_ms, dynamic_max_uploads, material, water_material, uploads_this_frame, 0.0);
 }
 
 static inline bool should_cull_neighbor(BlockID current, BlockID neighbor, FaceDirection direction, const BlockRegistry& registry) {
@@ -670,7 +668,6 @@ bool MeshManager::has_pending_mesh_work() const {
         return mesh_queue.size() > 0 || mesh_queue.immediate_size() > 0;
     }
     return chunk_scheduler->completed_mesh_count() > 0 ||
-           chunk_scheduler->completed_group_mesh_count() > 0 ||
            mesh_queue.size() > 0 ||
            mesh_queue.immediate_size() > 0;
 }
@@ -685,40 +682,10 @@ WorldRenderStats MeshManager::gather_render_stats() {
         if (render_data->mesh_rid.is_valid()) {
             ++stats.mesh_rids;
         }
-        if (!render_data->instance_rid.is_valid()) {
-            return;
-        }
-        if (render_data->render_lod == ChunkRenderLod::HiddenInGroup) {
-            ++stats.hidden_instances;
-        } else {
+        if (render_data->instance_rid.is_valid()) {
             ++stats.visible_instances;
         }
     });
-
-    if (lod_controller.get_settings().enabled) {
-        stats.lod = lod_controller.get_ring_stats();
-        stats.lod.pending_group_retries = static_cast<int32_t>(lod_controller.pending_group_retry_count());
-        stats.lod.pending_group_transitions = static_cast<int32_t>(lod_controller.pending_transition_count());
-        if (chunk_scheduler) {
-            stats.lod.completed_group_meshes = static_cast<int32_t>(chunk_scheduler->completed_group_mesh_count());
-        }
-        stats.lod.group_instances = 0;
-        lod_controller.for_each_group([&](uint64_t /*key*/, const LodGroupRenderData& group) {
-            ++stats.lod.live_groups;
-            if (group.instance_rid.is_valid()) {
-                ++stats.lod.group_instances;
-            }
-            if (group.is_dirty) {
-                ++stats.lod.dirty_groups;
-            }
-            if (group.pending_mesh_builds.load(std::memory_order_acquire) > 0) {
-                ++stats.lod.groups_building;
-            }
-            if (group.pending_mesh_uploads.load(std::memory_order_acquire) > 0) {
-                ++stats.lod.groups_uploading;
-            }
-        });
-    }
 
     return stats;
 }
