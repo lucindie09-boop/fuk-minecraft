@@ -83,11 +83,13 @@ struct MeshBuildTask : Task {
     uint64_t mesh_job_serial;
     int32_t player_bx, player_by, player_bz;
     bool smooth_lighting;
+    float detail_level = 1.0f;
     uint8_t dirty_subchunks = 0xFF;
 
     void execute() override {
         thread_local MeshBuilder builder;
         builder.set_smooth_lighting(smooth_lighting);
+        builder.set_detail_level(detail_level);
 
         // Narrow work to only dirty sub-chunks
         if (dirty_subchunks != 0xFF) {
@@ -192,6 +194,7 @@ struct MeshBuildTask : Task {
 
         if (async_epoch && epoch != async_epoch->load(std::memory_order_acquire)) {
             render_data->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
+            render_data->pending_mesh_uploads.fetch_sub(1, std::memory_order_relaxed);
             return;
         }
 
@@ -403,6 +406,18 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
     if (!render_data || !render_data->is_mesh_dirty) return;
     if (!thread_pool || !chunk_scheduler || !chunk_map) return;
 
+    // Skip mesh builds for chunks beyond render distance + 2 (allows unload to proceed)
+    if (mesh_render_distance > 0 && last_player_chunk_x != INT32_MIN) {
+        int32_t dx = chunk_x - last_player_chunk_x;
+        int32_t dz = chunk_z - last_player_chunk_z;
+        int32_t dy = std::abs(chunk_y - last_player_chunk_y);
+        if (dx*dx + dz*dz > (mesh_render_distance + 2) * (mesh_render_distance + 2) || dy > 10) {
+            render_data->is_mesh_dirty = false;
+            render_data->dirty_subchunks = 0;
+            return;
+        }
+    }
+
     // 1.5 Version check: skip enqueuing if versions match
     bool needs_enqueue = false;
     if (render_data->mesh_version != render_data->last_built_version) {
@@ -490,6 +505,8 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
     render_data->pending_mesh_builds.fetch_add(1, std::memory_order_relaxed);
     render_data->pending_mesh_uploads.fetch_add(1, std::memory_order_relaxed);
     const uint64_t mesh_job_serial = render_data->mesh_job_serial.fetch_add(1, std::memory_order_acq_rel) + 1;
+    const float detail = compute_chunk_detail_level(chunk_x, chunk_y, chunk_z);
+    render_data->last_built_detail_level = detail;
     uint64_t key = chunk_map->get_chunk_key(chunk_x, chunk_y, chunk_z);
     const bool high_priority = mesh_queue.erase_urgent(key);
 
@@ -522,6 +539,7 @@ void MeshManager::rebuild_rendering_server_mesh(int32_t chunk_x, int32_t chunk_y
     mesh_task->player_bz = player_bz;
     mesh_task->high_priority = high_priority;
     mesh_task->smooth_lighting = smooth_lighting_enabled;
+    mesh_task->detail_level = detail;
     mesh_task->dirty_subchunks = render_data->dirty_subchunks;
     render_data->dirty_subchunks = 0;
 
@@ -598,6 +616,20 @@ void MeshManager::mark_chunk_urgent(int32_t cx, int32_t cy, int32_t cz) {
 
 void MeshManager::reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz, const Frustum* frustum) {
     mesh_queue.reprioritize(player_cx, player_cy, player_cz, frustum);
+
+    // LOD boundary detection: re-mesh chunks that crossed LOD boundary
+    if (lod_distance > 0 && chunk_map) {
+        chunk_map->for_each([&](uint64_t key, const std::unique_ptr<ChunkRenderData>& render_data) {
+            int32_t cx, cy, cz;
+            ChunkMap::decode_chunk_key(key, cx, cy, cz);
+            float target = compute_chunk_detail_level(cx, cy, cz);
+            if (target != render_data->last_built_detail_level && !render_data->is_mesh_dirty) {
+                render_data->is_mesh_dirty = true;
+                render_data->mesh_version++;
+                queue_dirty_chunk(cx, cy, cz);
+            }
+        });
+    }
 }
 
 void MeshManager::mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_cy, int32_t center_cz) {
@@ -688,6 +720,17 @@ WorldRenderStats MeshManager::gather_render_stats() {
     });
 
     return stats;
+}
+
+float MeshManager::compute_chunk_detail_level(int32_t cx, int32_t cy, int32_t cz) const {
+    if (lod_distance <= 0) return 1.0f;
+    if (last_player_chunk_x == INT32_MIN) return 1.0f;
+    int32_t dx = cx - last_player_chunk_x;
+    int32_t dy = cy - last_player_chunk_y;
+    int32_t dz = cz - last_player_chunk_z;
+    int32_t dist = std::max({std::abs(dx), std::abs(dy), std::abs(dz)});
+    if (dist <= lod_distance) return 1.0f;
+    return lod_detail_level;
 }
 
 } // namespace VoxelEngine

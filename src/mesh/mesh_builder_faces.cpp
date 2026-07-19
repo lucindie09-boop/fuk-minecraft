@@ -37,9 +37,9 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
     uint16_t light_key;
     float side_lowered_offset = 0.0f;
     if (is_side_face(direction)) {
-        int32_t nx = x + kDirectionOffsets[dir_index][0];
+        int32_t nx = x + kDirectionOffsets[dir_index][0] * stride_xz_;
         int32_t ny = y + kDirectionOffsets[dir_index][1];
-        int32_t nz = z + kDirectionOffsets[dir_index][2];
+        int32_t nz = z + kDirectionOffsets[dir_index][2] * stride_xz_;
         bool use_self_light = false;
         if (ny >= 0 && ny < CHUNK_HEIGHT) {
             BlockID neighbor_id = BlockIDs::AIR;
@@ -77,9 +77,9 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
             }
         } else {
             const int32_t dir_idx = static_cast<int32_t>(direction);
-            const int32_t dx = kDirectionOffsets[dir_idx][0];
+            const int32_t dx = kDirectionOffsets[dir_idx][0] * stride_xz_;
             const int32_t dy = kDirectionOffsets[dir_idx][1];
-            const int32_t dz = kDirectionOffsets[dir_idx][2];
+            const int32_t dz = kDirectionOffsets[dir_idx][2] * stride_xz_;
             light_key = accessor.get_light_packed(x + dx, y + dy, z + dz);
         }
     } else {
@@ -102,9 +102,9 @@ light_keys[0] = light_keys[1] = light_keys[2] = light_keys[3] = light_key;
 
     float corners[4][3];
     for (int i = 0; i < 4; i++) {
-        corners[i][0] = x + kFaceVertices[dir_index][i][0];
+        corners[i][0] = x + kFaceVertices[dir_index][i][0] * stride_xz_;
         corners[i][1] = y + kFaceVertices[dir_index][i][1];
-        corners[i][2] = z + kFaceVertices[dir_index][i][2];
+        corners[i][2] = z + kFaceVertices[dir_index][i][2] * stride_xz_;
     }
     apply_special_block_offsets(corners, block_id, direction);
 
@@ -196,10 +196,10 @@ bool flip = (ao[0] + ao[0]) < (ao[1] + ao[3]);
             corners[3][0] = face.x;             corners[3][1] = face.y;     corners[3][2] = face.z;
             break;
         case FaceDirection::Right:
-            corners[0][0] = face.x + 1;         corners[0][1] = face.y;             corners[0][2] = face.z + u_size;
-            corners[1][0] = face.x + 1;         corners[1][1] = face.y + v_size;    corners[1][2] = face.z + u_size;
-            corners[2][0] = face.x + 1;         corners[2][1] = face.y + v_size;    corners[2][2] = face.z;
-            corners[3][0] = face.x + 1;         corners[3][1] = face.y;             corners[3][2] = face.z;
+            corners[0][0] = face.x + stride_xz_; corners[0][1] = face.y;             corners[0][2] = face.z + u_size;
+            corners[1][0] = face.x + stride_xz_; corners[1][1] = face.y + v_size;    corners[1][2] = face.z + u_size;
+            corners[2][0] = face.x + stride_xz_; corners[2][1] = face.y + v_size;    corners[2][2] = face.z;
+            corners[3][0] = face.x + stride_xz_; corners[3][1] = face.y;             corners[3][2] = face.z;
             break;
         case FaceDirection::Left:
             corners[0][0] = face.x;             corners[0][1] = face.y;             corners[0][2] = face.z;
@@ -208,10 +208,10 @@ bool flip = (ao[0] + ao[0]) < (ao[1] + ao[3]);
             corners[3][0] = face.x;             corners[3][1] = face.y;             corners[3][2] = face.z + u_size;
             break;
         case FaceDirection::Front:
-            corners[0][0] = face.x;             corners[0][1] = face.y + v_size;    corners[0][2] = face.z + 1;
-            corners[1][0] = face.x + u_size;    corners[1][1] = face.y + v_size;    corners[1][2] = face.z + 1;
-            corners[2][0] = face.x + u_size;    corners[2][1] = face.y;             corners[2][2] = face.z + 1;
-            corners[3][0] = face.x;             corners[3][1] = face.y;             corners[3][2] = face.z + 1;
+            corners[0][0] = face.x;             corners[0][1] = face.y + v_size;    corners[0][2] = face.z + stride_xz_;
+            corners[1][0] = face.x + u_size;    corners[1][1] = face.y + v_size;    corners[1][2] = face.z + stride_xz_;
+            corners[2][0] = face.x + u_size;    corners[2][1] = face.y;             corners[2][2] = face.z + stride_xz_;
+            corners[3][0] = face.x;             corners[3][1] = face.y;             corners[3][2] = face.z + stride_xz_;
             break;
         case FaceDirection::Back:
             corners[0][0] = face.x + u_size;    corners[0][1] = face.y;             corners[0][2] = face.z;

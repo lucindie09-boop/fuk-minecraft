@@ -34,6 +34,9 @@ struct ChunkRenderData {
 
     // Whether the shader material has been set on this mesh RID (avoids redundant RS calls)
     bool material_set = false;
+
+    // Track the last built detail level for LOD transitions
+    float last_built_detail_level = 1.0f;
 };
 
 // -------------------------------------------------------------------------

@@ -50,6 +50,10 @@ public:
     void set_render_distance(int32_t rd) { render_distance = rd; }
     void set_editor_render_distance(int32_t rd) { editor_render_distance = rd; }
     void set_player_position(const godot::Vector3& pos) { player_position = pos; }
+    void set_lod_distance(int32_t d) { lod_distance = d; }
+    int32_t get_lod_distance() const { return lod_distance; }
+    void set_lod_detail_level(float l) { lod_detail_level = l; }
+    float get_lod_detail_level() const { return lod_detail_level; }
     void set_frustum(const Frustum& f) {
         frustum = f;
         frustum_cursor = 0;
@@ -82,6 +86,8 @@ private:
     godot::Vector3 player_position;
     int32_t render_distance = 8;
     int32_t editor_render_distance = 4;
+    int32_t lod_distance = 0;
+    float lod_detail_level = 0.5f;
 
     FrameBudgets budgets;
 

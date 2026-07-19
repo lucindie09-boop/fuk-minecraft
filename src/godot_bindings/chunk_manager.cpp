@@ -224,6 +224,11 @@ Dictionary ChunkManager::resolve_voxel_collision(const godot::Vector3& position,
 void ChunkManager::set_smooth_lighting(bool enabled) { controller->set_smooth_lighting(enabled); }
 bool ChunkManager::get_smooth_lighting() const { return controller->get_smooth_lighting(); }
 
+void ChunkManager::set_lod_distance(int32_t distance) { controller->set_lod_distance(distance); }
+int32_t ChunkManager::get_lod_distance() const { return controller->get_lod_distance(); }
+void ChunkManager::set_lod_detail_level(float level) { controller->set_lod_detail_level(level); }
+float ChunkManager::get_lod_detail_level() const { return controller->get_lod_detail_level(); }
+
 void ChunkManager::set_player_light_enabled(bool enabled) { controller->set_player_light_enabled(enabled); }
 bool ChunkManager::get_player_light_enabled() const { return controller->get_player_light_enabled(); }
 
@@ -328,6 +333,12 @@ ClassDB::bind_method(D_METHOD("get_sun_direction"), &ChunkManager::get_sun_direc
     BIND_PROP(Variant::BOOL,    editor_enabled,            "enabled");
     BIND_PROP(Variant::INT,     editor_render_distance,    "distance");
 BIND_PROP(Variant::BOOL, smooth_lighting, "enabled");
+    ClassDB::bind_method(D_METHOD("set_lod_distance", "distance"), &ChunkManager::set_lod_distance);
+    ClassDB::bind_method(D_METHOD("get_lod_distance"), &ChunkManager::get_lod_distance);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "lod_distance", PROPERTY_HINT_RANGE, "0,64,1"), "set_lod_distance", "get_lod_distance");
+    ClassDB::bind_method(D_METHOD("set_lod_detail_level", "level"), &ChunkManager::set_lod_detail_level);
+    ClassDB::bind_method(D_METHOD("get_lod_detail_level"), &ChunkManager::get_lod_detail_level);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lod_detail_level", PROPERTY_HINT_RANGE, "0.125,1.0,0.005"), "set_lod_detail_level", "get_lod_detail_level");
     BIND_PROP(Variant::BOOL,    player_light_enabled,      "enabled");
     BIND_PROP(Variant::INT,     player_light_level,        "level");
 BIND_PROP(Variant::FLOAT, day_time, "time");

@@ -38,6 +38,13 @@ greedy_v_reject_block_mismatch.store(0, std::memory_order_relaxed);
 greedy_v_reject_distance_limit.store(0, std::memory_order_relaxed);
 }
 
+void MeshBuilder::set_detail_level(float level) {
+    detail_level_ = std::clamp(level, 0.125f, 1.0f);
+    int raw = static_cast<int>(std::round(1.0f / detail_level_));
+    stride_xz_ = 1;
+    while (stride_xz_ * 2 <= raw && stride_xz_ < 8) stride_xz_ *= 2;
+}
+
 BuiltMeshData MeshBuilder::build_mesh_data(
     const ChunkData& chunk_data,
     const ChunkData* neg_x,
@@ -180,8 +187,10 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
             int32_t y1 = y0 + SECTION_HEIGHT;
             for (int32_t y = y0; y < y1; y++) {
                 for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
+                    int32_t z_src = ((z - 1) / stride_xz_) * stride_xz_;
                     for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
-                        solid_cache[y][z][x] = chunk.get_block_unsafe(x - 1, y, z - 1);
+                        int32_t x_src = ((x - 1) / stride_xz_) * stride_xz_;
+                        solid_cache[y][z][x] = chunk.get_block_unsafe(x_src, y, z_src);
                     }
                 }
             }
@@ -190,11 +199,12 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
         // X boundaries — store the actual BlockID (or BlockIDs::AIR if neighbor null)
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
+                int32_t z_src = ((z - 1) / stride_xz_) * stride_xz_;
                 solid_cache[y][z][0] = neighbor_x_neg
-                    ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - 1, y, z - 1)
+                    ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - stride_xz_, y, z_src)
                     : BlockIDs::AIR;
                 solid_cache[y][z][SC_W - 1] = neighbor_x_pos
-                    ? neighbor_x_pos->get_block_unsafe(0, y, z - 1)
+                    ? neighbor_x_pos->get_block_unsafe(0, y, z_src)
                     : BlockIDs::AIR;
             }
         }
@@ -202,11 +212,12 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
         // Z boundaries
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
+                int32_t x_src = ((x - 1) / stride_xz_) * stride_xz_;
                 solid_cache[y][0][x] = neighbor_z_neg
-                    ? neighbor_z_neg->get_block_unsafe(x - 1, y, CHUNK_DEPTH - 1)
+                    ? neighbor_z_neg->get_block_unsafe(x_src, y, CHUNK_DEPTH - stride_xz_)
                     : BlockIDs::AIR;
                 solid_cache[y][SC_D - 1][x] = neighbor_z_pos
-                    ? neighbor_z_pos->get_block_unsafe(x - 1, y, 0)
+                    ? neighbor_z_pos->get_block_unsafe(x_src, y, 0)
                     : BlockIDs::AIR;
             }
         }
@@ -214,13 +225,13 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
         // Four corner columns (x=0 or SC_W-1, z=0 or SC_D-1)
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             solid_cache[y][0][0] = neg_x_neg_z
-                ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - 1, y, CHUNK_DEPTH - 1)
+                ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - stride_xz_, y, CHUNK_DEPTH - stride_xz_)
                 : BlockIDs::AIR;
             solid_cache[y][0][SC_W - 1] = pos_x_neg_z
-                ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - 1)
+                ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - stride_xz_)
                 : BlockIDs::AIR;
             solid_cache[y][SC_D - 1][0] = neg_x_pos_z
-                ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - 1, y, 0)
+                ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - stride_xz_, y, 0)
                 : BlockIDs::AIR;
             solid_cache[y][SC_D - 1][SC_W - 1] = pos_x_pos_z
                 ? pos_x_pos_z->get_block_unsafe(0, y, 0)
@@ -246,35 +257,37 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
             int32_t y0 = s * SECTION_HEIGHT;
             int32_t y1 = y0 + SECTION_HEIGHT;
             for (int32_t y = y0; y < y1; y++) {
-                for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-                    for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
+                for (int32_t z = 0; z < CHUNK_DEPTH; z += stride_xz_) {
+                    for (int32_t x = 0; x < CHUNK_WIDTH; x += stride_xz_) {
                         const BlockID block_id = solid_cache[y][z + 1][x + 1];
                         if (block_id == BlockIDs::AIR) continue;
-                        bool all_surrounded = true;
-                        for (int i = 0; i < 6; i++) {
-                            int32_t nx = x + kDirectionOffsets[i][0];
-                            int32_t ny = y + kDirectionOffsets[i][1];
-                            int32_t nz = z + kDirectionOffsets[i][2];
-                            if (nx < 0 || nx >= CHUNK_WIDTH ||
-                                ny < 0 || ny >= CHUNK_HEIGHT ||
-                                nz < 0 || nz >= CHUNK_DEPTH) {
-                                all_surrounded = false;
-                                break;
+                        if (stride_xz_ == 1) {
+                            bool all_surrounded = true;
+                            for (int i = 0; i < 6; i++) {
+                                int32_t nx = x + kDirectionOffsets[i][0];
+                                int32_t ny = y + kDirectionOffsets[i][1];
+                                int32_t nz = z + kDirectionOffsets[i][2];
+                                if (nx < 0 || nx >= CHUNK_WIDTH ||
+                                    ny < 0 || ny >= CHUNK_HEIGHT ||
+                                    nz < 0 || nz >= CHUNK_DEPTH) {
+                                    all_surrounded = false;
+                                    break;
+                                }
+                                BlockID neighbor = solid_cache[ny][nz + 1][nx + 1];
+                                if (!should_cull_against_neighbor(chunk, block_id, neighbor, kAllDirections[i], x, y, z, registry)) {
+                                    all_surrounded = false;
+                                    break;
+                                }
                             }
-                            BlockID neighbor = solid_cache[ny][nz + 1][nx + 1];
-                            if (!should_cull_against_neighbor(chunk, block_id, neighbor, kAllDirections[i], x, y, z, registry)) {
-                                all_surrounded = false;
-                                break;
-                            }
+                            if (all_surrounded) continue;
                         }
-                        if (all_surrounded) continue;
                         for (int i = 0; i < 6; i++) {
                             FaceDirection dir = kAllDirections[i];
                             if (dir == FaceDirection::Bottom) continue;
                             int32_t dir_idx = static_cast<int32_t>(dir);
-                            int32_t nx = x + kDirectionOffsets[dir_idx][0];
+                            int32_t nx = x + kDirectionOffsets[dir_idx][0] * stride_xz_;
                             int32_t ny = y + kDirectionOffsets[dir_idx][1];
-                            int32_t nz = z + kDirectionOffsets[dir_idx][2];
+                            int32_t nz = z + kDirectionOffsets[dir_idx][2] * stride_xz_;
 
                             BlockID neighbor = accessor.get_block(nx, ny, nz);
                             if (!should_cull_against_neighbor(chunk, block_id, neighbor, dir, x, y, z, registry)) {

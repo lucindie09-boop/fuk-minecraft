@@ -178,6 +178,10 @@ if (enabled) passive_greedy_enabled = false;
 }
 bool is_smooth_lighting_enabled() const { return smooth_lighting_enabled; }
 
+    void set_detail_level(float level);
+    float get_detail_level() const { return detail_level_; }
+    int get_stride_xz() const { return stride_xz_; }
+
     void set_subchunk_bounds(const SubChunkBounds& bounds) { active_bounds = bounds; }
     const SubChunkBounds& get_subchunk_bounds() const { return active_bounds; }
 
@@ -286,6 +290,9 @@ AmbientOcclusion ao;
     bool passive_greedy_enabled = false;
 bool smooth_lighting_enabled = false;
 GreedyVerticalStatsSnapshot greedy_v_stats_local{};
+
+    float detail_level_ = 1.0f;
+    int stride_xz_ = 1;
 
     SubChunkBounds active_bounds;
 

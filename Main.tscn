@@ -65,3 +65,4 @@ player_position = Vector3(0, 280, 0)
 debug_enabled = false
 smooth_lighting = true
 fog_density = 0.1
+lod_distance = 8

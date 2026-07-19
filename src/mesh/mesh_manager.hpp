@@ -68,6 +68,11 @@ public:
     [[nodiscard]] bool has_pending_mesh_work() const;
     WorldRenderStats gather_render_stats();
 
+    void set_lod_distance(int32_t d) { lod_distance = d; }
+    int32_t get_lod_distance() const { return lod_distance; }
+    void set_lod_detail_level(float l) { lod_detail_level = l; }
+    float get_lod_detail_level() const { return lod_detail_level; }
+
 private:
     void hide_chunk_instance(ChunkRenderData* render_data);
     void show_chunk_instance(ChunkRenderData* render_data, int32_t cx, int32_t cy, int32_t cz);
@@ -88,6 +93,10 @@ private:
     int32_t last_player_block_z = INT32_MIN;
     int32_t mesh_render_distance = 0;
     bool smooth_lighting_enabled = false;
+    int32_t lod_distance = 0;
+    float lod_detail_level = 0.5f;
+
+    float compute_chunk_detail_level(int32_t cx, int32_t cy, int32_t cz) const;
 };
 
 } // namespace VoxelEngine

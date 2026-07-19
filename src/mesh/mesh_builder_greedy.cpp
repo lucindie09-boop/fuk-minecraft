@@ -33,14 +33,14 @@ void MeshBuilder::flush_horizontal_merge(const ChunkData& chunk, const ChunkNeig
             face.z = z_start;
             face.direction = direction;
             face.block_id = block_id;
-            face.u_max = 0;
+            face.u_max = stride_xz_ - 1;
             face.v_max = (z_end - 1) - z_start;
             add_greedy_face(chunk, accessor, face, light_key, rotation, ao, registry);
             return;
         }
     }
 
-    for (int32_t cz = z_start; cz < z_end; ++cz) {
+    for (int32_t cz = z_start; cz < z_end; cz += stride_xz_) {
         add_face(chunk, accessor, x, y, cz, direction, block_id, registry);
     }
 }
@@ -62,14 +62,14 @@ void MeshBuilder::passive_greedy_mesh_horizontal(const ChunkData& chunk, const C
         int32_t y1 = y0 + SECTION_HEIGHT;
         for (int32_t y = y0; y < y1; y++) {
             const int32_t nybase = y + dy;
-            for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
+            for (int32_t x = 0; x < CHUNK_WIDTH; x += stride_xz_) {
                 int32_t merge_start = -1;
                 BlockID current_block = BlockIDs::AIR;
                 uint16_t current_light_key = 0;
                 int current_rotation = 0;
                 float current_ao[4]{};
 
-                for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
+                for (int32_t z = 0; z < CHUNK_DEPTH; z += stride_xz_) {
                     BlockID block_id = solid_cache[y][z + 1][x + 1];
 
                     if (block_id == BlockIDs::AIR) {
@@ -167,7 +167,7 @@ void MeshBuilder::flush_vertical_merge(const ChunkData& chunk, const ChunkNeighb
         face.z = z;
         face.direction = direction;
         face.block_id = block_id;
-        face.u_max = 0;
+        face.u_max = stride_xz_ - 1;
         face.v_max = (y_end - 1) - y_start;
         add_greedy_face(chunk, accessor, face, light_key, rotation, ao, registry);
     } else {
@@ -208,15 +208,15 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
         bool ao_valid = false;
     };
 
-    for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-        for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
+    for (int32_t x = 0; x < CHUNK_WIDTH; x += stride_xz_) {
+        for (int32_t z = 0; z < CHUNK_DEPTH; z += stride_xz_) {
             DirMergeState dirs[kDirCount];
 
             const bool boundary[kDirCount] = {
-                (x == CHUNK_WIDTH - 1),  // Right
-                (x == 0),                 // Left
-                (z == CHUNK_DEPTH - 1),  // Front
-                (z == 0)                 // Back
+                (x + stride_xz_ >= CHUNK_WIDTH),  // Right
+                (x < stride_xz_),                   // Left
+                (z + stride_xz_ >= CHUNK_DEPTH),   // Front
+                (z < stride_xz_)                    // Back
             };
 
             for (int32_t s = 0; s < CHUNK_SECTIONS; ++s) {
@@ -249,6 +249,7 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         continue;
                     }
 
+                    if (stride_xz_ == 1) {
                     const int sx0 = x + 1 - 1, sx1 = x + 1 + 1;
                     const int sz0 = z + 1 - 1, sz1 = z + 1 + 1;
                     if ((solid_cache[y][z + 1][sx0] != BlockIDs::AIR)
@@ -279,21 +280,32 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                             }
                         }
                     }
+                    } // if (stride_xz_ == 1)
 
                     for (int d = 0; d < kDirCount; d++) {
                         auto& dst = dirs[d];
 
-                        const int sx = x + 1 + kNxOff[d];
-                        const int sz = z + 1 + kNzOff[d];
-                        const BlockID neighbor = solid_cache[y][sz][sx];
-
-                        if (neighbor == BlockIDs::AIR && boundary[d] && !kBChunks[d]) {
-                            flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
-                                                kDirs[d], dst.current_block, dst.current_light_key,
-                                                dst.current_rotation, dst.current_ao, registry);
-                            dst.merge_start = -1;
-                            dst.ao_valid = false;
-                            continue;
+                        BlockID neighbor;
+                        if (boundary[d]) {
+                            if (!kBChunks[d]) {
+                                flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                    kDirs[d], dst.current_block, dst.current_light_key,
+                                                    dst.current_rotation, dst.current_ao, registry);
+                                dst.merge_start = -1;
+                                dst.ao_valid = false;
+                                continue;
+                            }
+                            switch (kDirs[d]) {
+                                case FaceDirection::Right: neighbor = kBChunks[d]->get_block_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
+                                case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
+                                case FaceDirection::Front: neighbor = kBChunks[d]->get_block_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
+                                case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
+                                default: neighbor = BlockIDs::AIR; break;
+                            }
+                        } else {
+                            const int sx = x + 1 + kNxOff[d] * stride_xz_;
+                            const int sz = z + 1 + kNzOff[d] * stride_xz_;
+                            neighbor = solid_cache[y][sz][sx];
                         }
 
                         bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, kDirs[d], x, y, z, registry);
@@ -309,14 +321,14 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         uint16_t light_key = 0;
                         if (boundary[d]) {
                             switch (kDirs[d]) {
-                                case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(0, y, z); break;
-                                case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(31, y, z); break;
-                                case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, 0); break;
-                                case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, 31); break;
+                                case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
+                                case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
+                                case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
+                                case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
                                 default: break;
                             }
                         } else {
-                            light_key = chunk.get_light_packed_word_unsafe(x + kNxOff[d], y, z + kNzOff[d]);
+                            light_key = chunk.get_light_packed_word_unsafe(x + kNxOff[d] * stride_xz_, y, z + kNzOff[d] * stride_xz_);
                         }
 
                         const int rotation = get_face_rotation(block_id, x, y, z, kDirs[d], kDirIndices[d]);

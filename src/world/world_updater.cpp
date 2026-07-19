@@ -40,6 +40,8 @@ void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_proce
                                    frustum.is_initialized() ? &frustum : nullptr);
         mesh_manager->set_player_chunk(player_chunk_x, player_chunk_y, player_chunk_z);
         mesh_manager->set_mesh_render_distance(active_render_distance);
+        mesh_manager->set_lod_distance(lod_distance);
+        mesh_manager->set_lod_detail_level(lod_detail_level);
     }
     mesh_manager->set_frustum(frustum.is_initialized() ? &frustum : nullptr);
 

@@ -99,6 +99,11 @@ public:
 void set_smooth_lighting(bool enabled);
 bool get_smooth_lighting() const;
 
+    void set_lod_distance(int32_t d);
+    int32_t get_lod_distance() const;
+    void set_lod_detail_level(float l);
+    float get_lod_detail_level() const;
+
     void set_player_light_enabled(bool enabled);
     bool get_player_light_enabled() const;
     void set_player_light_level(int32_t level);
@@ -164,6 +169,8 @@ private:
     bool auto_update = true;
     bool editor_enabled = false;
 bool smooth_lighting = false;
+    int32_t lod_distance = 0;
+    float lod_detail_level = 0.5f;
     float sea_level = 200.0f;
     float base_height = 212.0f;
     float height_scale = 48.0f;
