@@ -111,6 +111,7 @@ struct GroupMeshBuildTask : Task {
     ChunkScheduler* chunk_scheduler = nullptr;
     std::atomic<uint64_t>* async_epoch = nullptr;
     LodGroupRenderData* render_group = nullptr;
+    uint64_t group_key = 0;
     int32_t anchor_cx = 0;
     int32_t anchor_cy = 0;
     int32_t anchor_cz = 0;
@@ -184,11 +185,14 @@ struct GroupMeshBuildTask : Task {
             return;
         }
 
+        render_group->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
+
         CompletedGroupMesh completed;
         completed.anchor_cx = anchor_cx;
         completed.anchor_cy = anchor_cy;
         completed.anchor_cz = anchor_cz;
         completed.epoch = epoch;
+        completed.group_key = group_key;
         completed.mesh_job_serial = mesh_job_serial;
         completed.source_group = render_group;
         completed.mesh_data = std::move(packed_mesh);
@@ -198,7 +202,6 @@ struct GroupMeshBuildTask : Task {
         completed.member_keys = member_keys;
 
         chunk_scheduler->push_completed_group_mesh(std::move(completed), high_priority);
-        render_group->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
         unpin_members();
     }
 };
@@ -595,6 +598,7 @@ void MeshManager::apply_merge_transition(const LodTransition& transition, uint64
     task->chunk_scheduler = chunk_scheduler;
     task->async_epoch = async_epoch;
     task->render_group = group;
+    task->group_key = transition.group_key;
     task->anchor_cx = transition.anchor_cx;
     task->anchor_cy = transition.anchor_cy;
     task->anchor_cz = transition.anchor_cz;
@@ -691,7 +695,18 @@ void MeshManager::process_completed_group_meshes(uint64_t epoch, double budget_m
             continue;
         }
 
-        LodGroupRenderData* group = completed.source_group;
+        LodGroupRenderData* group = lod_controller.get_group(completed.group_key);
+        if (!group) {
+            for (int32_t i = 0; i < completed.member_count; ++i) {
+                int32_t mcx, mcy, mcz;
+                ChunkMap::decode_chunk_key(completed.member_keys[i], mcx, mcy, mcz);
+                ChunkRenderData* member_data = chunk_map->get_chunk_render_data(mcx, mcy, mcz);
+                if (member_data) {
+                    member_data->pending_mesh_uploads.fetch_sub(1, std::memory_order_relaxed);
+                }
+            }
+            continue;
+        }
         group->pending_mesh_uploads.fetch_sub(1, std::memory_order_relaxed);
         if (group->mesh_job_serial.load(std::memory_order_acquire) != completed.mesh_job_serial) {
             // Superseded by a newer rebuild of the same group - this stale result is

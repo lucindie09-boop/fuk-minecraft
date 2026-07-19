@@ -61,6 +61,7 @@ struct CompletedGroupMesh {
     int32_t anchor_cy = 0;
     int32_t anchor_cz = 0;
     uint64_t epoch = 0;
+    uint64_t group_key = 0;
     uint64_t mesh_job_serial = 0;
     LodGroupRenderData* source_group = nullptr;
     PackedBuiltMeshData mesh_data;
