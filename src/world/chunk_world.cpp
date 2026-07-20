@@ -68,13 +68,18 @@ float top_content_h = std::max(height_range.max_h, height_range.max_water_h);
                     auto cross_writer = [this](int32_t wx, int32_t wy, int32_t wz, BlockID block) {
                         int32_t tc_x, tc_y, tc_z, lx, ly, lz;
                         world_to_chunk_local(wx, wy, wz, tc_x, tc_y, tc_z, lx, ly, lz);
-                        ChunkData* target = chunk_map.get_chunk_data(tc_x, tc_y, tc_z);
+                        // Hold exclusive shard lock for the entire read-check-write
+                        // sequence. This prevents the target chunk from being erased
+                        // during the write, and serializes concurrent cross_writers
+                        // targeting the same chunk (preventing PaletteStorage races).
+                        auto elock = chunk_map.lock_chunk_exclusive(tc_x, tc_y, tc_z);
+                        ChunkData* target = chunk_map.get_chunk_data_fast(tc_x, tc_y, tc_z);
                         if (target) {
                             if (target->get_block(lx, ly, lz) != BlockIDs::AIR)
                                 return;
                             target->set_block(lx, ly, lz, block);
                             // Bump mesh_version so the rebuild isn't skipped
-                            ChunkRenderData* target_rd = chunk_map.get_chunk_render_data(tc_x, tc_y, tc_z);
+                            ChunkRenderData* target_rd = chunk_map.get_chunk_render_data_fast(tc_x, tc_y, tc_z);
                             if (target_rd) {
                                 target_rd->mesh_version++;
                             }

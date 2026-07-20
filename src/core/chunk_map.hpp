@@ -40,6 +40,16 @@ public:
         ShardLock& operator=(ShardLock&&) = default;
     };
 
+    // RAII lock that holds unique_locks (exclusive) on one or more shards.
+    class [[nodiscard]] ExclusiveShardLock {
+        friend class ChunkMap;
+        std::vector<std::unique_lock<std::shared_mutex>> locks_;
+        ExclusiveShardLock() = default;
+    public:
+        ExclusiveShardLock(ExclusiveShardLock&&) = default;
+        ExclusiveShardLock& operator=(ExclusiveShardLock&&) = default;
+    };
+
     [[nodiscard]] inline uint64_t get_chunk_key(int32_t x, int32_t y, int32_t z) const noexcept {
         constexpr uint32_t OFFSET = 1u << 20;
         constexpr uint32_t MASK = 0x1FFFFF;
@@ -69,6 +79,12 @@ public:
 
     ShardLock lock_chunk(int32_t cx, int32_t cy, int32_t cz) const {
         ShardLock sl;
+        sl.locks_.emplace_back(shards_[key_to_shard(get_chunk_key(cx, cy, cz))].mutex);
+        return sl;
+    }
+
+    ExclusiveShardLock lock_chunk_exclusive(int32_t cx, int32_t cy, int32_t cz) const {
+        ExclusiveShardLock sl;
         sl.locks_.emplace_back(shards_[key_to_shard(get_chunk_key(cx, cy, cz))].mutex);
         return sl;
     }
@@ -195,6 +211,13 @@ public:
         auto& s = shards_[key_to_shard(key)];
         auto it = s.chunks.find(key);
         return (it != s.chunks.end()) ? it->second->data.get() : nullptr;
+    }
+
+    [[nodiscard]] ChunkRenderData* get_chunk_render_data_fast(int32_t cx, int32_t cy, int32_t cz) const {
+        uint64_t key = get_chunk_key(cx, cy, cz);
+        auto& s = shards_[key_to_shard(key)];
+        auto it = s.chunks.find(key);
+        return (it != s.chunks.end()) ? it->second.get() : nullptr;
     }
 
     [[nodiscard]] bool contains_fast(uint64_t key) const {
