@@ -749,26 +749,12 @@ float MeshManager::compute_chunk_detail_level(int32_t cx, int32_t cy, int32_t cz
     int32_t dy = cy - last_player_chunk_y;
     int32_t dz = cz - last_player_chunk_z;
     int32_t dist = std::max({std::abs(dx), std::abs(dy), std::abs(dz)});
-    if (dist <= lod_distance) return 1.0f;
 
-    // LOD skirt: compute this chunk's natural stride and compare against each
-    // horizontal neighbor's natural stride.  If any differs, force stride-1 so
-    // that no seam between adjacent chunks ever has mismatched strides (which
-    // would produce T-junction cracks).
-    auto natural_stride = [&](int32_t ndist) -> int32_t {
-        if (ndist <= lod_distance) return 1;
-        int32_t raw = static_cast<int32_t>(std::round(1.0f / lod_detail_level));
-        int32_t s = 1;
-        while (s * 2 <= raw && s < 8) s *= 2;
-        return s;
-    };
-    int32_t my_stride = natural_stride(dist);
-
-    static constexpr int32_t kOff[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
-    for (const auto& off : kOff) {
-        int32_t ndist = std::max({std::abs(dx + off[0]), std::abs(dy), std::abs(dz + off[1])});
-        if (natural_stride(ndist) != my_stride) return 1.0f;
-    }
+    // Two-tier LOD: chunks within lod_distance+1 are always full-res.
+    // The +1 ring acts as a skirt so that the first coarse ring (dist =
+    // lod_distance+2) always borders a stride-1 neighbor, preventing
+    // T-junction cracks at the transition boundary.
+    if (dist <= lod_distance + 1) return 1.0f;
 
     return lod_detail_level;
 }
