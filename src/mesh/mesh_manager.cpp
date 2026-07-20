@@ -145,8 +145,42 @@ struct MeshBuildTask : Task {
         }
 
         ChunkRenderData* all_neighbors[26] = {};
+        static constexpr int32_t kNeighborOffsets[26][3] = {
+            {-1,0,0},{1,0,0},{0,-1,0},{0,1,0},{0,0,-1},{0,0,1},
+            {-1,0,-1},{-1,0,1},{1,0,-1},{1,0,1},
+            {-1,-1,0},{1,-1,0},{-1,1,0},{1,1,0},
+            {0,-1,-1},{0,-1,1},{0,1,-1},{0,1,1},
+            {-1,-1,-1},{1,-1,-1},{-1,1,-1},{1,1,-1},
+            {-1,-1,1},{1,-1,1},{-1,1,1},{1,1,1}
+        };
+        auto unpin_neighbors = [&]() {
+            if (!chunk_map) return;
+            for (int i = 0; i < 26; i++) {
+                if (all_neighbors[i]) {
+                    chunk_map->unpin_chunk(chunk_map->get_chunk_key(
+                        chunk_x + kNeighborOffsets[i][0],
+                        chunk_y + kNeighborOffsets[i][1],
+                        chunk_z + kNeighborOffsets[i][2]));
+                }
+            }
+        };
+
         if (chunk_map) {
             chunk_map->get_all_neighbors(chunk_x, chunk_y, chunk_z, all_neighbors);
+
+            // Pin neighbor chunks to prevent unload during build.
+            // get_all_neighbors returned raw pointers after releasing shard locks;
+            // without pinning, try_unload_chunk could destroy a neighbor while we
+            // read its ChunkData. Pinning increments pending_mesh_builds (under shard
+            // lock), which try_unload_chunk checks before erasing.
+            for (int i = 0; i < 26; i++) {
+                if (all_neighbors[i]) {
+                    chunk_map->pin_chunk(chunk_map->get_chunk_key(
+                        chunk_x + kNeighborOffsets[i][0],
+                        chunk_y + kNeighborOffsets[i][1],
+                        chunk_z + kNeighborOffsets[i][2]));
+                }
+            }
         }
         auto data_or_null = [](ChunkRenderData* rd) -> const ChunkData* {
             return (rd && rd->data) ? rd->data.get() : nullptr;
@@ -197,6 +231,7 @@ struct MeshBuildTask : Task {
         if (async_epoch && epoch != async_epoch->load(std::memory_order_acquire)) {
             render_data->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
             render_data->pending_mesh_uploads.fetch_sub(1, std::memory_order_relaxed);
+            unpin_neighbors();
             return;
         }
 
@@ -214,6 +249,7 @@ struct MeshBuildTask : Task {
         chunk_scheduler->push_completed_mesh(std::move(completed), high_priority);
 
         render_data->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
+        unpin_neighbors();
     }
 
     bool high_priority;

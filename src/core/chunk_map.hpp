@@ -310,6 +310,24 @@ public:
     //  10-13: Y-X diagonals (neg_x_neg_y, pos_x_neg_y, neg_x_pos_y, pos_x_pos_y)
     //  14-17: Y-Z diagonals (neg_y_neg_z, neg_y_pos_z, pos_y_neg_z, pos_y_pos_z)
     //  18-25: triple corners (neg_x_neg_y_neg_z .. pos_x_pos_y_pos_z)
+    void pin_chunk(uint64_t key) {
+        auto& s = shards_[key_to_shard(key)];
+        std::shared_lock lock(s.mutex);
+        auto it = s.chunks.find(key);
+        if (it != s.chunks.end()) {
+            it->second->pending_mesh_builds.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    void unpin_chunk(uint64_t key) {
+        auto& s = shards_[key_to_shard(key)];
+        std::shared_lock lock(s.mutex);
+        auto it = s.chunks.find(key);
+        if (it != s.chunks.end()) {
+            it->second->pending_mesh_builds.fetch_sub(1, std::memory_order_relaxed);
+        }
+    }
+
     void get_all_neighbors(int32_t cx, int32_t cy, int32_t cz,
                            ChunkRenderData* out[26]) const {
         uint64_t keys[26] = {
