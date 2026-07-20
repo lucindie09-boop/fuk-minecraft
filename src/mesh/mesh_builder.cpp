@@ -201,7 +201,7 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
             for (int32_t z = 1; z <= CHUNK_DEPTH; z++) {
                 int32_t z_src = ((z - 1) / stride_xz_) * stride_xz_;
                 solid_cache[y][z][0] = neighbor_x_neg
-                    ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - stride_xz_, y, z_src)
+                    ? neighbor_x_neg->get_block_unsafe(CHUNK_WIDTH - 1, y, z_src)
                     : BlockIDs::AIR;
                 solid_cache[y][z][SC_W - 1] = neighbor_x_pos
                     ? neighbor_x_pos->get_block_unsafe(0, y, z_src)
@@ -214,7 +214,7 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
             for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
                 int32_t x_src = ((x - 1) / stride_xz_) * stride_xz_;
                 solid_cache[y][0][x] = neighbor_z_neg
-                    ? neighbor_z_neg->get_block_unsafe(x_src, y, CHUNK_DEPTH - stride_xz_)
+                    ? neighbor_z_neg->get_block_unsafe(x_src, y, CHUNK_DEPTH - 1)
                     : BlockIDs::AIR;
                 solid_cache[y][SC_D - 1][x] = neighbor_z_pos
                     ? neighbor_z_pos->get_block_unsafe(x_src, y, 0)
@@ -225,13 +225,13 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
         // Four corner columns (x=0 or SC_W-1, z=0 or SC_D-1)
         for (int32_t y = 0; y < CHUNK_HEIGHT; y++) {
             solid_cache[y][0][0] = neg_x_neg_z
-                ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - stride_xz_, y, CHUNK_DEPTH - stride_xz_)
+                ? neg_x_neg_z->get_block_unsafe(CHUNK_WIDTH - 1, y, CHUNK_DEPTH - 1)
                 : BlockIDs::AIR;
             solid_cache[y][0][SC_W - 1] = pos_x_neg_z
-                ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - stride_xz_)
+                ? pos_x_neg_z->get_block_unsafe(0, y, CHUNK_DEPTH - 1)
                 : BlockIDs::AIR;
             solid_cache[y][SC_D - 1][0] = neg_x_pos_z
-                ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - stride_xz_, y, 0)
+                ? neg_x_pos_z->get_block_unsafe(CHUNK_WIDTH - 1, y, 0)
                 : BlockIDs::AIR;
             solid_cache[y][SC_D - 1][SC_W - 1] = pos_x_pos_z
                 ? pos_x_pos_z->get_block_unsafe(0, y, 0)

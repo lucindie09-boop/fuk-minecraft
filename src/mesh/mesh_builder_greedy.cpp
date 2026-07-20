@@ -292,9 +292,9 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                             } else {
                                 switch (kDirs[d]) {
                                     case FaceDirection::Right: neighbor = kBChunks[d]->get_block_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
-                                    case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
+                                    case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH - 1, y, z); break;
                                     case FaceDirection::Front: neighbor = kBChunks[d]->get_block_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
-                                    case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
+                                    case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, CHUNK_DEPTH - 1); break;
                                     default: neighbor = BlockIDs::AIR; break;
                                 }
                             }
@@ -319,9 +319,9 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                             if (kBChunks[d]) {
                                 switch (kDirs[d]) {
                                     case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
-                                    case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
+                                    case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(CHUNK_WIDTH - 1, y, z); break;
                                     case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
-                                    case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
+                                    case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, CHUNK_DEPTH - 1); break;
                                     default: break;
                                 }
                             }
