@@ -367,5 +367,27 @@ bool MeshBuilder::should_cull_against_neighbor(const ChunkData& chunk, BlockID c
     return true;
 }
 
+bool MeshBuilder::boundary_face_fully_occluded(const ChunkData& current_chunk, const ChunkData* neighbor,
+                                               FaceDirection dir, int32_t x, int32_t y, int32_t z,
+                                               int32_t stride, BlockID current_block,
+                                               const BlockRegistry& registry) const {
+    if (!neighbor) return false;
+    for (int32_t i = 0; i < stride; i++) {
+        int32_t nx, nz;
+        switch (dir) {
+            case FaceDirection::Right: nx = 0;                nz = z + i; break;
+            case FaceDirection::Left:  nx = CHUNK_WIDTH - 1;  nz = z + i; break;
+            case FaceDirection::Front: nx = x + i;            nz = 0;     break;
+            case FaceDirection::Back:  nx = x + i;            nz = CHUNK_DEPTH - 1; break;
+            default: return false;
+        }
+        BlockID nb = neighbor->get_block_unsafe(nx, y, nz);
+        if (!should_cull_against_neighbor(current_chunk, current_block, nb, dir, x, y, z, registry)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 
 } // namespace VoxelEngine

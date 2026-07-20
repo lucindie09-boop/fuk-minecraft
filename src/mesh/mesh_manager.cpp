@@ -118,6 +118,8 @@ struct MeshBuildTask : Task {
                 bounds.z_min = z_min; bounds.z_max = z_max;
                 builder.set_subchunk_bounds(bounds);
             }
+        } else {
+            builder.set_subchunk_bounds({0, CHUNK_WIDTH, 0, CHUNK_HEIGHT, 0, CHUNK_DEPTH});
         }
 
         constexpr int32_t CW = CHUNK_WIDTH;
@@ -754,6 +756,9 @@ float MeshManager::compute_chunk_detail_level(int32_t cx, int32_t cy, int32_t cz
     // The +1 ring acts as a skirt so that the first coarse ring (dist =
     // lod_distance+2) always borders a stride-1 neighbor, preventing
     // T-junction cracks at the transition boundary.
+    // TODO: if more LOD tiers are added, replace with resolved-stride
+    // propagation (compute nearest-first, store in ChunkRenderData, check
+    // neighbor's actual resolved stride instead of recomputing from distance).
     if (dist <= lod_distance + 1) return 1.0f;
 
     return lod_detail_level;

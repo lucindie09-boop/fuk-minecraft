@@ -364,6 +364,11 @@ if (is_side_face(dir)) return 0;
 FaceDirection direction, int32_t x, int32_t y, int32_t z,
 const BlockRegistry& registry) const;
 
+    bool boundary_face_fully_occluded(const ChunkData& current_chunk, const ChunkData* neighbor,
+                                       FaceDirection dir, int32_t x, int32_t y, int32_t z,
+                                       int32_t stride, BlockID current_block,
+                                       const BlockRegistry& registry) const;
+
     // -------------------------------------------------------------------------
     // Face emission (heavy — defined in .cpp)
     // -------------------------------------------------------------------------

@@ -290,55 +290,24 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                     for (int d = 0; d < kDirCount; d++) {
                         auto& dst = dirs[d];
 
-                        BlockID neighbor;
+                        bool cull;
                         if (boundary[d]) {
                             if (!kBChunks[d]) {
-                                neighbor = BlockIDs::AIR;
-                            } else {
-                                BlockID representative = BlockIDs::AIR;
-                                int32_t solid_count = 0;
-                                const int32_t total = stride_xz_ * stride_xz_;
-                                int32_t nx0, nz0;
-                                switch (kDirs[d]) {
-                                    case FaceDirection::Right:
-                                        nx0 = 0;
-                                        nz0 = z;
-                                        break;
-                                    case FaceDirection::Left:
-                                        nx0 = CHUNK_WIDTH - stride_xz_;
-                                        nz0 = z;
-                                        break;
-                                    case FaceDirection::Front:
-                                        nx0 = x;
-                                        nz0 = 0;
-                                        break;
-                                    case FaceDirection::Back:
-                                        nx0 = x;
-                                        nz0 = CHUNK_DEPTH - stride_xz_;
-                                        break;
-                                    default:
-                                        nx0 = 0;
-                                        nz0 = 0;
-                                        break;
-                                }
-                                for (int32_t dz = 0; dz < stride_xz_; ++dz) {
-                                    for (int32_t dx = 0; dx < stride_xz_; ++dx) {
-                                        BlockID sample = kBChunks[d]->get_block_unsafe(nx0 + dx, y, nz0 + dz);
-                                        if (sample != BlockIDs::AIR) {
-                                            ++solid_count;
-                                            if (representative == BlockIDs::AIR) representative = sample;
-                                        }
-                                    }
-                                }
-                                neighbor = (solid_count * 2 >= total) ? representative : BlockIDs::AIR;
+                                flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                    kDirs[d], dst.current_block, dst.current_light_key,
+                                                    dst.current_rotation, dst.current_ao, registry);
+                                dst.merge_start = -1;
+                                dst.ao_valid = false;
+                                continue;
                             }
+                            cull = boundary_face_fully_occluded(chunk, kBChunks[d], kDirs[d],
+                                                                x, y, z, stride_xz_, block_id, registry);
                         } else {
                             const int sx = x + 1 + kNxOff[d] * stride_xz_;
                             const int sz = z + 1 + kNzOff[d] * stride_xz_;
-                            neighbor = solid_cache[y][sz][sx];
+                            BlockID neighbor = solid_cache[y][sz][sx];
+                            cull = should_cull_against_neighbor(chunk, block_id, neighbor, kDirs[d], x, y, z, registry);
                         }
-
-                        bool cull = should_cull_against_neighbor(chunk, block_id, neighbor, kDirs[d], x, y, z, registry);
                         if (stride_xz_ > 1) {
                             if (cull) greedy_v_stats_local.lod_faces_culled++;
                             else greedy_v_stats_local.lod_faces_emitted++;
@@ -356,9 +325,9 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         if (boundary[d]) {
                             if (kBChunks[d]) {
                                 switch (kDirs[d]) {
-                                    case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
+                                    case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(0, y, z); break;
                                     case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(CHUNK_WIDTH - 1, y, z); break;
-                                    case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
+                                    case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, 0); break;
                                     case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, CHUNK_DEPTH - 1); break;
                                     default: break;
                                 }
