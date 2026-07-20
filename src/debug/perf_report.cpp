@@ -179,6 +179,12 @@ String PerfReport::build(
                   " block=" + String::num_int64(greedy_v_stats.reject_block_mismatch) +
                   " distance=" + String::num_int64(greedy_v_stats.reject_distance_limit) + "\n";
     }
+    if (greedy_v_stats.lod_cells_visited > 0) {
+        report += "    lod_v:        visited=" + String::num_int64(greedy_v_stats.lod_cells_visited) +
+                  " air_skip=" + String::num_int64(greedy_v_stats.lod_cells_skipped_air) +
+                  " culled=" + String::num_int64(greedy_v_stats.lod_faces_culled) +
+                  " emitted=" + String::num_int64(greedy_v_stats.lod_faces_emitted) + "\n";
+    }
     // Chunk generation sub-timers
     double voxelization_avg = ChunkGenerator::get_perf_timer().get_avg(TimerID::Voxelization);
     if (ChunkGenerator::get_perf_timer().get_count(TimerID::Voxelization) > 0) {

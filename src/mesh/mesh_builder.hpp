@@ -78,6 +78,10 @@ uint64_t reject_light_mismatch = 0;
 uint64_t reject_rotation_mismatch = 0;
 uint64_t reject_block_mismatch = 0;
 uint64_t reject_distance_limit = 0;
+uint64_t lod_cells_visited = 0;
+uint64_t lod_cells_skipped_air = 0;
+uint64_t lod_faces_culled = 0;
+uint64_t lod_faces_emitted = 0;
 };
 
     MeshBuilder() {
@@ -286,6 +290,10 @@ AmbientOcclusion ao;
     static std::atomic<uint64_t> greedy_v_reject_rotation_mismatch;
     static std::atomic<uint64_t> greedy_v_reject_block_mismatch;
     static std::atomic<uint64_t> greedy_v_reject_distance_limit;
+    static std::atomic<uint64_t> greedy_v_lod_cells_visited;
+    static std::atomic<uint64_t> greedy_v_lod_cells_skipped_air;
+    static std::atomic<uint64_t> greedy_v_lod_faces_culled;
+    static std::atomic<uint64_t> greedy_v_lod_faces_emitted;
 
     bool passive_greedy_enabled = false;
 bool smooth_lighting_enabled = false;

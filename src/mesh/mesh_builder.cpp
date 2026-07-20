@@ -15,6 +15,10 @@ std::atomic<uint64_t> MeshBuilder::greedy_v_reject_light_mismatch{0};
 std::atomic<uint64_t> MeshBuilder::greedy_v_reject_rotation_mismatch{0};
 std::atomic<uint64_t> MeshBuilder::greedy_v_reject_block_mismatch{0};
 std::atomic<uint64_t> MeshBuilder::greedy_v_reject_distance_limit{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_lod_cells_visited{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_lod_cells_skipped_air{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_lod_faces_culled{0};
+std::atomic<uint64_t> MeshBuilder::greedy_v_lod_faces_emitted{0};
 
 
 MeshBuilder::GreedyVerticalStatsSnapshot MeshBuilder::get_greedy_vertical_stats() {
@@ -27,6 +31,10 @@ MeshBuilder::GreedyVerticalStatsSnapshot MeshBuilder::get_greedy_vertical_stats(
     stats.reject_rotation_mismatch = greedy_v_reject_rotation_mismatch.load(std::memory_order_relaxed);
     stats.reject_block_mismatch = greedy_v_reject_block_mismatch.load(std::memory_order_relaxed);
     stats.reject_distance_limit = greedy_v_reject_distance_limit.load(std::memory_order_relaxed);
+    stats.lod_cells_visited = greedy_v_lod_cells_visited.load(std::memory_order_relaxed);
+    stats.lod_cells_skipped_air = greedy_v_lod_cells_skipped_air.load(std::memory_order_relaxed);
+    stats.lod_faces_culled = greedy_v_lod_faces_culled.load(std::memory_order_relaxed);
+    stats.lod_faces_emitted = greedy_v_lod_faces_emitted.load(std::memory_order_relaxed);
     return stats;
 }
 
@@ -36,6 +44,10 @@ greedy_v_reject_light_mismatch.store(0, std::memory_order_relaxed);
 greedy_v_reject_rotation_mismatch.store(0, std::memory_order_relaxed);
 greedy_v_reject_block_mismatch.store(0, std::memory_order_relaxed);
 greedy_v_reject_distance_limit.store(0, std::memory_order_relaxed);
+greedy_v_lod_cells_visited.store(0, std::memory_order_relaxed);
+greedy_v_lod_cells_skipped_air.store(0, std::memory_order_relaxed);
+greedy_v_lod_faces_culled.store(0, std::memory_order_relaxed);
+greedy_v_lod_faces_emitted.store(0, std::memory_order_relaxed);
 }
 
 void MeshBuilder::set_detail_level(float level) {
@@ -101,7 +113,8 @@ void MeshBuilder::clear() {
     indices.reserve(kIndexReserve);
     water_vertices.reserve(kVertexReserve);
     water_indices.reserve(kIndexReserve);
-greedy_v_stats_local = {};
+    greedy_v_stats_local = {};
+    active_bounds = {};
 }
 
 void MeshBuilder::build_mesh(const ChunkData& chunk,
@@ -322,6 +335,10 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
     greedy_v_reject_rotation_mismatch.fetch_add(greedy_v_stats_local.reject_rotation_mismatch, std::memory_order_relaxed);
     greedy_v_reject_block_mismatch.fetch_add(greedy_v_stats_local.reject_block_mismatch, std::memory_order_relaxed);
     greedy_v_reject_distance_limit.fetch_add(greedy_v_stats_local.reject_distance_limit, std::memory_order_relaxed);
+    greedy_v_lod_cells_visited.fetch_add(greedy_v_stats_local.lod_cells_visited, std::memory_order_relaxed);
+    greedy_v_lod_cells_skipped_air.fetch_add(greedy_v_stats_local.lod_cells_skipped_air, std::memory_order_relaxed);
+    greedy_v_lod_faces_culled.fetch_add(greedy_v_stats_local.lod_faces_culled, std::memory_order_relaxed);
+    greedy_v_lod_faces_emitted.fetch_add(greedy_v_stats_local.lod_faces_emitted, std::memory_order_relaxed);
 }
 
 bool MeshBuilder::should_cull_against_neighbor(const ChunkData& chunk, BlockID current, BlockID neighbor,
