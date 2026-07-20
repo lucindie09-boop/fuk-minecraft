@@ -131,7 +131,7 @@ private:
     std::queue<CompletedRegionMesh> completed_far_region_meshes;
     mutable std::mutex completed_far_region_meshes_mutex;
     std::atomic<int32_t> completed_far_region_mesh_count{0};
-    int32_t far_regions_skipped_missing_cache_last = 0;
+    int32_t far_regions_partial_missing_cache_last = 0;
     static constexpr int32_t kFarRegionSizeXZ = 4;
 
     float compute_chunk_detail_level(int32_t cx, int32_t cy, int32_t cz) const;

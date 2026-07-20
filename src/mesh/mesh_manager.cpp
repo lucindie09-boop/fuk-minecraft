@@ -1126,11 +1126,11 @@ void MeshManager::mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_
 
 void MeshManager::process_far_region_queue(int32_t max_rebuilds) {
     if (max_rebuilds <= 0 || !thread_pool || !chunk_map) {
-        far_regions_skipped_missing_cache_last = 0;
+        far_regions_partial_missing_cache_last = 0;
         return;
     }
 
-    int32_t skipped_missing_cache = 0;
+    int32_t partial_missing_cache = 0;
     std::vector<std::pair<int32_t, uint64_t>> candidates;
     candidates.reserve(far_regions.size());
     for (const auto& [region_key, region] : far_regions) {
@@ -1209,8 +1209,7 @@ void MeshManager::process_far_region_queue(int32_t max_rebuilds) {
         }
 
         if (missing_far_cache) {
-            ++skipped_missing_cache;
-            continue;
+            ++partial_missing_cache;
         }
 
         if (eligible_chunk_count < 2 || sources.size() < 2) {
@@ -1258,7 +1257,7 @@ void MeshManager::process_far_region_queue(int32_t max_rebuilds) {
         ++scheduled;
     }
 
-    far_regions_skipped_missing_cache_last = skipped_missing_cache;
+    far_regions_partial_missing_cache_last = partial_missing_cache;
 }
 
 void MeshManager::process_queue(int32_t max_immediate, int32_t max_rebuilds, double budget_ms) {
@@ -1307,7 +1306,7 @@ void MeshManager::clear() {
         }
     }
     completed_far_region_mesh_count.store(0, std::memory_order_relaxed);
-    far_regions_skipped_missing_cache_last = 0;
+    far_regions_partial_missing_cache_last = 0;
     last_player_chunk_x = INT32_MIN;
     last_player_chunk_y = INT32_MIN;
     last_player_chunk_z = INT32_MIN;
@@ -1410,7 +1409,7 @@ WorldRenderStats MeshManager::gather_render_stats() {
         }
     }
 
-    stats.regions_skipped_missing_cache = far_regions_skipped_missing_cache_last;
+    stats.regions_partial_missing_cache = far_regions_partial_missing_cache_last;
 
     return stats;
 }

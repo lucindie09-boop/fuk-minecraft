@@ -64,7 +64,7 @@ String PerfReport::build(
     report += "  Far eligible:    " + String::num_int64(render_stats.eligible_far_chunks) +
               "  Far cached:      " + String::num_int64(render_stats.cached_far_chunks) + "\n";
     report += "  Region members:  " + String::num_int64(render_stats.active_region_member_chunks) +
-              "  Skip no cache:   " + String::num_int64(render_stats.regions_skipped_missing_cache) + "\n";
+              "  Partial cache:   " + String::num_int64(render_stats.regions_partial_missing_cache) + "\n";
 
     report += "--- per-frame breakdown ---\n";
     report += "  player_pos_update: avg=" + String::num(perf_timer.get_avg(TimerID::PlayerPosUpdate), 3) + "ms\n";

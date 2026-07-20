@@ -62,7 +62,7 @@ struct WorldRenderStats {
     int32_t eligible_far_chunks = 0;
     int32_t cached_far_chunks = 0;
     int32_t active_region_member_chunks = 0;
-    int32_t regions_skipped_missing_cache = 0;
+    int32_t regions_partial_missing_cache = 0;
 };
 
 } // namespace VoxelEngine
