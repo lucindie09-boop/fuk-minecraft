@@ -291,10 +291,40 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                                 neighbor = BlockIDs::AIR;
                             } else {
                                 switch (kDirs[d]) {
-                                    case FaceDirection::Right: neighbor = kBChunks[d]->get_block_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
-                                    case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH - 1, y, z); break;
-                                    case FaceDirection::Front: neighbor = kBChunks[d]->get_block_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
-                                    case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, CHUNK_DEPTH - 1); break;
+                                    case FaceDirection::Right: {
+                                        neighbor = BlockIDs::AIR;
+                                        const int32_t nx = x + stride_xz_ - CHUNK_WIDTH;
+                                        for (int32_t dz = 0; dz < stride_xz_ && neighbor == BlockIDs::AIR; ++dz) {
+                                            BlockID sample = kBChunks[d]->get_block_unsafe(nx, y, z + dz);
+                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                        }
+                                        break;
+                                    }
+                                    case FaceDirection::Left: {
+                                        neighbor = BlockIDs::AIR;
+                                        for (int32_t dz = 0; dz < stride_xz_ && neighbor == BlockIDs::AIR; ++dz) {
+                                            BlockID sample = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH - 1, y, z + dz);
+                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                        }
+                                        break;
+                                    }
+                                    case FaceDirection::Front: {
+                                        neighbor = BlockIDs::AIR;
+                                        const int32_t nz = z + stride_xz_ - CHUNK_DEPTH;
+                                        for (int32_t dx = 0; dx < stride_xz_ && neighbor == BlockIDs::AIR; ++dx) {
+                                            BlockID sample = kBChunks[d]->get_block_unsafe(x + dx, y, nz);
+                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                        }
+                                        break;
+                                    }
+                                    case FaceDirection::Back: {
+                                        neighbor = BlockIDs::AIR;
+                                        for (int32_t dx = 0; dx < stride_xz_ && neighbor == BlockIDs::AIR; ++dx) {
+                                            BlockID sample = kBChunks[d]->get_block_unsafe(x + dx, y, CHUNK_DEPTH - 1);
+                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                        }
+                                        break;
+                                    }
                                     default: neighbor = BlockIDs::AIR; break;
                                 }
                             }
