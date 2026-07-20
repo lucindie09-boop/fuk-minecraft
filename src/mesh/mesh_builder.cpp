@@ -190,7 +190,16 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
                     int32_t z_src = ((z - 1) / stride_xz_) * stride_xz_;
                     for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
                         int32_t x_src = ((x - 1) / stride_xz_) * stride_xz_;
-                        solid_cache[y][z][x] = chunk.get_block_unsafe(x_src, y, z_src);
+                        BlockID representative = BlockIDs::AIR;
+                        for (int32_t dz = 0; dz < stride_xz_ && representative == BlockIDs::AIR; ++dz) {
+                            for (int32_t dx = 0; dx < stride_xz_ && representative == BlockIDs::AIR; ++dx) {
+                                BlockID sample = chunk.get_block_unsafe(x_src + dx, y, z_src + dz);
+                                if (sample != BlockIDs::AIR) {
+                                    representative = sample;
+                                }
+                            }
+                        }
+                        solid_cache[y][z][x] = representative;
                     }
                 }
             }
