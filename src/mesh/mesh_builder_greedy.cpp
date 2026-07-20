@@ -288,19 +288,15 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         BlockID neighbor;
                         if (boundary[d]) {
                             if (!kBChunks[d]) {
-                                flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
-                                                    kDirs[d], dst.current_block, dst.current_light_key,
-                                                    dst.current_rotation, dst.current_ao, registry);
-                                dst.merge_start = -1;
-                                dst.ao_valid = false;
-                                continue;
-                            }
-                            switch (kDirs[d]) {
-                                case FaceDirection::Right: neighbor = kBChunks[d]->get_block_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
-                                case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
-                                case FaceDirection::Front: neighbor = kBChunks[d]->get_block_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
-                                case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
-                                default: neighbor = BlockIDs::AIR; break;
+                                neighbor = BlockIDs::AIR;
+                            } else {
+                                switch (kDirs[d]) {
+                                    case FaceDirection::Right: neighbor = kBChunks[d]->get_block_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
+                                    case FaceDirection::Left:  neighbor = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
+                                    case FaceDirection::Front: neighbor = kBChunks[d]->get_block_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
+                                    case FaceDirection::Back:  neighbor = kBChunks[d]->get_block_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
+                                    default: neighbor = BlockIDs::AIR; break;
+                                }
                             }
                         } else {
                             const int sx = x + 1 + kNxOff[d] * stride_xz_;
@@ -320,12 +316,14 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
 
                         uint16_t light_key = 0;
                         if (boundary[d]) {
-                            switch (kDirs[d]) {
-                                case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
-                                case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
-                                case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
-                                case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
-                                default: break;
+                            if (kBChunks[d]) {
+                                switch (kDirs[d]) {
+                                    case FaceDirection::Right: light_key = kBChunks[d]->get_light_packed_word_unsafe(x + stride_xz_ - CHUNK_WIDTH, y, z); break;
+                                    case FaceDirection::Left:  light_key = kBChunks[d]->get_light_packed_word_unsafe(CHUNK_WIDTH + x - stride_xz_, y, z); break;
+                                    case FaceDirection::Front: light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, z + stride_xz_ - CHUNK_DEPTH); break;
+                                    case FaceDirection::Back:  light_key = kBChunks[d]->get_light_packed_word_unsafe(x, y, CHUNK_DEPTH + z - stride_xz_); break;
+                                    default: break;
+                                }
                             }
                         } else {
                             light_key = chunk.get_light_packed_word_unsafe(x + kNxOff[d] * stride_xz_, y, z + kNzOff[d] * stride_xz_);
