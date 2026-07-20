@@ -293,11 +293,15 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                         bool cull;
                         if (boundary[d]) {
                             if (!kBChunks[d]) {
-                                cull = false;
-                            } else {
-                                cull = boundary_face_fully_occluded(chunk, kBChunks[d], kDirs[d],
-                                                                    x, y, z, stride_xz_, block_id, registry);
+                                flush_vertical_merge(chunk, accessor, dst.merge_start, y, x, z,
+                                                    kDirs[d], dst.current_block, dst.current_light_key,
+                                                    dst.current_rotation, dst.current_ao, registry);
+                                dst.merge_start = -1;
+                                dst.ao_valid = false;
+                                continue;
                             }
+                            cull = boundary_face_fully_occluded(chunk, kBChunks[d], kDirs[d],
+                                                                x, y, z, stride_xz_, block_id, registry);
                         } else {
                             const int sx = x + 1 + kNxOff[d] * stride_xz_;
                             const int sz = z + 1 + kNzOff[d] * stride_xz_;
