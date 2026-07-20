@@ -292,37 +292,57 @@ void MeshBuilder::passive_greedy_mesh_vertical(const ChunkData& chunk, const Chu
                             } else {
                                 switch (kDirs[d]) {
                                     case FaceDirection::Right: {
-                                        neighbor = BlockIDs::AIR;
+                                        BlockID representative = BlockIDs::AIR;
+                                        int32_t solid_count = 0;
                                         const int32_t nx = x + stride_xz_ - CHUNK_WIDTH;
-                                        for (int32_t dz = 0; dz < stride_xz_ && neighbor == BlockIDs::AIR; ++dz) {
+                                        for (int32_t dz = 0; dz < stride_xz_; ++dz) {
                                             BlockID sample = kBChunks[d]->get_block_unsafe(nx, y, z + dz);
-                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                            if (sample != BlockIDs::AIR) {
+                                                ++solid_count;
+                                                if (representative == BlockIDs::AIR) representative = sample;
+                                            }
                                         }
+                                        neighbor = (solid_count * 2 >= stride_xz_) ? representative : BlockIDs::AIR;
                                         break;
                                     }
                                     case FaceDirection::Left: {
-                                        neighbor = BlockIDs::AIR;
-                                        for (int32_t dz = 0; dz < stride_xz_ && neighbor == BlockIDs::AIR; ++dz) {
+                                        BlockID representative = BlockIDs::AIR;
+                                        int32_t solid_count = 0;
+                                        for (int32_t dz = 0; dz < stride_xz_; ++dz) {
                                             BlockID sample = kBChunks[d]->get_block_unsafe(CHUNK_WIDTH - 1, y, z + dz);
-                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                            if (sample != BlockIDs::AIR) {
+                                                ++solid_count;
+                                                if (representative == BlockIDs::AIR) representative = sample;
+                                            }
                                         }
+                                        neighbor = (solid_count * 2 >= stride_xz_) ? representative : BlockIDs::AIR;
                                         break;
                                     }
                                     case FaceDirection::Front: {
-                                        neighbor = BlockIDs::AIR;
+                                        BlockID representative = BlockIDs::AIR;
+                                        int32_t solid_count = 0;
                                         const int32_t nz = z + stride_xz_ - CHUNK_DEPTH;
-                                        for (int32_t dx = 0; dx < stride_xz_ && neighbor == BlockIDs::AIR; ++dx) {
+                                        for (int32_t dx = 0; dx < stride_xz_; ++dx) {
                                             BlockID sample = kBChunks[d]->get_block_unsafe(x + dx, y, nz);
-                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                            if (sample != BlockIDs::AIR) {
+                                                ++solid_count;
+                                                if (representative == BlockIDs::AIR) representative = sample;
+                                            }
                                         }
+                                        neighbor = (solid_count * 2 >= stride_xz_) ? representative : BlockIDs::AIR;
                                         break;
                                     }
                                     case FaceDirection::Back: {
-                                        neighbor = BlockIDs::AIR;
-                                        for (int32_t dx = 0; dx < stride_xz_ && neighbor == BlockIDs::AIR; ++dx) {
+                                        BlockID representative = BlockIDs::AIR;
+                                        int32_t solid_count = 0;
+                                        for (int32_t dx = 0; dx < stride_xz_; ++dx) {
                                             BlockID sample = kBChunks[d]->get_block_unsafe(x + dx, y, CHUNK_DEPTH - 1);
-                                            if (sample != BlockIDs::AIR) neighbor = sample;
+                                            if (sample != BlockIDs::AIR) {
+                                                ++solid_count;
+                                                if (representative == BlockIDs::AIR) representative = sample;
+                                            }
                                         }
+                                        neighbor = (solid_count * 2 >= stride_xz_) ? representative : BlockIDs::AIR;
                                         break;
                                     }
                                     default: neighbor = BlockIDs::AIR; break;
