@@ -11,6 +11,11 @@ namespace VoxelEngine {
 // -------------------------------------------------------------------------
 // Per-chunk render data (stored in the chunk map)
 // -------------------------------------------------------------------------
+struct CachedFarChunkMesh {
+    PackedBuiltMeshData mesh_data;
+    PackedBuiltMeshData water_mesh_data;
+};
+
 struct ChunkRenderData {
     std::unique_ptr<ChunkData> data;
     godot::RID mesh_rid;
@@ -37,6 +42,9 @@ struct ChunkRenderData {
 
     // Track the last built detail level for LOD transitions
     float last_built_detail_level = 1.0f;
+
+    // Cached packed mesh for merged far-field region rendering.
+    std::shared_ptr<CachedFarChunkMesh> far_mesh_cache;
 };
 
 // -------------------------------------------------------------------------
@@ -52,6 +60,7 @@ struct CompletedMesh {
     PackedBuiltMeshData mesh_data;
     PackedBuiltMeshData water_mesh_data;
     uint64_t mesh_content_hash = 0;
+    float detail_level = 1.0f;
 };
 
 // -------------------------------------------------------------------------

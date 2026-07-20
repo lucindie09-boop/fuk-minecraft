@@ -14,6 +14,7 @@
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
+#include <algorithm>
 #include <chrono>
 #include "core/hash_utils.hpp"
 #include <cstring>
@@ -24,6 +25,17 @@ using namespace godot;
 
 namespace {
 constexpr int32_t kGreedyDisableBlockRadius = 16;
+constexpr int32_t kFarRegionUploadDivisor = 4;
+constexpr int32_t kFarRegionBuildDivisor = 4;
+
+static int32_t floor_div(int32_t value, int32_t divisor) {
+    int32_t q = value / divisor;
+    int32_t r = value % divisor;
+    if (r != 0 && ((r > 0) != (divisor > 0))) {
+        --q;
+    }
+    return q;
+}
 
 static uint8_t encode_normal_dir(int8_t nx, int8_t ny, int8_t nz) {
     if (ny > 0) return 0;
@@ -69,6 +81,48 @@ PackedBuiltMeshData pack_vertex_array(const std::vector<Vertex>& vertices, const
     }
     std::memcpy(idx_ptr, indices.data(), indices.size() * sizeof(int32_t));
     return packed;
+}
+
+void append_packed_mesh_data(PackedBuiltMeshData& dst, const PackedBuiltMeshData& src,
+                             int32_t offset_x, int32_t offset_y, int32_t offset_z) {
+    if (src.empty) {
+        return;
+    }
+
+    const int32_t dst_vertex_offset = dst.vertices.size();
+    const int32_t src_vertex_count = src.vertices.size();
+    const int32_t src_index_count = src.indices.size();
+    const int32_t old_index_count = dst.indices.size();
+
+    dst.vertices.resize(dst_vertex_offset + src_vertex_count);
+    dst.custom0.resize((dst_vertex_offset + src_vertex_count) * 4);
+    dst.custom1.resize((dst_vertex_offset + src_vertex_count) * 4);
+    dst.custom2.resize((dst_vertex_offset + src_vertex_count) * 4);
+    dst.indices.resize(old_index_count + src_index_count);
+
+    const Vector3* src_vertices = src.vertices.ptr();
+    Vector3* dst_vertices = dst.vertices.ptrw();
+    for (int32_t i = 0; i < src_vertex_count; ++i) {
+        const Vector3& v = src_vertices[i];
+        dst_vertices[dst_vertex_offset + i] = Vector3(
+            v.x + static_cast<float>(offset_x),
+            v.y + static_cast<float>(offset_y),
+            v.z + static_cast<float>(offset_z));
+    }
+
+    if (src_vertex_count > 0) {
+        std::memcpy(dst.custom0.ptrw() + dst_vertex_offset * 4, src.custom0.ptr(), src_vertex_count * 4);
+        std::memcpy(dst.custom1.ptrw() + dst_vertex_offset * 4, src.custom1.ptr(), src_vertex_count * 4);
+        std::memcpy(dst.custom2.ptrw() + dst_vertex_offset * 4, src.custom2.ptr(), src_vertex_count * 4);
+    }
+
+    const int32_t* src_indices = src.indices.ptr();
+    int32_t* dst_indices = dst.indices.ptrw();
+    for (int32_t i = 0; i < src_index_count; ++i) {
+        dst_indices[old_index_count + i] = src_indices[i] + dst_vertex_offset;
+    }
+
+    dst.empty = false;
 }
 
 }
@@ -245,6 +299,7 @@ struct MeshBuildTask : Task {
         completed.mesh_data = std::move(packed_mesh);
         completed.water_mesh_data = std::move(water_mesh);
         completed.mesh_content_hash = content_hash;
+        completed.detail_level = detail_level;
 
         chunk_scheduler->push_completed_mesh(std::move(completed), high_priority);
 
@@ -255,13 +310,205 @@ struct MeshBuildTask : Task {
     bool high_priority;
 };
 
+void MeshManager::set_player_chunk(int32_t cx, int32_t cy, int32_t cz) {
+    last_player_chunk_x = cx;
+    last_player_chunk_y = cy;
+    last_player_chunk_z = cz;
+    refresh_far_region_visibility();
+}
+
+void MeshManager::hide_chunk_instance(ChunkRenderData* render_data) {
+    if (!render_data || !render_data->instance_rid.is_valid()) {
+        return;
+    }
+    RenderingServer::get_singleton()->instance_set_visible(render_data->instance_rid, false);
+}
+
+void MeshManager::show_chunk_instance(ChunkRenderData* render_data, int32_t cx, int32_t cy, int32_t cz) {
+    if (!render_data || !render_data->mesh_rid.is_valid()) {
+        return;
+    }
+
+    RenderingServer* rs = RenderingServer::get_singleton();
+    if (!render_data->instance_rid.is_valid()) {
+        render_data->instance_rid = rs->instance_create();
+        rs->instance_set_base(render_data->instance_rid, render_data->mesh_rid);
+        rs->instance_geometry_set_cast_shadows_setting(
+            render_data->instance_rid,
+            RenderingServer::SHADOW_CASTING_SETTING_OFF);
+        rs->instance_set_custom_aabb(
+            render_data->instance_rid,
+            AABB(Vector3(0, 0, 0), Vector3(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH)));
+        Transform3D transform;
+        transform.origin = Vector3(cx * CHUNK_WIDTH, cy * CHUNK_HEIGHT, cz * CHUNK_DEPTH);
+        rs->instance_set_transform(render_data->instance_rid, transform);
+        if (owner) {
+            Node3D* owner3d = Object::cast_to<Node3D>(owner);
+            if (owner3d) {
+                Ref<World3D> world = owner3d->get_world_3d();
+                if (world.is_valid()) {
+                    rs->instance_set_scenario(render_data->instance_rid, world->get_scenario());
+                }
+            }
+        }
+    } else {
+        rs->instance_set_base(render_data->instance_rid, render_data->mesh_rid);
+    }
+    rs->instance_set_visible(render_data->instance_rid, true);
+}
+
+bool MeshManager::is_chunk_within_render_distance(int32_t cx, int32_t cy, int32_t cz) const {
+    if (mesh_render_distance <= 0 || last_player_chunk_x == INT32_MIN) {
+        return true;
+    }
+    const int32_t dx = cx - last_player_chunk_x;
+    const int32_t dz = cz - last_player_chunk_z;
+    const int32_t dy = std::abs(cy - last_player_chunk_y);
+    return (dx * dx + dz * dz) <= (mesh_render_distance * mesh_render_distance) && dy <= 10;
+}
+
+bool MeshManager::should_use_far_region_for_chunk(int32_t cx, int32_t cy, int32_t cz) const {
+    return compute_chunk_detail_level(cx, cy, cz) < 1.0f && is_chunk_within_render_distance(cx, cy, cz);
+}
+
+uint64_t MeshManager::get_far_region_key(int32_t cx, int32_t cy, int32_t cz) const {
+    if (!chunk_map) {
+        return 0;
+    }
+    const int32_t rx = floor_div(cx, kFarRegionSizeXZ);
+    const int32_t rz = floor_div(cz, kFarRegionSizeXZ);
+    return chunk_map->get_chunk_key(rx, cy, rz);
+}
+
+bool MeshManager::is_far_region_active_for_chunk(int32_t cx, int32_t cy, int32_t cz) const {
+    if (!should_use_far_region_for_chunk(cx, cy, cz)) {
+        return false;
+    }
+    const uint64_t chunk_key = chunk_map ? chunk_map->get_chunk_key(cx, cy, cz) : 0;
+    const auto it = far_regions.find(get_far_region_key(cx, cy, cz));
+    if (it == far_regions.end() || !it->second.active) {
+        return false;
+    }
+    const auto& members = it->second.active_chunk_keys;
+    return std::find(members.begin(), members.end(), chunk_key) != members.end();
+}
+
+void MeshManager::free_far_region_resources(FarRegionRenderData& region) {
+    RenderingServer* rs = RenderingServer::get_singleton();
+    if (region.instance_rid.is_valid()) {
+        rs->free_rid(region.instance_rid);
+        region.instance_rid = RID();
+    }
+    if (region.mesh_rid.is_valid()) {
+        rs->free_rid(region.mesh_rid);
+        region.mesh_rid = RID();
+    }
+    region.active = false;
+}
+
+void MeshManager::ensure_far_region_instance(FarRegionRenderData& region, uint64_t region_key, bool visible) {
+    RenderingServer* rs = RenderingServer::get_singleton();
+    if (!visible || !region.mesh_rid.is_valid()) {
+        if (region.instance_rid.is_valid()) {
+            rs->instance_set_visible(region.instance_rid, false);
+        }
+        region.active = false;
+        return;
+    }
+
+    if (!region.instance_rid.is_valid()) {
+        int32_t rx, ry, rz;
+        ChunkMap::decode_chunk_key(region_key, rx, ry, rz);
+
+        region.instance_rid = rs->instance_create();
+        rs->instance_set_base(region.instance_rid, region.mesh_rid);
+        rs->instance_geometry_set_cast_shadows_setting(
+            region.instance_rid,
+            RenderingServer::SHADOW_CASTING_SETTING_OFF);
+        AABB region_aabb(
+            Vector3(0, 0, 0),
+            Vector3(kFarRegionSizeXZ * CHUNK_WIDTH, CHUNK_HEIGHT, kFarRegionSizeXZ * CHUNK_DEPTH));
+        rs->instance_set_custom_aabb(region.instance_rid, region_aabb);
+
+        Transform3D transform;
+        transform.origin = Vector3(
+            rx * kFarRegionSizeXZ * CHUNK_WIDTH,
+            ry * CHUNK_HEIGHT,
+            rz * kFarRegionSizeXZ * CHUNK_DEPTH);
+        rs->instance_set_transform(region.instance_rid, transform);
+
+        if (owner) {
+            Node3D* owner3d = Object::cast_to<Node3D>(owner);
+            if (owner3d) {
+                Ref<World3D> world = owner3d->get_world_3d();
+                if (world.is_valid()) {
+                    rs->instance_set_scenario(region.instance_rid, world->get_scenario());
+                }
+            }
+        }
+    }
+
+    rs->instance_set_visible(region.instance_rid, true);
+    region.active = true;
+}
+
+void MeshManager::sync_far_region_members_visibility(FarRegionRenderData& region) {
+    if (!chunk_map) {
+        return;
+    }
+    for (uint64_t chunk_key : region.active_chunk_keys) {
+        int32_t cx, cy, cz;
+        ChunkMap::decode_chunk_key(chunk_key, cx, cy, cz);
+        ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, cy, cz);
+        if (!render_data || !render_data->instance_rid.is_valid()) {
+            continue;
+        }
+        const bool show_chunk = is_chunk_within_render_distance(cx, cy, cz) &&
+                                !(region.active && should_use_far_region_for_chunk(cx, cy, cz));
+        if (show_chunk) {
+            show_chunk_instance(render_data, cx, cy, cz);
+        } else {
+            hide_chunk_instance(render_data);
+        }
+    }
+}
+
+void MeshManager::refresh_far_region_visibility() {
+    for (auto& [region_key, region] : far_regions) {
+        bool any_visible_members = false;
+        for (uint64_t chunk_key : region.active_chunk_keys) {
+            int32_t cx, cy, cz;
+            ChunkMap::decode_chunk_key(chunk_key, cx, cy, cz);
+            if (should_use_far_region_for_chunk(cx, cy, cz)) {
+                any_visible_members = true;
+                break;
+            }
+        }
+        ensure_far_region_instance(region, region_key, any_visible_members);
+        sync_far_region_members_visibility(region);
+    }
+}
+
+void MeshManager::mark_far_region_dirty_for_chunk(int32_t cx, int32_t cy, int32_t cz) {
+    FarRegionRenderData& region = far_regions[get_far_region_key(cx, cy, cz)];
+    region.dirty = true;
+    ++region.revision;
+}
+
 void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int32_t max_uploads,
                                            const Ref<ShaderMaterial>& material,
                                            const Ref<ShaderMaterial>& water_material) {
     if (!chunk_scheduler || !chunk_map) return;
+    (void)budget_ms;
 
     int32_t dynamic_max_uploads = max_uploads;
     int32_t uploads_this_frame = 0;
+    int32_t region_upload_budget = dynamic_max_uploads / kFarRegionUploadDivisor;
+    if (dynamic_max_uploads > 1) {
+        region_upload_budget = std::max(1, region_upload_budget);
+    }
+    region_upload_budget = std::min(region_upload_budget, dynamic_max_uploads);
+    const int32_t chunk_upload_budget = std::max(0, dynamic_max_uploads - region_upload_budget);
 
     Array arrays;
     arrays.resize(Mesh::ARRAY_MAX);
@@ -269,7 +516,7 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
     if (chunk_scheduler->completed_mesh_count() > 0) {
     RenderingServer* rs = RenderingServer::get_singleton();
 
-    while (uploads_this_frame < dynamic_max_uploads) {
+    while (uploads_this_frame < chunk_upload_budget) {
         bool high_priority = false;
         CompletedMesh completed;
         if (!chunk_scheduler->poll_completed_mesh(completed, high_priority)) {
@@ -294,6 +541,11 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
             if (render_data->instance_rid.is_valid()) {
                 rs->free_rid(render_data->instance_rid);
                 render_data->instance_rid = RID();
+            }
+            const bool had_far_cache = static_cast<bool>(render_data->far_mesh_cache);
+            render_data->far_mesh_cache.reset();
+            if (had_far_cache) {
+                mark_far_region_dirty_for_chunk(completed.chunk_x, completed.chunk_y, completed.chunk_z);
             }
             uploads_this_frame++;
             continue;
@@ -374,19 +626,32 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
 
         // 4.4 Instance budget cap: don't create instances for chunks beyond render distance
         // Uses same 2D horizontal distance + vertical buffer logic as the LOD classifier
-        bool within_render_distance = true;
-        if (mesh_render_distance > 0 && last_player_chunk_x != INT32_MIN) {
-            const int32_t dx = completed.chunk_x - last_player_chunk_x;
-            const int32_t dz = completed.chunk_z - last_player_chunk_z;
-            const int32_t dy = std::abs(completed.chunk_y - last_player_chunk_y);
-            within_render_distance = (dx*dx + dz*dz) <= (mesh_render_distance * mesh_render_distance) && dy <= 10;
+        const bool cache_for_far_region = completed.detail_level < 1.0f;
+        if (cache_for_far_region) {
+            auto far_cache = std::make_shared<CachedFarChunkMesh>();
+            far_cache->mesh_data = completed.mesh_data;
+            far_cache->water_mesh_data = completed.water_mesh_data;
+            render_data->far_mesh_cache = std::move(far_cache);
+            mark_far_region_dirty_for_chunk(completed.chunk_x, completed.chunk_y, completed.chunk_z);
+        } else if (render_data->far_mesh_cache) {
+            render_data->far_mesh_cache.reset();
+            mark_far_region_dirty_for_chunk(completed.chunk_x, completed.chunk_y, completed.chunk_z);
         }
-        const bool show_instance = within_render_distance;
+
+        const bool show_instance =
+            is_chunk_within_render_distance(completed.chunk_x, completed.chunk_y, completed.chunk_z) &&
+            !is_far_region_active_for_chunk(completed.chunk_x, completed.chunk_y, completed.chunk_z);
         if (render_data->instance_rid.is_valid()) {
+            rs->instance_geometry_set_cast_shadows_setting(
+                render_data->instance_rid,
+                RenderingServer::SHADOW_CASTING_SETTING_OFF);
             rs->instance_set_visible(render_data->instance_rid, show_instance);
         } else if (show_instance) {
             render_data->instance_rid = rs->instance_create();
             rs->instance_set_base(render_data->instance_rid, render_data->mesh_rid);
+            rs->instance_geometry_set_cast_shadows_setting(
+                render_data->instance_rid,
+                RenderingServer::SHADOW_CASTING_SETTING_OFF);
             AABB chunk_aabb(Vector3(0, 0, 0), Vector3(CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH));
             rs->instance_set_custom_aabb(render_data->instance_rid, chunk_aabb);
             Transform3D transform;
@@ -410,6 +675,144 @@ void MeshManager::process_completed_meshes(uint64_t epoch, double budget_ms, int
 
         uploads_this_frame++;
     }
+    }
+
+    process_completed_region_meshes(epoch, region_upload_budget, material, water_material);
+}
+
+void MeshManager::process_completed_region_meshes(uint64_t epoch, int32_t max_uploads,
+                                                  const Ref<ShaderMaterial>& material,
+                                                  const Ref<ShaderMaterial>& water_material) {
+    if (max_uploads <= 0) {
+        return;
+    }
+
+    RenderingServer* rs = RenderingServer::get_singleton();
+    Array arrays;
+    arrays.resize(Mesh::ARRAY_MAX);
+    int32_t uploads = 0;
+
+    while (uploads < max_uploads) {
+        CompletedRegionMesh completed;
+        {
+            std::lock_guard<std::mutex> lock(completed_far_region_meshes_mutex);
+            if (completed_far_region_meshes.empty()) {
+                break;
+            }
+            completed = std::move(completed_far_region_meshes.front());
+            completed_far_region_meshes.pop();
+            completed_far_region_mesh_count.fetch_sub(1, std::memory_order_relaxed);
+        }
+
+        auto it = far_regions.find(completed.region_key);
+        if (it == far_regions.end()) {
+            continue;
+        }
+
+        FarRegionRenderData& region = it->second;
+        region.pending_builds.fetch_sub(1, std::memory_order_relaxed);
+        if (completed.epoch != epoch || completed.revision != region.revision) {
+            continue;
+        }
+
+        std::vector<uint64_t> previous_members = region.active_chunk_keys;
+
+        if (completed.member_chunk_keys.size() < 2 ||
+            (completed.mesh_data.empty && completed.water_mesh_data.empty)) {
+            ensure_far_region_instance(region, completed.region_key, false);
+            region.active_chunk_keys.clear();
+            for (uint64_t old_key : previous_members) {
+                int32_t cx, cy, cz;
+                ChunkMap::decode_chunk_key(old_key, cx, cy, cz);
+                ChunkRenderData* render_data = chunk_map ? chunk_map->get_chunk_render_data(cx, cy, cz) : nullptr;
+                if (render_data && render_data->mesh_rid.is_valid() && is_chunk_within_render_distance(cx, cy, cz)) {
+                    show_chunk_instance(render_data, cx, cy, cz);
+                }
+            }
+            free_far_region_resources(region);
+            continue;
+        }
+
+        if (!region.mesh_rid.is_valid()) {
+            region.mesh_rid = rs->mesh_create();
+        } else {
+            rs->mesh_clear(region.mesh_rid);
+        }
+        rs->mesh_set_custom_aabb(
+            region.mesh_rid,
+            AABB(Vector3(0, 0, 0), Vector3(kFarRegionSizeXZ * CHUNK_WIDTH, CHUNK_HEIGHT, kFarRegionSizeXZ * CHUNK_DEPTH)));
+
+        int64_t fmt = 0;
+        fmt |= RenderingServer::ARRAY_FORMAT_VERTEX;
+        fmt |= RenderingServer::ARRAY_FORMAT_INDEX;
+        fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM0;
+        fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RGBA8_UNORM) << RenderingServer::ARRAY_FORMAT_CUSTOM0_SHIFT;
+        fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM1;
+        fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RGBA8_UNORM) << RenderingServer::ARRAY_FORMAT_CUSTOM1_SHIFT;
+        fmt |= RenderingServer::ARRAY_FORMAT_CUSTOM2;
+        fmt |= static_cast<int64_t>(RenderingServer::ARRAY_CUSTOM_RG_HALF) << RenderingServer::ARRAY_FORMAT_CUSTOM2_SHIFT;
+        fmt |= RenderingServer::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
+
+        int surface_index = 0;
+        if (!completed.mesh_data.empty) {
+            arrays[Mesh::ARRAY_VERTEX] = completed.mesh_data.vertices;
+            arrays[Mesh::ARRAY_INDEX] = completed.mesh_data.indices;
+            arrays[Mesh::ARRAY_CUSTOM0] = completed.mesh_data.custom0;
+            arrays[Mesh::ARRAY_CUSTOM1] = completed.mesh_data.custom1;
+            arrays[Mesh::ARRAY_CUSTOM2] = completed.mesh_data.custom2;
+            if (perf_timer) {
+                ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
+                rs->mesh_add_surface_from_arrays(region.mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+            } else {
+                rs->mesh_add_surface_from_arrays(region.mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+            }
+            if (material.is_valid()) {
+                rs->mesh_surface_set_material(region.mesh_rid, surface_index, material->get_rid());
+            }
+            ++surface_index;
+        }
+        if (!completed.water_mesh_data.empty) {
+            arrays[Mesh::ARRAY_VERTEX] = completed.water_mesh_data.vertices;
+            arrays[Mesh::ARRAY_INDEX] = completed.water_mesh_data.indices;
+            arrays[Mesh::ARRAY_CUSTOM0] = completed.water_mesh_data.custom0;
+            arrays[Mesh::ARRAY_CUSTOM1] = completed.water_mesh_data.custom1;
+            arrays[Mesh::ARRAY_CUSTOM2] = completed.water_mesh_data.custom2;
+            if (perf_timer) {
+                ScopedTimer t(*perf_timer, TimerID::MeshUploadGpu);
+                rs->mesh_add_surface_from_arrays(region.mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+            } else {
+                rs->mesh_add_surface_from_arrays(region.mesh_rid, RenderingServer::PRIMITIVE_TRIANGLES, arrays, Array(), Dictionary(), BitField<RenderingServer::ArrayFormat>(fmt));
+            }
+            if (water_material.is_valid()) {
+                rs->mesh_surface_set_material(region.mesh_rid, surface_index, water_material->get_rid());
+            }
+        }
+
+        region.active_chunk_keys = completed.member_chunk_keys;
+        bool any_visible_members = false;
+        for (uint64_t chunk_key : region.active_chunk_keys) {
+            int32_t cx, cy, cz;
+            ChunkMap::decode_chunk_key(chunk_key, cx, cy, cz);
+            if (should_use_far_region_for_chunk(cx, cy, cz)) {
+                any_visible_members = true;
+                break;
+            }
+        }
+        ensure_far_region_instance(region, completed.region_key, any_visible_members);
+
+        for (uint64_t old_key : previous_members) {
+            if (std::find(region.active_chunk_keys.begin(), region.active_chunk_keys.end(), old_key) != region.active_chunk_keys.end()) {
+                continue;
+            }
+            int32_t cx, cy, cz;
+            ChunkMap::decode_chunk_key(old_key, cx, cy, cz);
+            ChunkRenderData* render_data = chunk_map ? chunk_map->get_chunk_render_data(cx, cy, cz) : nullptr;
+            if (render_data && render_data->mesh_rid.is_valid() && is_chunk_within_render_distance(cx, cy, cz)) {
+                show_chunk_instance(render_data, cx, cy, cz);
+            }
+        }
+        sync_far_region_members_visibility(region);
+        ++uploads;
     }
 }
 
@@ -629,6 +1032,9 @@ void MeshManager::queue_dirty_chunk(int32_t cx, int32_t cy, int32_t cz) {
     ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, cy, cz);
     if (render_data) {
         render_data->is_mesh_dirty = true;
+        if (render_data->far_mesh_cache) {
+            mark_far_region_dirty_for_chunk(cx, cy, cz);
+        }
     }
     int32_t dx = cx - last_player_chunk_x;
     int32_t dy = cy - last_player_chunk_y;
@@ -642,6 +1048,9 @@ void MeshManager::queue_immediate_dirty_chunk(int32_t cx, int32_t cy, int32_t cz
     ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, cy, cz);
     if (render_data) {
         render_data->is_mesh_dirty = true;
+        if (render_data->far_mesh_cache) {
+            mark_far_region_dirty_for_chunk(cx, cy, cz);
+        }
     }
     uint64_t key = chunk_map->get_chunk_key(cx, cy, cz);
     mesh_queue.queue_immediate_dirty_chunk(key, mesh_queue.is_pending(key));
@@ -655,7 +1064,10 @@ void MeshManager::mark_chunk_urgent(int32_t cx, int32_t cy, int32_t cz) {
 void MeshManager::reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz, const Frustum* frustum) {
     mesh_queue.reprioritize(player_cx, player_cy, player_cz, frustum);
 
-    if (lod_distance <= 0 || !chunk_map) return;
+    if (lod_distance <= 0 || !chunk_map) {
+        refresh_far_region_visibility();
+        return;
+    }
 
     const int32_t lod = lod_distance;
     const int32_t lod_shell_min = lod > 0 ? lod - 1 : 0;
@@ -682,12 +1094,15 @@ void MeshManager::reprioritize(int32_t player_cx, int32_t player_cy, int32_t pla
                 if (target != render_data->last_built_detail_level && !render_data->is_mesh_dirty) {
                     render_data->is_mesh_dirty = true;
                     render_data->mesh_version++;
+                    mark_far_region_dirty_for_chunk(cx, cy, cz);
                     queue_dirty_chunk(cx, cy, cz);
                     ++queued;
                 }
             }
         }
     }
+
+    refresh_far_region_visibility();
 }
 
 void MeshManager::mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_cy, int32_t center_cz) {
@@ -709,7 +1124,154 @@ void MeshManager::mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_
     }
 }
 
+void MeshManager::process_far_region_queue(int32_t max_rebuilds) {
+    if (max_rebuilds <= 0 || !thread_pool || !chunk_map) {
+        far_regions_skipped_missing_cache_last = 0;
+        return;
+    }
+
+    int32_t skipped_missing_cache = 0;
+    std::vector<std::pair<int32_t, uint64_t>> candidates;
+    candidates.reserve(far_regions.size());
+    for (const auto& [region_key, region] : far_regions) {
+        if (!region.dirty || region.pending_builds.load(std::memory_order_relaxed) > 0) {
+            continue;
+        }
+        int32_t rx, ry, rz;
+        ChunkMap::decode_chunk_key(region_key, rx, ry, rz);
+        const int32_t center_x = rx * kFarRegionSizeXZ + kFarRegionSizeXZ / 2;
+        const int32_t center_z = rz * kFarRegionSizeXZ + kFarRegionSizeXZ / 2;
+        const int32_t dx = center_x - last_player_chunk_x;
+        const int32_t dy = ry - last_player_chunk_y;
+        const int32_t dz = center_z - last_player_chunk_z;
+        candidates.emplace_back(dx * dx + dy * dy + dz * dz, region_key);
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
+
+    int32_t scheduled = 0;
+    for (const auto& candidate : candidates) {
+        const uint64_t region_key = candidate.second;
+        if (scheduled >= max_rebuilds) {
+            break;
+        }
+
+        auto it = far_regions.find(region_key);
+        if (it == far_regions.end()) {
+            continue;
+        }
+        FarRegionRenderData& region = it->second;
+        if (!region.dirty || region.pending_builds.load(std::memory_order_relaxed) > 0) {
+            continue;
+        }
+
+        int32_t rx, ry, rz;
+        ChunkMap::decode_chunk_key(region_key, rx, ry, rz);
+        const int32_t base_cx = rx * kFarRegionSizeXZ;
+        const int32_t base_cz = rz * kFarRegionSizeXZ;
+
+        struct BuildSource {
+            int32_t local_chunk_x = 0;
+            int32_t local_chunk_z = 0;
+            uint64_t chunk_key = 0;
+            std::shared_ptr<CachedFarChunkMesh> cache;
+        };
+
+        std::vector<BuildSource> sources;
+        std::vector<uint64_t> member_chunk_keys;
+        bool missing_far_cache = false;
+        int32_t eligible_chunk_count = 0;
+
+        for (int32_t local_z = 0; local_z < kFarRegionSizeXZ; ++local_z) {
+            for (int32_t local_x = 0; local_x < kFarRegionSizeXZ; ++local_x) {
+                const int32_t cx = base_cx + local_x;
+                const int32_t cz = base_cz + local_z;
+                if (!should_use_far_region_for_chunk(cx, ry, cz)) {
+                    continue;
+                }
+
+                ++eligible_chunk_count;
+                ChunkRenderData* render_data = chunk_map->get_chunk_render_data(cx, ry, cz);
+                if (!render_data) {
+                    continue;
+                }
+                if (!render_data->far_mesh_cache) {
+                    missing_far_cache = true;
+                    continue;
+                }
+
+                const uint64_t chunk_key = chunk_map->get_chunk_key(cx, ry, cz);
+                sources.push_back({local_x, local_z, chunk_key, render_data->far_mesh_cache});
+                member_chunk_keys.push_back(chunk_key);
+            }
+        }
+
+        if (missing_far_cache) {
+            ++skipped_missing_cache;
+            continue;
+        }
+
+        if (eligible_chunk_count < 2 || sources.size() < 2) {
+            ensure_far_region_instance(region, region_key, false);
+            sync_far_region_members_visibility(region);
+            region.active_chunk_keys.clear();
+            free_far_region_resources(region);
+            region.dirty = false;
+            continue;
+        }
+
+        region.dirty = false;
+        const uint64_t revision = region.revision;
+        region.pending_builds.fetch_add(1, std::memory_order_relaxed);
+
+        const uint64_t build_epoch = async_epoch ? async_epoch->load(std::memory_order_acquire) : 0;
+        thread_pool->fire_and_forget([this, sources = std::move(sources), member_chunk_keys = std::move(member_chunk_keys),
+                                      region_key, revision, build_epoch]() mutable {
+            int32_t rx_local, ry_local, rz_local;
+            ChunkMap::decode_chunk_key(region_key, rx_local, ry_local, rz_local);
+            const int32_t region_origin_x = rx_local * kFarRegionSizeXZ * CHUNK_WIDTH;
+            const int32_t region_origin_z = rz_local * kFarRegionSizeXZ * CHUNK_DEPTH;
+
+            CompletedRegionMesh completed;
+            completed.region_key = region_key;
+            completed.epoch = build_epoch;
+            completed.revision = revision;
+            completed.member_chunk_keys = std::move(member_chunk_keys);
+
+            for (const BuildSource& source : sources) {
+                const int32_t offset_x = source.local_chunk_x * CHUNK_WIDTH;
+                const int32_t offset_z = source.local_chunk_z * CHUNK_DEPTH;
+                append_packed_mesh_data(completed.mesh_data, source.cache->mesh_data, offset_x, 0, offset_z);
+                append_packed_mesh_data(completed.water_mesh_data, source.cache->water_mesh_data, offset_x, 0, offset_z);
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(completed_far_region_meshes_mutex);
+                completed_far_region_meshes.push(std::move(completed));
+                completed_far_region_mesh_count.fetch_add(1, std::memory_order_relaxed);
+            }
+            (void)region_origin_x;
+            (void)region_origin_z;
+        });
+        ++scheduled;
+    }
+
+    far_regions_skipped_missing_cache_last = skipped_missing_cache;
+}
+
 void MeshManager::process_queue(int32_t max_immediate, int32_t max_rebuilds, double budget_ms) {
+    if (max_rebuilds <= 0) {
+        return;
+    }
+    int32_t far_region_budget = max_rebuilds / kFarRegionBuildDivisor;
+    if (max_rebuilds > 1) {
+        far_region_budget = std::max(1, far_region_budget);
+    }
+    far_region_budget = std::min(far_region_budget, max_rebuilds);
+    const int32_t chunk_budget = std::max(0, max_rebuilds - far_region_budget);
+
     int32_t mesh_rd_sq = mesh_render_distance ? mesh_render_distance * mesh_render_distance : INT32_MAX;
     int32_t pcx = last_player_chunk_x;
     int32_t pcy = last_player_chunk_y;
@@ -725,19 +1287,46 @@ void MeshManager::process_queue(int32_t max_immediate, int32_t max_rebuilds, dou
                 rebuild_chunk_mesh(cx, cy, cz, async_epoch ? async_epoch->load(std::memory_order_acquire) : 0);
             },
         max_immediate,
-        max_rebuilds,
+        chunk_budget,
         budget_ms
     );
+    process_far_region_queue(far_region_budget);
 }
 
 void MeshManager::clear() {
     mesh_queue.clear();
+    for (auto& entry : far_regions) {
+        FarRegionRenderData& region = entry.second;
+        free_far_region_resources(region);
+    }
+    far_regions.clear();
+    {
+        std::lock_guard<std::mutex> lock(completed_far_region_meshes_mutex);
+        while (!completed_far_region_meshes.empty()) {
+            completed_far_region_meshes.pop();
+        }
+    }
+    completed_far_region_mesh_count.store(0, std::memory_order_relaxed);
+    far_regions_skipped_missing_cache_last = 0;
     last_player_chunk_x = INT32_MIN;
     last_player_chunk_y = INT32_MIN;
     last_player_chunk_z = INT32_MIN;
     last_player_block_x = INT32_MIN;
     last_player_block_y = INT32_MIN;
     last_player_block_z = INT32_MIN;
+}
+
+void MeshManager::notify_chunk_unloaded(int32_t cx, int32_t cy, int32_t cz, const ChunkRenderData* render_data) {
+    if (!render_data || !render_data->far_mesh_cache) {
+        return;
+    }
+    const uint64_t region_key = get_far_region_key(cx, cy, cz);
+    auto it = far_regions.find(region_key);
+    if (it != far_regions.end()) {
+        ensure_far_region_instance(it->second, region_key, false);
+        sync_far_region_members_visibility(it->second);
+    }
+    mark_far_region_dirty_for_chunk(cx, cy, cz);
 }
 
 
@@ -754,12 +1343,25 @@ queue_dirty_chunk(cx, cy, cz);
 }
 
 bool MeshManager::has_pending_mesh_work() const {
+    bool far_region_dirty = false;
+    for (const auto& entry : far_regions) {
+        const FarRegionRenderData& region = entry.second;
+        if (region.dirty || region.pending_builds.load(std::memory_order_relaxed) > 0) {
+            far_region_dirty = true;
+            break;
+        }
+    }
     if (!chunk_scheduler) {
-        return mesh_queue.size() > 0 || mesh_queue.immediate_size() > 0;
+        return mesh_queue.size() > 0 ||
+               mesh_queue.immediate_size() > 0 ||
+               far_region_dirty ||
+               completed_far_region_mesh_count.load(std::memory_order_relaxed) > 0;
     }
     return chunk_scheduler->completed_mesh_count() > 0 ||
            mesh_queue.size() > 0 ||
-           mesh_queue.immediate_size() > 0;
+           mesh_queue.immediate_size() > 0 ||
+           far_region_dirty ||
+           completed_far_region_mesh_count.load(std::memory_order_relaxed) > 0;
 }
 
 WorldRenderStats MeshManager::gather_render_stats() {
@@ -768,14 +1370,47 @@ WorldRenderStats MeshManager::gather_render_stats() {
         return stats;
     }
 
-    chunk_map->for_each([&](uint64_t /*key*/, const std::unique_ptr<ChunkRenderData>& render_data) {
+    chunk_map->for_each([&](uint64_t key, const std::unique_ptr<ChunkRenderData>& render_data) {
+        int32_t cx, cy, cz;
+        ChunkMap::decode_chunk_key(key, cx, cy, cz);
+        if (should_use_far_region_for_chunk(cx, cy, cz)) {
+            ++stats.eligible_far_chunks;
+            if (render_data->far_mesh_cache) {
+                ++stats.cached_far_chunks;
+            }
+        }
+
         if (render_data->mesh_rid.is_valid()) {
             ++stats.mesh_rids;
+            ++stats.chunk_mesh_rids;
         }
-        if (render_data->instance_rid.is_valid()) {
+        if (!render_data->instance_rid.is_valid()) {
+            return;
+        }
+        if (!is_chunk_within_render_distance(cx, cy, cz) ||
+            is_far_region_active_for_chunk(cx, cy, cz)) {
+            return;
+        }
+        if (render_data->mesh_rid.is_valid()) {
             ++stats.visible_instances;
+            ++stats.chunk_instances;
         }
     });
+
+    for (const auto& entry : far_regions) {
+        const FarRegionRenderData& region = entry.second;
+        if (region.mesh_rid.is_valid()) {
+            ++stats.mesh_rids;
+            ++stats.far_region_mesh_rids;
+        }
+        if (region.instance_rid.is_valid() && region.active) {
+            ++stats.visible_instances;
+            ++stats.far_region_instances;
+            stats.active_region_member_chunks += static_cast<int32_t>(region.active_chunk_keys.size());
+        }
+    }
+
+    stats.regions_skipped_missing_cache = far_regions_skipped_missing_cache_last;
 
     return stats;
 }

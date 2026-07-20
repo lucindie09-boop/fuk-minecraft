@@ -570,6 +570,7 @@ if (needs_save) {
 save_chunk_to_disk(cx, cy, cz, render_data->data.get());
 }
     if (mesh_mgr) {
+        mesh_mgr->notify_chunk_unloaded(cx, cy, cz, render_data.get());
         mesh_mgr->erase_urgent(key);
         ChunkRenderData* below = chunk_map.get_chunk_render_data(cx, cy - 1, cz);
         if (below && below->data && !below->data->is_all_air()) {

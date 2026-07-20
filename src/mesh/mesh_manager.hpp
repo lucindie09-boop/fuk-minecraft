@@ -11,6 +11,10 @@
 #include <godot_cpp/classes/shader_material.hpp>
 #include <memory>
 #include <cstdint>
+#include <mutex>
+#include <queue>
+#include <unordered_map>
+#include <vector>
 
 namespace VoxelEngine {
 
@@ -23,11 +27,7 @@ public:
     void set_async_epoch(std::atomic<uint64_t>* ae) { async_epoch = ae; }
     void set_owner(godot::Node* node) { owner = node; }
 
-    void set_player_chunk(int32_t cx, int32_t cy, int32_t cz) {
-        last_player_chunk_x = cx;
-        last_player_chunk_y = cy;
-        last_player_chunk_z = cz;
-    }
+    void set_player_chunk(int32_t cx, int32_t cy, int32_t cz);
 
     void set_player_block(int32_t bx, int32_t by, int32_t bz) {
         last_player_block_x = bx;
@@ -58,6 +58,7 @@ public:
     void reprioritize(int32_t player_cx, int32_t player_cy, int32_t player_cz, const Frustum* frustum = nullptr);
     void mark_chunks_dirty_for_light(int32_t center_cx, int32_t center_cy, int32_t center_cz);
     void process_queue(int32_t max_immediate, int32_t max_rebuilds, double budget_ms);
+    void notify_chunk_unloaded(int32_t cx, int32_t cy, int32_t cz, const ChunkRenderData* render_data);
     void clear();
     size_t size() const { return mesh_queue.size(); }
     bool erase_urgent(uint64_t key) { return mesh_queue.erase_urgent(key); }
@@ -74,9 +75,40 @@ public:
     float get_lod_detail_level() const { return lod_detail_level; }
 
 private:
+    struct CompletedRegionMesh {
+        uint64_t region_key = 0;
+        uint64_t epoch = 0;
+        uint64_t revision = 0;
+        PackedBuiltMeshData mesh_data;
+        PackedBuiltMeshData water_mesh_data;
+        std::vector<uint64_t> member_chunk_keys;
+    };
+
+    struct FarRegionRenderData {
+        godot::RID mesh_rid;
+        godot::RID instance_rid;
+        bool dirty = false;
+        bool active = false;
+        std::atomic<int> pending_builds{0};
+        uint64_t revision = 0;
+        std::vector<uint64_t> active_chunk_keys;
+    };
+
     void hide_chunk_instance(ChunkRenderData* render_data);
     void show_chunk_instance(ChunkRenderData* render_data, int32_t cx, int32_t cy, int32_t cz);
-    PackedBuiltMeshData pack_built_mesh(const BuiltMeshData& built_mesh);
+    void process_completed_region_meshes(uint64_t epoch, int32_t max_uploads,
+                                         const godot::Ref<godot::ShaderMaterial>& material,
+                                         const godot::Ref<godot::ShaderMaterial>& water_material);
+    void process_far_region_queue(int32_t max_rebuilds);
+    void mark_far_region_dirty_for_chunk(int32_t cx, int32_t cy, int32_t cz);
+    void refresh_far_region_visibility();
+    bool should_use_far_region_for_chunk(int32_t cx, int32_t cy, int32_t cz) const;
+    bool is_chunk_within_render_distance(int32_t cx, int32_t cy, int32_t cz) const;
+    uint64_t get_far_region_key(int32_t cx, int32_t cy, int32_t cz) const;
+    bool is_far_region_active_for_chunk(int32_t cx, int32_t cy, int32_t cz) const;
+    void sync_far_region_members_visibility(FarRegionRenderData& region);
+    void ensure_far_region_instance(FarRegionRenderData& region, uint64_t region_key, bool visible);
+    void free_far_region_resources(FarRegionRenderData& region);
 
     ChunkMap* chunk_map = nullptr;
     ChunkScheduler* chunk_scheduler = nullptr;
@@ -95,6 +127,12 @@ private:
     bool smooth_lighting_enabled = false;
     int32_t lod_distance = 0;
     float lod_detail_level = 0.5f;
+    std::unordered_map<uint64_t, FarRegionRenderData> far_regions;
+    std::queue<CompletedRegionMesh> completed_far_region_meshes;
+    mutable std::mutex completed_far_region_meshes_mutex;
+    std::atomic<int32_t> completed_far_region_mesh_count{0};
+    int32_t far_regions_skipped_missing_cache_last = 0;
+    static constexpr int32_t kFarRegionSizeXZ = 4;
 
     float compute_chunk_detail_level(int32_t cx, int32_t cy, int32_t cz) const;
 };

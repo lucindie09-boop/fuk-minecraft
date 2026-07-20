@@ -39,9 +39,7 @@ void ChunkManager::_ready() {
     Engine* engine = Engine::get_singleton();
     bool is_editor = engine && engine->is_editor_hint();
     controller->get_environment_controller().update_environment(get_parent());
-    if (controller->get_auto_update() && (!is_editor || controller->get_editor_enabled())) {
-        update_chunks();
-    }
+    ready_for_auto_update = true;
 }
 
 void ChunkManager::_enter_tree() {
@@ -116,6 +114,7 @@ void ChunkManager::_process(double delta) {
 }
 
 void ChunkManager::_exit_tree() {
+    ready_for_auto_update = false;
     cached_player = nullptr;
     cached_camera = nullptr;
 }
@@ -132,7 +131,7 @@ int32_t ChunkManager::get_render_distance() const { return controller->get_rende
 
 void ChunkManager::set_player_position(const godot::Vector3& position) {
     controller->set_player_position(position);
-    if (controller->get_auto_update()) {
+    if (ready_for_auto_update && controller->get_auto_update()) {
         update_chunks();
     }
 }
@@ -185,7 +184,7 @@ double ChunkManager::get_debug_print_interval() const { return controller->get_d
 
 void ChunkManager::set_editor_enabled(bool enabled) {
     controller->set_editor_enabled(enabled);
-    if (enabled && controller->get_auto_update()) {
+    if (ready_for_auto_update && enabled && controller->get_auto_update()) {
         update_chunks();
     }
 }

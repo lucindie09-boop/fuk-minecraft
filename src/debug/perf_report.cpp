@@ -57,6 +57,14 @@ String PerfReport::build(
     report += "--- Render ---\n";
     report += "  Visible instances: " + String::num_int64(render_stats.visible_instances) +
               "  Meshes: " + String::num_int64(render_stats.mesh_rids) + "\n";
+    report += "  Chunk instances: " + String::num_int64(render_stats.chunk_instances) +
+              "  Region instances: " + String::num_int64(render_stats.far_region_instances) + "\n";
+    report += "  Chunk meshes:    " + String::num_int64(render_stats.chunk_mesh_rids) +
+              "  Region meshes:    " + String::num_int64(render_stats.far_region_mesh_rids) + "\n";
+    report += "  Far eligible:    " + String::num_int64(render_stats.eligible_far_chunks) +
+              "  Far cached:      " + String::num_int64(render_stats.cached_far_chunks) + "\n";
+    report += "  Region members:  " + String::num_int64(render_stats.active_region_member_chunks) +
+              "  Skip no cache:   " + String::num_int64(render_stats.regions_skipped_missing_cache) + "\n";
 
     report += "--- per-frame breakdown ---\n";
     report += "  player_pos_update: avg=" + String::num(perf_timer.get_avg(TimerID::PlayerPosUpdate), 3) + "ms\n";

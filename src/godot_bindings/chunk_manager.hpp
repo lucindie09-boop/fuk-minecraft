@@ -155,6 +155,7 @@ private:
     godot::NodePath player_path = godot::NodePath("../Player");
     godot::Node3D* cached_player = nullptr;
     godot::Camera3D* cached_camera = nullptr;
+    bool ready_for_auto_update = false;
 };
 
 } // namespace VoxelEngine
