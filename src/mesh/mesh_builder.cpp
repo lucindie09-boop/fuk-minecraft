@@ -204,18 +204,17 @@ ScopedTimer build_timer(perf_timer, TimerID::BuildMesh);
                     for (int32_t x = 1; x <= CHUNK_WIDTH; x++) {
                         int32_t x_src = ((x - 1) / stride_xz_) * stride_xz_;
                         BlockID representative = BlockIDs::AIR;
-                        int32_t solid_count = 0;
-                        const int32_t total = stride_xz_ * stride_xz_;
                         for (int32_t dz = 0; dz < stride_xz_; ++dz) {
                             for (int32_t dx = 0; dx < stride_xz_; ++dx) {
                                 BlockID sample = chunk.get_block_unsafe(x_src + dx, y, z_src + dz);
                                 if (sample != BlockIDs::AIR) {
-                                    ++solid_count;
                                     if (representative == BlockIDs::AIR) representative = sample;
                                 }
                             }
                         }
-                        solid_cache[y][z][x] = (solid_count * 2 >= total) ? representative : BlockIDs::AIR;
+                        // LOD meshing must be conservative: if any voxel in the coarse footprint
+                        // is present, keep the cell alive so exposed faces are not dropped.
+                        solid_cache[y][z][x] = representative;
                     }
                 }
             }
