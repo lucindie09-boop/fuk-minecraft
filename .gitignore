@@ -27,6 +27,12 @@ build/
 # Windows shortcuts
 *.lnk
 
+# Godot import metadata (regenerated on project open)
+*.import
+
+# Stray files
+/s
+
 .vscode/
 .vs/
 *.suo
