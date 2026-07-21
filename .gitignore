@@ -24,6 +24,9 @@ build/
 # Editor temp files
 *.tmp
 
+# Windows shortcuts
+*.lnk
+
 .vscode/
 .vs/
 *.suo
