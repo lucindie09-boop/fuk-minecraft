@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c2q2oyhbt4301"
-path="res://.godot/imported/wet_sandd.png-05a43c8fa01eba5eeeb33b59be16c95f.ctex"
+uid="uid://6khmyfpafgsw"
+path="res://.godot/imported/dirt2.png-982cd8c95fb612bc6821ca4533ca36b1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://textures/blocks/wet_sandd.png"
-dest_files=["res://.godot/imported/wet_sandd.png-05a43c8fa01eba5eeeb33b59be16c95f.ctex"]
+source_file="res://textures/blocks/Old/dirt2.png"
+dest_files=["res://.godot/imported/dirt2.png-982cd8c95fb612bc6821ca4533ca36b1.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
