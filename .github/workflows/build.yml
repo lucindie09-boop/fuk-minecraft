@@ -21,3 +21,8 @@ jobs:
 
       - name: Build
         run: scons -j16
+
+      - name: Test
+        run: |
+          scons test -j16
+          .\bin\run_tests.exe
