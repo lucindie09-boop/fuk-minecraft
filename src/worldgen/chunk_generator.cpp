@@ -233,12 +233,12 @@ chunk.set_block(x, local_y, z, BlockIDs::STONE);
         }
     }
 
-    chunk.compute_section_flags();
-
-    // Place vegetation (disabled)
+    // Place vegetation
     //VegetationGenerator veg;
     //veg.generate_vegetation(chunk, columns, chunk_x, chunk_z,
     //                        world_y_start, world_y_end, cross_writer);
+
+    chunk.compute_section_flags();
 }
 
 void ChunkGenerator::render_continentalness_pgm(const char* filename, int img_w, int img_h,

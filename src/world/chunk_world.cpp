@@ -65,30 +65,16 @@ float top_content_h = std::max(height_range.max_h, height_range.max_water_h);
 
                 // Surface chunk: generate normally
                 {
+                    // Cross-chunk writes are deferred: the worker only pushes to
+                    // pending queues (no shard locking). The main thread applies
+                    // them during process_completed_chunks.
                     auto cross_writer = [this](int32_t wx, int32_t wy, int32_t wz, BlockID block) {
+                        queue_pending_placement(wx, wy, wz, static_cast<int>(block));
                         int32_t tc_x, tc_y, tc_z, lx, ly, lz;
                         world_to_chunk_local(wx, wy, wz, tc_x, tc_y, tc_z, lx, ly, lz);
-                        // Hold exclusive shard lock for the entire read-check-write
-                        // sequence. This prevents the target chunk from being erased
-                        // during the write, and serializes concurrent cross_writers
-                        // targeting the same chunk (preventing PaletteStorage races).
-                        auto elock = chunk_map.lock_chunk_exclusive(tc_x, tc_y, tc_z);
-                        ChunkData* target = chunk_map.get_chunk_data_fast(tc_x, tc_y, tc_z);
-                        if (target) {
-                            if (target->get_block(lx, ly, lz) != BlockIDs::AIR)
-                                return;
-                            target->set_block(lx, ly, lz, block);
-                            // Bump mesh_version so the rebuild isn't skipped
-                            ChunkRenderData* target_rd = chunk_map.get_chunk_render_data_fast(tc_x, tc_y, tc_z);
-                            if (target_rd) {
-                                target_rd->mesh_version++;
-                            }
-                            {
-                                std::lock_guard<std::mutex> lock(cross_boundary_mutex);
-                                pending_cross_boundary_remesh.push_back({tc_x, tc_y, tc_z});
-                            }
-                        } else {
-                            queue_pending_placement(wx, wy, wz, static_cast<int>(block));
+                        {
+                            std::lock_guard<std::mutex> lock(cross_boundary_mutex);
+                            pending_cross_boundary_remesh.push_back({tc_x, tc_y, tc_z});
                         }
                     };
                     generator.generate_chunk(*chunk_data, cx, cy, cz,
@@ -373,13 +359,21 @@ light_propagator->try_fixup_chunk(key, completed.chunk_x, completed.chunk_y, com
 
     // Process cross-boundary vegetation modifications (neighbor chunks that need re-mesh)
     {
-        std::lock_guard<std::mutex> lock(cross_boundary_mutex);
-        for (const auto& pos : pending_cross_boundary_remesh) {
+        std::vector<ChunkPos> cross_remeshes;
+        {
+            std::lock_guard<std::mutex> lock(cross_boundary_mutex);
+            cross_remeshes.swap(pending_cross_boundary_remesh);
+        }
+        for (const auto& pos : cross_remeshes) {
+            uint64_t key = chunk_map.get_chunk_key(pos.x, pos.y, pos.z);
+            ChunkRenderData* rd = chunk_map.get_chunk_render_data(pos.x, pos.y, pos.z);
+            if (rd && rd->data) {
+                apply_pending_placements(key, pos.x, pos.y, pos.z, *rd);
+            }
             if (mesh_manager) {
                 mesh_manager->queue_dirty_chunk(pos.x, pos.y, pos.z);
             }
         }
-        pending_cross_boundary_remesh.clear();
     }
 
     return installed_count;
