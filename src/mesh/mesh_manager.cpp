@@ -75,7 +75,7 @@ PackedBuiltMeshData pack_vertex_array(const std::vector<Vertex>& vertices, const
         c1_ptr[i * 4 + 0] = static_cast<uint8_t>(v.texture_index);
         c1_ptr[i * 4 + 1] = v.ao;
         c1_ptr[i * 4 + 2] = encode_normal_dir(v.nx, v.ny, v.nz);
-        c1_ptr[i * 4 + 3] = 0;
+        c1_ptr[i * 4 + 3] = v.emissive_index;
         packed.custom2.encode_half(static_cast<int64_t>(i * 4), static_cast<double>(v.u));
         packed.custom2.encode_half(static_cast<int64_t>(i * 4 + 2), static_cast<double>(v.v));
     }

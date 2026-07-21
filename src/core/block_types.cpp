@@ -67,6 +67,16 @@ bool BlockRegistry::load_from_json(const godot::String& json_path) noexcept {
             bt.texture_indices[f] = 0;  // resolved later by TextureArrayGenerator
         }
 
+        // emissive_textures
+        if (d.has("emissive_textures")) {
+            godot::Array etx = d["emissive_textures"];
+            for (int f = 0; f < 6 && f < etx.size(); ++f) {
+                godot::String tex_name = etx[f];
+                bt.emissive_texture_names[f] = tex_name.utf8().get_data();
+                bt.emissive_texture_indices[f] = 0;  // resolved later by TextureArrayGenerator
+            }
+        }
+
         // light [r, g, b]
         godot::Array lt = d["light"];
         if (lt.size() >= 3) {

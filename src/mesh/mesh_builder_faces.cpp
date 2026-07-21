@@ -17,14 +17,15 @@ void MeshBuilder::add_face(const ChunkData& chunk, const ChunkNeighborAccessor& 
 
     const BlockType& block_type = registry.get_block(block_id);
     int texture_idx = 0;
+    int emissive_idx = 0;
 
     switch (direction) {
-        case FaceDirection::Right:  texture_idx = block_type.texture_indices[0]; break;
-        case FaceDirection::Left:   texture_idx = block_type.texture_indices[1]; break;
-        case FaceDirection::Top:    texture_idx = block_type.texture_indices[2]; break;
-        case FaceDirection::Bottom: texture_idx = block_type.texture_indices[3]; break;
-        case FaceDirection::Front:  texture_idx = block_type.texture_indices[4]; break;
-        case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; break;
+        case FaceDirection::Right:  texture_idx = block_type.texture_indices[0]; emissive_idx = block_type.emissive_texture_indices[0]; break;
+        case FaceDirection::Left:   texture_idx = block_type.texture_indices[1]; emissive_idx = block_type.emissive_texture_indices[1]; break;
+        case FaceDirection::Top:    texture_idx = block_type.texture_indices[2]; emissive_idx = block_type.emissive_texture_indices[2]; break;
+        case FaceDirection::Bottom: texture_idx = block_type.texture_indices[3]; emissive_idx = block_type.emissive_texture_indices[3]; break;
+        case FaceDirection::Front:  texture_idx = block_type.texture_indices[4]; emissive_idx = block_type.emissive_texture_indices[4]; break;
+        case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; emissive_idx = block_type.emissive_texture_indices[5]; break;
     }
 
     float ao[4];
@@ -133,6 +134,7 @@ light_keys[0] = light_keys[1] = light_keys[2] = light_keys[3] = light_key;
         }
         v.texture_index = static_cast<uint16_t>(texture_idx);
         v.ao = AmbientOcclusion::pack_vertex_ao(ao[i], direction);
+        v.emissive_index = static_cast<uint8_t>(emissive_idx);
         v.light_r = static_cast<uint8_t>(kBlockBrightness[unpack_r(light_keys[i])] * 255.0f);
         v.light_g = static_cast<uint8_t>(kBlockBrightness[unpack_g(light_keys[i])] * 255.0f);
         v.light_b = static_cast<uint8_t>(kBlockBrightness[unpack_b(light_keys[i])] * 255.0f);
@@ -170,13 +172,14 @@ void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAcc
 
     const BlockType& block_type = registry.get_block(face.block_id);
     int texture_idx = 0;
+    int emissive_idx = 0;
     switch (face.direction) {
-        case FaceDirection::Right:  texture_idx = block_type.texture_indices[0]; break;
-        case FaceDirection::Left:   texture_idx = block_type.texture_indices[1]; break;
-        case FaceDirection::Top:    texture_idx = block_type.texture_indices[2]; break;
-        case FaceDirection::Bottom: texture_idx = block_type.texture_indices[3]; break;
-        case FaceDirection::Front:  texture_idx = block_type.texture_indices[4]; break;
-        case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; break;
+        case FaceDirection::Right:  texture_idx = block_type.texture_indices[0]; emissive_idx = block_type.emissive_texture_indices[0]; break;
+        case FaceDirection::Left:   texture_idx = block_type.texture_indices[1]; emissive_idx = block_type.emissive_texture_indices[1]; break;
+        case FaceDirection::Top:    texture_idx = block_type.texture_indices[2]; emissive_idx = block_type.emissive_texture_indices[2]; break;
+        case FaceDirection::Bottom: texture_idx = block_type.texture_indices[3]; emissive_idx = block_type.emissive_texture_indices[3]; break;
+        case FaceDirection::Front:  texture_idx = block_type.texture_indices[4]; emissive_idx = block_type.emissive_texture_indices[4]; break;
+        case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; emissive_idx = block_type.emissive_texture_indices[5]; break;
     }
 
 bool flip = (ao[0] + ao[2]) < (ao[1] + ao[3]);
@@ -242,6 +245,7 @@ bool flip = (ao[0] + ao[2]) < (ao[1] + ao[3]);
         }
         v.texture_index = static_cast<uint16_t>(texture_idx);
         v.ao = AmbientOcclusion::pack_vertex_ao(ao[i], face.direction);
+        v.emissive_index = static_cast<uint8_t>(emissive_idx);
         v.light_r = static_cast<uint8_t>(kBlockBrightness[unpack_r(face_light_key)] * 255.0f);
         v.light_g = static_cast<uint8_t>(kBlockBrightness[unpack_g(face_light_key)] * 255.0f);
         v.light_b = static_cast<uint8_t>(kBlockBrightness[unpack_b(face_light_key)] * 255.0f);

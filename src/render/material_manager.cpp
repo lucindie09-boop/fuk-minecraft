@@ -56,6 +56,10 @@ Ref<ShaderMaterial> MaterialManager::get_material() {
         if (texture_array.is_valid()) {
             cached_material->set_shader_parameter("texture_array", texture_array);
         }
+        Ref<Texture2DArray> emissive_array = TextureArrayGenerator::get_instance().get_emissive_texture_array();
+        if (emissive_array.is_valid()) {
+            cached_material->set_shader_parameter("emissive_array", emissive_array);
+        }
     }
     return cached_material;
 }
@@ -71,6 +75,10 @@ Ref<ShaderMaterial> MaterialManager::get_water_material() {
         Ref<Texture2DArray> texture_array = TextureArrayGenerator::get_instance().get_texture_array();
         if (texture_array.is_valid()) {
             cached_water_material->set_shader_parameter("texture_array", texture_array);
+        }
+        Ref<Texture2DArray> emissive_array = TextureArrayGenerator::get_instance().get_emissive_texture_array();
+        if (emissive_array.is_valid()) {
+            cached_water_material->set_shader_parameter("emissive_array", emissive_array);
         }
     }
     return cached_water_material;

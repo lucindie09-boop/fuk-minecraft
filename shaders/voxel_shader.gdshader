@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode unshaded, cull_back, depth_draw_always;
 
 uniform sampler2DArray texture_array : filter_nearest_mipmap;
+uniform sampler2DArray emissive_array : filter_nearest_mipmap;
 
 uniform float mipmap_bias = 1.0;
 
@@ -79,6 +80,9 @@ void fragment(){
     float layer=custom1_attr.r * 255.0;
     vec3 tex_coord = vec3(custom2_attr.xy, layer);
     vec4 color = texture(texture_array, tex_coord, mipmap_bias);
+
+    float emissive_layer = custom1_attr.a * 255.0;
+    vec3 emissive_color = texture(emissive_array, vec3(custom2_attr.xy, emissive_layer)).rgb;
 
     float ao=custom1_attr.g;
 
@@ -208,6 +212,8 @@ void fragment(){
     float desat = (1.0 - smoothstep(0.95, 1.0, fog_amount)) * 0.12;
     float lum = dot(final_color, vec3(0.299, 0.587, 0.114));
     final_color = mix(final_color, vec3(lum), desat);
+
+    final_color += emissive_color;
 
     final_color = final_color * (2.51 * final_color + 0.03) / (final_color * (2.43 * final_color + 0.59) + 0.14);
     final_color = clamp(final_color, 0.0, 1.0);

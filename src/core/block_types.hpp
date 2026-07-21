@@ -64,6 +64,10 @@ struct BlockType {
     // Texture filename per face (populated by load_from_json, used by TextureArrayGenerator).
     // Placed last so existing aggregate initializers are unaffected.
     std::array<std::string, 6> texture_names{};
+
+    // Emissive texture filename per face (empty = no emissive contribution).
+    std::array<std::string, 6> emissive_texture_names{};
+    std::array<int, 6> emissive_texture_indices{};  // resolved by TextureArrayGenerator
 };
 
 // -----------------------------------------------------------------------------

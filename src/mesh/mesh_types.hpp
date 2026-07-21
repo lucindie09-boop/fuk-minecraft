@@ -27,7 +27,7 @@ struct Vertex {
     float u, v;           // 8 bytes
     uint16_t texture_index; // 2 bytes
     uint8_t ao;           // 1 byte
-    uint8_t texture_ao_pad; // 1 byte padding
+    uint8_t emissive_index; // 1 byte (emissive texture layer, 0 = none)
     uint8_t light_r;      // 1 byte
     uint8_t light_g;      // 1 byte
     uint8_t light_b;      // 1 byte
@@ -46,7 +46,7 @@ struct BuiltMeshData {
 struct PackedBuiltMeshData {
     godot::PackedVector3Array vertices;
     godot::PackedByteArray custom0;  // RGBA8_UNORM: light_r, light_g, light_b, sky_light
-    godot::PackedByteArray custom1;  // RGBA8_UNORM: R=texture_index, G=ao, B=normal_encoded, A=0
+    godot::PackedByteArray custom1;  // RGBA8_UNORM: R=texture_index, G=ao, B=normal_encoded, A=emissive_index
     godot::PackedByteArray custom2;  // RG_HALF: u, v
     godot::PackedInt32Array indices;
     bool empty = true;
