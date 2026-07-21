@@ -63,10 +63,7 @@ void EnvironmentController::update_environment(godot::Node* parent) {
         if (sun_visible > 0.0f) {
             cached_sun_light->set_color(sun_color);
             cached_sun_light->set_param(godot::Light3D::PARAM_ENERGY, 3.0f * sun_visible * day_night.get_day_intensity());
-            cached_sun_light->set_shadow(true);
-            cached_sun_light->set_param(godot::Light3D::PARAM_SHADOW_BIAS, 0.05f);
-            cached_sun_light->set_param(godot::Light3D::PARAM_SHADOW_NORMAL_BIAS, 2.0f);
-            cached_sun_light->set_param(godot::Light3D::PARAM_SHADOW_MAX_DISTANCE, 512.0f);
+            cached_sun_light->set_shadow(false);
             cached_sun_light->set_sky_mode(godot::DirectionalLight3D::SKY_MODE_LIGHT_ONLY);
         } else if (moon_visible > 0.0f) {
             cached_sun_light->set_color(godot::Color(0.55f, 0.65f, 0.85f));
