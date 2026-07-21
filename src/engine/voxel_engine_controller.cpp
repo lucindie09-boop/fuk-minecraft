@@ -28,7 +28,11 @@ VoxelEngineController::VoxelEngineController()
     : block_editor(&chunk_world, &mesh_manager, &light_propagator) {
     static std::once_flag registry_init_flag;
     std::call_once(registry_init_flag, []() {
-        BlockRegistry::get_instance().initialize_default_blocks();
+        auto& registry = BlockRegistry::get_instance();
+        if (!registry.load_from_json("res://data/block_definitions.json")) {
+            WARN_PRINT("Failed to load block_definitions.json, using hardcoded fallback");
+            registry.initialize_default_blocks();
+        }
     });
     chunk_world.get_chunk_map().reserve(5000);
     create_thread_pool();

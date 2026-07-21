@@ -1,6 +1,91 @@
 #include "core/block_types.hpp"
 
+#include <vector>
+#include <string>
+
+#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/json.hpp>
+#include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/variant.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
+
 namespace VoxelEngine {
+
+bool BlockRegistry::load_from_json(const godot::String& json_path) noexcept {
+    godot::Ref<godot::FileAccess> file = godot::FileAccess::open(json_path, godot::FileAccess::READ);
+    if (!file.is_valid()) {
+        ERR_PRINT("BlockRegistry: failed to open " + json_path);
+        return false;
+    }
+
+    godot::String text = file->get_as_text();
+    file->close();
+
+    godot::Variant parsed = godot::JSON::parse_string(text);
+    if (parsed.get_type() != godot::Variant::ARRAY) {
+        ERR_PRINT("BlockRegistry: failed to parse " + json_path);
+        return false;
+    }
+
+    godot::Array blocks_arr = parsed;
+    for (int i = 0; i < blocks_arr.size(); ++i) {
+        godot::Dictionary d = blocks_arr[i];
+
+        BlockType bt{};
+
+        // name
+        godot::String name_str = d["name"];
+        static std::vector<std::string> name_storage;
+        name_storage.push_back(name_str.utf8().get_data());
+        bt.name = name_storage.back().c_str();
+
+        // properties
+        godot::Array props = d["properties"];
+        for (int p = 0; p < props.size(); ++p) {
+            godot::String flag = props[p];
+            if (flag == "Solid")          bt.properties = bt.properties | BlockProperty::Solid;
+            else if (flag == "Transparent") bt.properties = bt.properties | BlockProperty::Transparent;
+            else if (flag == "Opaque")      bt.properties = bt.properties | BlockProperty::Opaque;
+            else if (flag == "Liquid")      bt.properties = bt.properties | BlockProperty::Liquid;
+            else if (flag == "RenderAllFaces") bt.properties = bt.properties | BlockProperty::RenderAllFaces;
+            else if (flag == "NoOcclusion") bt.properties = bt.properties | BlockProperty::NoOcclusion;
+            else if (flag == "Emissive")    bt.properties = bt.properties | BlockProperty::Emissive;
+        }
+
+        // visible_faces
+        godot::Array vf = d["visible_faces"];
+        for (int f = 0; f < 6 && f < vf.size(); ++f) {
+            bt.visible_faces[f] = vf[f].booleanize();
+        }
+
+        // textures
+        godot::Array tx = d["textures"];
+        for (int f = 0; f < 6 && f < tx.size(); ++f) {
+            godot::String tex_name = tx[f];
+            bt.texture_names[f] = tex_name.utf8().get_data();
+            bt.texture_indices[f] = 0;  // resolved later by TextureArrayGenerator
+        }
+
+        // light [r, g, b]
+        godot::Array lt = d["light"];
+        if (lt.size() >= 3) {
+            bt.light_r = static_cast<uint8_t>(static_cast<int64_t>(lt[0]));
+            bt.light_g = static_cast<uint8_t>(static_cast<int64_t>(lt[1]));
+            bt.light_b = static_cast<uint8_t>(static_cast<int64_t>(lt[2]));
+            bt.light_level = (bt.light_r > 0 || bt.light_g > 0 || bt.light_b > 0) ? 15 : 0;
+        }
+
+        // top_face_offset
+        if (d.has("top_face_offset")) {
+            bt.top_face_offset = static_cast<float>(static_cast<double>(d["top_face_offset"]));
+        }
+
+        register_block(bt);
+    }
+
+    return true;
+}
 
 void BlockRegistry::initialize_default_blocks() noexcept {
     // Helper for solid, opaque, AO-generating blocks with all 6 faces visible.

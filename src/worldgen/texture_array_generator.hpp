@@ -18,61 +18,32 @@ namespace VoxelEngine {
 
 class TextureArrayGenerator {
 private:
-    // Face slot order used by populate_block_registry():
-    // 0=right(+X), 1=left(-X), 2=top(+Y), 3=bottom(-Y), 4=front(+Z), 5=back(-Z)
-    struct BlockTextureMapping {
-        std::array<godot::String, 6> faces;
-    };
-
-    std::map<godot::String, BlockTextureMapping> block_texture_mappings;
     std::map<godot::String, godot::String> texture_path_cache;
     size_t last_registry_count = 0;
 
-    // Singleton-global texture state (replaces file-level globals)
+    // Singleton-global texture state
     static inline godot::Ref<godot::Texture2DArray> s_global_texture_array;
     static inline std::map<godot::String, int> s_global_texture_name_to_index;
     static inline bool s_global_texture_initialized = false;
 
-    // -------------------------------------------------------------------------
-    // Internal Helpers
-    // -------------------------------------------------------------------------
-    void initialize_texture_mappings();
-
-    // Cached variant of the old get_safe_texture_path — filesystem check only once per name.
     [[nodiscard]] godot::String get_safe_texture_path(const godot::String& texture_name);
 
 public:
-    TextureArrayGenerator();
+    TextureArrayGenerator() = default;
     ~TextureArrayGenerator() = default;
 
-    // Non-copyable, non-movable singleton
     TextureArrayGenerator(const TextureArrayGenerator&) = delete;
     TextureArrayGenerator& operator=(const TextureArrayGenerator&) = delete;
 
     [[nodiscard]] static TextureArrayGenerator& get_instance();
 
-    // Build the GPU texture array from all registered block face textures.
-    // NOTE: not nodiscard — called internally for side-effects.
     godot::Ref<godot::Texture2DArray> generate_texture_array();
-
-    // Write texture layer indices into every block in the registry.
-    // Cheap no-op if no new blocks have been added since the last call.
     void populate_block_registry();
-
-    // Force full rebuild of texture array and block indices.
     void force_regenerate();
-
-    // Get (and lazily initialize) the global texture array.
     [[nodiscard]] godot::Ref<godot::Texture2DArray> get_texture_array();
-
-    // Look up a texture's layer index inside the array.
     [[nodiscard]] int get_texture_index(const godot::String& texture_name);
-
-    // Look up a specific face's texture index for a block.
     [[nodiscard]] int get_block_texture_index(const godot::String& block_name, const godot::String& face);
 
-    // Release global Godot references before DLL unload.
-    // Also resets internal caches so the next load starts fresh.
     static void cleanup() {
         s_global_texture_array.unref();
         s_global_texture_name_to_index.clear();
@@ -85,41 +56,9 @@ public:
 // -----------------------------------------------------------------------------
 // Inline Implementation
 // -----------------------------------------------------------------------------
-inline TextureArrayGenerator::TextureArrayGenerator() {
-    initialize_texture_mappings();
-}
-
 inline TextureArrayGenerator& TextureArrayGenerator::get_instance() {
     static TextureArrayGenerator instance;
     return instance;
-}
-
-inline void TextureArrayGenerator::initialize_texture_mappings() {
-    auto add = [this](const godot::String& name,
-                      const godot::String& right, const godot::String& left,
-                      const godot::String& top, const godot::String& bottom,
-                      const godot::String& front, const godot::String& back) {
-        block_texture_mappings[name] = BlockTextureMapping{{right, left, top, bottom, front, back}};
-    };
-
-    add("stone",   "stone", "stone", "stone", "stone", "stone", "stone");
-    add("dirt",    "dirt", "dirt", "dirt", "dirt", "dirt", "dirt");
-    add("sand",    "sand", "sand", "sand", "sand", "sand", "sand");
-    add("bedrock", "bedrock", "bedrock", "bedrock", "bedrock", "bedrock", "bedrock");
-    add("grass",   "grass_side", "grass_side", "grass_top", "dirt", "grass_side", "grass_side");
-
-    // Fallback textures handled by get_safe_texture_path until .png files are added
-    add("wood",          "wood_side", "wood_side", "wood_top", "wood_top", "wood_side", "wood_side");
-    add("leaves",        "leaves", "leaves", "leaves", "leaves", "leaves", "leaves");
-    add("surface_water", "water", "water", "water", "water", "water", "water");
-    add("water",         "water", "water", "water", "water", "water", "water");
-    add("mud",           "mud", "mud", "mud", "mud", "mud", "mud");
-    add("wet_sand",      "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand");
-    add("mud_full",      "mud", "mud", "mud", "mud", "mud", "mud");
-    add("wet_sand_full", "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand", "wet_sand");
-    add("snow",   "snow", "snow", "snow", "snow", "snow", "snow");
-    add("gravel", "gravel", "gravel", "gravel", "gravel", "gravel", "gravel");
-    add("cactus", "cactus", "cactus", "cactus", "cactus", "cactus", "cactus");
 }
 
 inline godot::String TextureArrayGenerator::get_safe_texture_path(const godot::String& texture_name) {
@@ -141,10 +80,17 @@ inline godot::String TextureArrayGenerator::get_safe_texture_path(const godot::S
 }
 
 inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_texture_array() {
+    BlockRegistry& registry = BlockRegistry::get_instance();
+    const size_t block_count = registry.get_count();
+
+    // Collect unique texture names from all registered blocks
     std::set<godot::String> unique_textures;
-    for (const auto& [block_name, mapping] : block_texture_mappings) {
-        for (const auto& face : mapping.faces) {
-            unique_textures.insert(face);
+    for (size_t i = 0; i < block_count; ++i) {
+        const BlockType& bt = registry.get_block_fast(static_cast<BlockID>(i));
+        for (int f = 0; f < 6; ++f) {
+            if (!bt.texture_names[f].empty()) {
+                unique_textures.insert(godot::String(bt.texture_names[f].c_str()));
+            }
         }
     }
 
@@ -210,7 +156,6 @@ inline void TextureArrayGenerator::populate_block_registry() {
     BlockRegistry& registry = BlockRegistry::get_instance();
     const size_t block_count = registry.get_count();
 
-    // Early-out: nothing changed since last populate
     if (block_count == last_registry_count) {
         return;
     }
@@ -222,15 +167,13 @@ inline void TextureArrayGenerator::populate_block_registry() {
             continue;
         }
 
-        auto it = block_texture_mappings.find(block->name);
-        if (it == block_texture_mappings.end()) {
-            continue;
-        }
-
-        // FIX: use get_texture_index() so missing textures fall back to stone correctly.
-        const auto& faces = it->second.faces;
         for (int f = 0; f < 6; ++f) {
-            block->texture_indices[f] = get_texture_index(faces[f]);
+            if (block->texture_names[f].empty()) {
+                block->texture_indices[f] = 0;
+            } else {
+                block->texture_indices[f] = get_texture_index(
+                    godot::String(block->texture_names[f].c_str()));
+            }
         }
     }
 }
@@ -238,13 +181,12 @@ inline void TextureArrayGenerator::populate_block_registry() {
 inline void TextureArrayGenerator::force_regenerate() {
     s_global_texture_array.unref();
     s_global_texture_initialized = false;
-    last_registry_count = 0; // Force repopulate
+    last_registry_count = 0;
     generate_texture_array();
     populate_block_registry();
     s_global_texture_initialized = true;
 }
 
-// FIX: restore lazy initialization so callers don't need to manually generate.
 inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::get_texture_array() {
     if (!s_global_texture_array.is_valid() || !s_global_texture_initialized) {
         generate_texture_array();
@@ -262,7 +204,6 @@ inline int TextureArrayGenerator::get_texture_index(const godot::String& texture
         return it->second;
     }
 
-    // Fallback: if the raw name wasn't loaded, resolve through the safe path
     godot::String safe_fallback = get_safe_texture_path(texture_name).get_file().get_basename();
     it = s_global_texture_name_to_index.find(safe_fallback);
     if (it != s_global_texture_name_to_index.end()) {
@@ -273,19 +214,25 @@ inline int TextureArrayGenerator::get_texture_index(const godot::String& texture
 }
 
 inline int TextureArrayGenerator::get_block_texture_index(const godot::String& block_name, const godot::String& face) {
-    auto it = block_texture_mappings.find(block_name);
-    if (it == block_texture_mappings.end()) {
-        return 0;
-    }
+    BlockRegistry& registry = BlockRegistry::get_instance();
+    const size_t block_count = registry.get_count();
 
-    const auto& faces = it->second.faces;
-    if (face == "right")  return get_texture_index(faces[0]);
-    if (face == "left")   return get_texture_index(faces[1]);
-    if (face == "top")    return get_texture_index(faces[2]);
-    if (face == "bottom") return get_texture_index(faces[3]);
-    if (face == "front")  return get_texture_index(faces[4]);
-    if (face == "back")   return get_texture_index(faces[5]);
-    return get_texture_index(faces[2]); // default to top
+    for (size_t i = 0; i < block_count; ++i) {
+        const BlockType& bt = registry.get_block_fast(static_cast<BlockID>(i));
+        if (bt.name && block_name == bt.name) {
+            int face_idx = 2; // default to top
+            if (face == "right")  face_idx = 0;
+            if (face == "left")   face_idx = 1;
+            if (face == "top")    face_idx = 2;
+            if (face == "bottom") face_idx = 3;
+            if (face == "front")  face_idx = 4;
+            if (face == "back")   face_idx = 5;
+
+            if (bt.texture_names[face_idx].empty()) return 0;
+            return get_texture_index(godot::String(bt.texture_names[face_idx].c_str()));
+        }
+    }
+    return 0;
 }
 
 } // namespace VoxelEngine

@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <array>
 #include <cassert>
+#include <string>
+
+namespace godot { class String; }
 
 namespace VoxelEngine {
 
@@ -46,7 +49,7 @@ struct BlockType {
     const char* name = nullptr;
     BlockProperty properties = BlockProperty::None;
     std::array<bool, 6> visible_faces{};   // +X, -X, +Y, -Y, +Z, -Z
-    std::array<int, 6> texture_indices{};    // +X, -X, +Y, -Y, +Z, -Z
+    std::array<int, 6> texture_indices{};    // +X, -X, +Y, -Y, +Z, -Z (resolved layer index)
     uint8_t light_level = 0;
     uint8_t light_r = 0;
     uint8_t light_g = 0;
@@ -57,6 +60,10 @@ struct BlockType {
     float top_face_offset = 0.0f;
     // If false, side faces are rendered even against same-type neighbours.
     bool cull_against_same = true;
+
+    // Texture filename per face (populated by load_from_json, used by TextureArrayGenerator).
+    // Placed last so existing aggregate initializers are unaffected.
+    std::array<std::string, 6> texture_names{};
 };
 
 // -----------------------------------------------------------------------------
@@ -113,6 +120,7 @@ public:
     }
 
     void initialize_default_blocks() noexcept;
+    bool load_from_json(const godot::String& json_path) noexcept;
 
 private:
     BlockRegistry() = default;
