@@ -179,7 +179,7 @@ void MeshBuilder::add_greedy_face(const ChunkData& chunk, const ChunkNeighborAcc
         case FaceDirection::Back:   texture_idx = block_type.texture_indices[5]; break;
     }
 
-bool flip = (ao[0] + ao[0]) < (ao[1] + ao[3]);
+bool flip = (ao[0] + ao[2]) < (ao[1] + ao[3]);
 
     float corners[4][3];
     switch (face.direction) {
@@ -196,28 +196,28 @@ bool flip = (ao[0] + ao[0]) < (ao[1] + ao[3]);
             corners[3][0] = face.x;             corners[3][1] = face.y;     corners[3][2] = face.z;
             break;
         case FaceDirection::Right:
-            corners[0][0] = face.x + stride_xz_; corners[0][1] = face.y;             corners[0][2] = face.z + u_size;
-            corners[1][0] = face.x + stride_xz_; corners[1][1] = face.y + v_size;    corners[1][2] = face.z + u_size;
-            corners[2][0] = face.x + stride_xz_; corners[2][1] = face.y + v_size;    corners[2][2] = face.z;
-            corners[3][0] = face.x + stride_xz_; corners[3][1] = face.y;             corners[3][2] = face.z;
+            corners[0][0] = face.x + stride_xz_; corners[0][1] = face.y;             corners[0][2] = face.z;
+            corners[1][0] = face.x + stride_xz_; corners[1][1] = face.y;             corners[1][2] = face.z + u_size;
+            corners[2][0] = face.x + stride_xz_; corners[2][1] = face.y + v_size;    corners[2][2] = face.z + u_size;
+            corners[3][0] = face.x + stride_xz_; corners[3][1] = face.y + v_size;    corners[3][2] = face.z;
             break;
         case FaceDirection::Left:
-            corners[0][0] = face.x;             corners[0][1] = face.y;             corners[0][2] = face.z;
-            corners[1][0] = face.x;             corners[1][1] = face.y + v_size;    corners[1][2] = face.z;
-            corners[2][0] = face.x;             corners[2][1] = face.y + v_size;    corners[2][2] = face.z + u_size;
-            corners[3][0] = face.x;             corners[3][1] = face.y;             corners[3][2] = face.z + u_size;
-            break;
-        case FaceDirection::Front:
-            corners[0][0] = face.x;             corners[0][1] = face.y + v_size;    corners[0][2] = face.z + stride_xz_;
-            corners[1][0] = face.x + u_size;    corners[1][1] = face.y + v_size;    corners[1][2] = face.z + stride_xz_;
-            corners[2][0] = face.x + u_size;    corners[2][1] = face.y;             corners[2][2] = face.z + stride_xz_;
-            corners[3][0] = face.x;             corners[3][1] = face.y;             corners[3][2] = face.z + stride_xz_;
-            break;
-        case FaceDirection::Back:
-            corners[0][0] = face.x + u_size;    corners[0][1] = face.y;             corners[0][2] = face.z;
+            corners[0][0] = face.x;             corners[0][1] = face.y;             corners[0][2] = face.z + u_size;
             corners[1][0] = face.x;             corners[1][1] = face.y;             corners[1][2] = face.z;
             corners[2][0] = face.x;             corners[2][1] = face.y + v_size;    corners[2][2] = face.z;
-            corners[3][0] = face.x + u_size;    corners[3][1] = face.y + v_size;    corners[3][2] = face.z;
+            corners[3][0] = face.x;             corners[3][1] = face.y + v_size;    corners[3][2] = face.z + u_size;
+            break;
+        case FaceDirection::Front:
+            corners[0][0] = face.x + u_size;    corners[0][1] = face.y;             corners[0][2] = face.z + stride_xz_;
+            corners[1][0] = face.x;             corners[1][1] = face.y;             corners[1][2] = face.z + stride_xz_;
+            corners[2][0] = face.x;             corners[2][1] = face.y + v_size;    corners[2][2] = face.z + stride_xz_;
+            corners[3][0] = face.x + u_size;    corners[3][1] = face.y + v_size;    corners[3][2] = face.z + stride_xz_;
+            break;
+        case FaceDirection::Back:
+            corners[0][0] = face.x;             corners[0][1] = face.y;             corners[0][2] = face.z;
+            corners[1][0] = face.x + u_size;    corners[1][1] = face.y;             corners[1][2] = face.z;
+            corners[2][0] = face.x + u_size;    corners[2][1] = face.y + v_size;    corners[2][2] = face.z;
+            corners[3][0] = face.x;             corners[3][1] = face.y + v_size;    corners[3][2] = face.z;
             break;
     }
 

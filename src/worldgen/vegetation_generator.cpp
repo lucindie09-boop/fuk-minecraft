@@ -10,6 +10,9 @@ void VegetationGenerator::generate_vegetation(
     int32_t world_y_start, int32_t world_y_end,
     const CrossChunkWriter& cross_writer)
 {
+    // Track placed tree positions within this chunk to enforce minimum spacing
+    bool tree_placed[CHUNK_WIDTH][CHUNK_DEPTH] = {};
+
     for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
         for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
             int32_t surface_y = columns[x][z].height;
@@ -28,7 +31,22 @@ void VegetationGenerator::generate_vegetation(
             if (biome == BiomeType::Forest) {
                 // ~7 trees per chunk avg (0.7% column density)
                 if ((h % 1000u) < 7u) {
-                    place_tree(chunk, x, z, surface_y, world_y_start, world_y_end, h, chunk_x, chunk_z, cross_writer);
+                    // Enforce minimum spacing: reject if any tree within Chebyshev radius 3
+                    constexpr int32_t MIN_TREE_RADIUS = 3;
+                    bool too_close = false;
+                    for (int32_t dx = -MIN_TREE_RADIUS; dx <= MIN_TREE_RADIUS && !too_close; dx++) {
+                        for (int32_t dz = -MIN_TREE_RADIUS; dz <= MIN_TREE_RADIUS && !too_close; dz++) {
+                            int32_t nx = x + dx;
+                            int32_t nz = z + dz;
+                            if (nx >= 0 && nx < CHUNK_WIDTH && nz >= 0 && nz < CHUNK_DEPTH) {
+                                if (tree_placed[nx][nz]) too_close = true;
+                            }
+                        }
+                    }
+                    if (!too_close) {
+                        place_tree(chunk, x, z, surface_y, world_y_start, world_y_end, h, chunk_x, chunk_z, cross_writer);
+                        tree_placed[x][z] = true;
+                    }
                 }
             } else if (biome == BiomeType::Plains) {
                 // Per-chunk sparse tree: ~25% of plains chunks get exactly one tree.

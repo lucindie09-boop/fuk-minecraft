@@ -234,9 +234,9 @@ chunk.set_block(x, local_y, z, BlockIDs::STONE);
     }
 
     // Place vegetation
-    //VegetationGenerator veg;
-    //veg.generate_vegetation(chunk, columns, chunk_x, chunk_z,
-    //                        world_y_start, world_y_end, cross_writer);
+    VegetationGenerator veg;
+    veg.generate_vegetation(chunk, columns, chunk_x, chunk_z,
+                            world_y_start, world_y_end, cross_writer);
 
     chunk.compute_section_flags();
 }

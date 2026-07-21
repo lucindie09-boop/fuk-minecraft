@@ -621,6 +621,7 @@ void ChunkWorld::apply_pending_placements(uint64_t key, int32_t chunk_x, int32_t
             }
         }
         pending_block_placements.erase(it);
+        render_data.data->compute_section_flags();
         render_data.data->compute_fully_solid();
     }
 }
