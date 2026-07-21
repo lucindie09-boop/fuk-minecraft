@@ -66,3 +66,4 @@ debug_enabled = false
 smooth_lighting = true
 lod_distance = 6
 fog_density = 0.1
+vegetation_enabled = false

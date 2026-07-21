@@ -131,6 +131,8 @@ void toggle_day_night_cycle();
     double get_fog_density() const;
     void set_render_distance_blocks(float blocks);
     float get_render_distance_blocks() const;
+    void set_vegetation_enabled(bool enabled);
+    bool is_vegetation_enabled() const;
 
     ChunkWorld& get_chunk_world() { return chunk_world; }
     MeshManager& get_mesh_manager() { return mesh_manager; }
@@ -176,6 +178,7 @@ bool smooth_lighting = false;
     float height_scale = 48.0f;
     float mountain_scale = 120.0f;
     float biome_size = 1.0f;
+    bool vegetation_enabled = true;
     bool debug_enabled = true;
     double debug_print_interval = 2.0;
     double debug_accumulated_time = 0.0;

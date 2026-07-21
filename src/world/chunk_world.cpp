@@ -78,7 +78,8 @@ float top_content_h = std::max(height_range.max_h, height_range.max_water_h);
                         }
                     };
                     generator.generate_chunk(*chunk_data, cx, cy, cz,
-                                             ChunkGenerator::CrossChunkWriter(std::move(cross_writer)));
+                                             ChunkGenerator::CrossChunkWriter(std::move(cross_writer)),
+                                             vegetation_enabled);
                 }
             }
             chunk_data->propagate_sky_light(chunk_map.get_chunk_data(cx, cy + 1, cz));

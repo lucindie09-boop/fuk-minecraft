@@ -47,6 +47,9 @@ public:
     void queue_pending_placement(int32_t world_x, int32_t world_y, int32_t world_z, int block_id);
     void apply_pending_placements(uint64_t key, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, ChunkRenderData& render_data);
 
+    void set_vegetation_enabled(bool enabled) { vegetation_enabled = enabled; }
+    bool is_vegetation_enabled() const { return vegetation_enabled; }
+
     ChunkMap& get_chunk_map() { return chunk_map; }
     ChunkMap* get_chunk_map_ptr() { return &chunk_map; }
     ChunkScheduler& get_scheduler() { return chunk_scheduler; }
@@ -82,7 +85,9 @@ private:
 
     // Cross-boundary vegetation writes: neighbor chunks modified during generation
     std::vector<ChunkPos> pending_cross_boundary_remesh;
-    mutable std::mutex cross_boundary_mutex;
+    mutable     std::mutex cross_boundary_mutex;
+
+    bool vegetation_enabled = true;
 };
 
 } // namespace VoxelEngine

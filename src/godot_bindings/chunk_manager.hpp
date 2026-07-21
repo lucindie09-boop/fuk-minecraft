@@ -145,6 +145,9 @@ void toggle_day_night_cycle();
     void set_fog_density(double density);
     double get_fog_density() const;
 
+    void set_vegetation_enabled(bool enabled);
+    bool get_vegetation_enabled() const;
+
     static PerformanceTimer& get_perf_timer();
 
 protected:

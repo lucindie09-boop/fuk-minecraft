@@ -262,6 +262,9 @@ godot::Color ChunkManager::get_night_sky_color() const { return controller->get_
 void ChunkManager::set_fog_density(double density) { controller->set_fog_density(density); }
 double ChunkManager::get_fog_density() const { return controller->get_fog_density(); }
 
+void ChunkManager::set_vegetation_enabled(bool enabled) { controller->set_vegetation_enabled(enabled); }
+bool ChunkManager::get_vegetation_enabled() const { return controller->is_vegetation_enabled(); }
+
 // -------------------------------------------------------------------------
 // _bind_methods
 // -------------------------------------------------------------------------
@@ -348,5 +351,6 @@ BIND_PROP(Variant::FLOAT, day_time, "time");
     BIND_PROP(Variant::COLOR,   day_sky_color,             "color");
     BIND_PROP(Variant::COLOR,   night_sky_color,           "color");
     BIND_PROP(Variant::FLOAT,   fog_density,               "density");
+    BIND_PROP(Variant::BOOL,    vegetation_enabled,         "enabled");
 #undef BIND_PROP
 }

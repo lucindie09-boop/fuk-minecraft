@@ -273,7 +273,7 @@ float max_water_h = -1.0f;
     // Main generation entry point
     // -------------------------------------------------------------------------
     void generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z,
-                        const CrossChunkWriter& cross_writer = nullptr);
+                        const CrossChunkWriter& cross_writer = nullptr, bool vegetation_enabled = true);
 
     // -------------------------------------------------------------------------
     // Debug: render continentalness as a PGM image (portable graymap)

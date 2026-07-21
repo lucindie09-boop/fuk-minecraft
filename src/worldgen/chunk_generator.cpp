@@ -113,7 +113,7 @@ BlockID ChunkGenerator::get_chunk_subsurface_block(int32_t chunk_x, int32_t chun
 }
 
 void ChunkGenerator::generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z,
-                                    const CrossChunkWriter& cross_writer) {
+                                    const CrossChunkWriter& cross_writer, bool vegetation_enabled) {
     ScopedTimer timer(perf_timer, TimerID::GenerateChunk);
     chunk.clear();
 
@@ -234,9 +234,11 @@ chunk.set_block(x, local_y, z, BlockIDs::STONE);
     }
 
     // Place vegetation
-    VegetationGenerator veg;
-    veg.generate_vegetation(chunk, columns, chunk_x, chunk_z,
-                            world_y_start, world_y_end, cross_writer);
+    if (vegetation_enabled) {
+        VegetationGenerator veg;
+        veg.generate_vegetation(chunk, columns, chunk_x, chunk_z,
+                                world_y_start, world_y_end, cross_writer);
+    }
 
     chunk.compute_section_flags();
 }
