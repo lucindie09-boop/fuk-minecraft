@@ -20,4 +20,4 @@ jobs:
         run: pip install scons
 
       - name: Build
-        run: scons -j%NUMBER_OF_PROCESSORS%
+        run: scons -j16
