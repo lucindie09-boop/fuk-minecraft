@@ -606,6 +606,18 @@ public:
         return pending_cross_boundary_remesh.size();
     }
 
+    // Mirrors apply_pending_placements from chunk_world.cpp lines 633-651
+    std::vector<PendingBlockPlacement> dequeue_placements(uint64_t key) {
+        std::lock_guard<std::mutex> lock(pending_placement_mutex);
+        auto it = pending_block_placements.find(key);
+        if (it != pending_block_placements.end()) {
+            std::vector<PendingBlockPlacement> result = std::move(it->second);
+            pending_block_placements.erase(it);
+            return result;
+        }
+        return {};
+    }
+
 private:
     std::unordered_map<uint64_t, std::vector<PendingBlockPlacement>> pending_block_placements;
     mutable std::mutex pending_placement_mutex;
@@ -664,11 +676,19 @@ TEST_CASE("cross-chunk writer concurrent push and drain") {
         while (!stop_writers.load(std::memory_order_acquire) ||
                total_drained.load(std::memory_order_relaxed) <
                    total_pushed.load(std::memory_order_relaxed)) {
-            // In production, this would call apply_pending_placements for each key
-            // Here we just count to verify no entries are lost
-            size_t current = writer.total_pending_count();
-            total_drained.store(static_cast<int>(current), std::memory_order_relaxed);
+            // Drain a few keys to simulate apply_pending_placements
+            for (int i = 0; i < 10; i++) {
+                uint64_t key = TestShardMap::key(i, 0, 0);
+                auto placements = writer.dequeue_placements(key);
+                total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
+            }
             std::this_thread::yield();
+        }
+        // Final drain of any remaining entries
+        for (int i = 0; i < 100; i++) {
+            uint64_t key = TestShardMap::key(i, 0, 0);
+            auto placements = writer.dequeue_placements(key);
+            total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
         }
     };
 
@@ -682,8 +702,9 @@ TEST_CASE("cross-chunk writer concurrent push and drain") {
     for (auto& t : writers) t.join();
     drain_thread.join();
 
-    // Final verification: all pushed entries are accounted for
-    CHECK(writer.total_pending_count() == static_cast<size_t>(total_pushed.load()));
+    // Final verification: all pushed entries were drained
+    CHECK(total_drained.load() == total_pushed.load());
+    CHECK(writer.total_pending_count() == 0);
 }
 
 // =========================================================================
