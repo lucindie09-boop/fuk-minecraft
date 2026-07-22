@@ -3,13 +3,13 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdlib>
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <type_traits>
 #include <queue>
 #include <thread>
-#include <stdexcept>
 #include <vector>
 
 namespace VoxelEngine {
@@ -56,7 +56,7 @@ public:
 
     void enqueue_task(std::unique_ptr<Task> task, bool high_priority = false) {
         if (stop_flag_.load(std::memory_order_acquire))
-            throw std::runtime_error("enqueue_task on stopped ThreadPool");
+            std::abort();
 
         std::size_t idx = next_worker_.fetch_add(1, std::memory_order_relaxed) % queues_.size();
         auto& q = queues_[idx];
