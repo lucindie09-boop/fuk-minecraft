@@ -683,9 +683,7 @@ TEST_CASE("cross-chunk writer concurrent push and drain") {
 
     // Simulates process_completed_chunks draining cross_boundary_remesh
     auto drainer = [&]() {
-        while (!stop_writers.load(std::memory_order_acquire) ||
-               total_drained.load(std::memory_order_relaxed) <
-                   total_pushed.load(std::memory_order_relaxed)) {
+        while (!stop_writers.load(std::memory_order_acquire)) {
             // Drain all keys currently present to simulate apply_pending_placements
             auto keys = writer.get_all_keys();
             for (auto key : keys) {
@@ -694,11 +692,16 @@ TEST_CASE("cross-chunk writer concurrent push and drain") {
             }
             std::this_thread::yield();
         }
-        // Final drain of any remaining entries
-        auto keys = writer.get_all_keys();
-        for (auto key : keys) {
-            auto placements = writer.dequeue_placements(key);
-            total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
+        // After writers stop, keep draining until all entries are processed
+        // This handles the race where writers pushed entries after the last drain snapshot
+        while (true) {
+            auto keys = writer.get_all_keys();
+            if (keys.empty()) break;
+            for (auto key : keys) {
+                auto placements = writer.dequeue_placements(key);
+                total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
+            }
+            std::this_thread::yield();
         }
     };
 
