@@ -106,7 +106,7 @@ jobs:
 
       - name: Build fuzz targets
         timeout-minutes: 10
-        run: scons fuzz -j$(nproc)
+        run: CC=clang CXX=clang++ scons fuzz -j$(nproc)
 
       - name: Run fuzz_chunk_load
         timeout-minutes: 2
