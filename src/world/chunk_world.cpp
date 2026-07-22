@@ -487,13 +487,23 @@ bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t 
 
     std::lock_guard<std::mutex> lock(file_access_mutex);
 
+    String backup_filename = filename + ".bak";
+
     bool use_old_format = false;
+    bool use_backup = false;
+    
     if (!FileAccess::file_exists(filename)) {
-        if (!FileAccess::file_exists(old_filename)) return false;
-        use_old_format = true;
+        // Primary file missing - try backup first
+        if (FileAccess::file_exists(backup_filename)) {
+            use_backup = true;
+        } else if (FileAccess::file_exists(old_filename)) {
+            use_old_format = true;
+        } else {
+            return false;
+        }
     }
 
-    String target = use_old_format ? old_filename : filename;
+    String target = use_old_format ? old_filename : (use_backup ? backup_filename : filename);
     Ref<FileAccess> file = FileAccess::open(target, FileAccess::READ);
     if (!file.is_valid()) return false;
 
