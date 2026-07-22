@@ -67,7 +67,7 @@ if sys.platform != "win32":
     fuzz_env = Environment()
     fuzz_env["CC"] = "clang"
     fuzz_env["CXX"] = "clang++"
-    fuzz_env.Append(CPPPATH=["src/", "godot-cpp/include/", "godot-cpp/gen/include/", "godot-cpp/"])
+    fuzz_env.Append(CPPPATH=["src/", "godot-cpp/include/", "godot-cpp/gen/include/", "godot-cpp/", "godot-cpp/gdextension/"])
     fuzz_env.Append(CCFLAGS=["-std=c++17", "-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
     # Use separate build dir to avoid .obj collisions with test environment
