@@ -53,6 +53,10 @@ Alias("bench", bench_prog)
 test_env = env.Clone()
 test_env.Append(CPPPATH=["src/", "tests/"])
 test_env.Append(LIBS=[])
+# Apply coverage flags to test environment if enabled
+if coverage == "1" and sys.platform != "win32":
+    test_env.Append(CCFLAGS=["--coverage"])
+    test_env.Append(LINKFLAGS=["--coverage"])
 # Reference source files directly to avoid VariantDir file locking on Windows
 test_sources = Glob("tests/*.cpp") + [
     "src/core/chunk_data.cpp",
