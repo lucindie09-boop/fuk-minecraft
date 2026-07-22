@@ -1,0 +1,6 @@
+# VoxelEngine benchmark baseline — update after intentional algorithm changes.
+# Format: metric_name max_avg_ms
+# If a metric exceeds max_avg_ms, CI will fail.
+generate_chunk_avg_ms 1.5
+build_mesh_avg_ms 3.0
+palette_write_avg_ms 0.2

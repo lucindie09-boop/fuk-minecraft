@@ -14,6 +14,10 @@ jobs:
             test_bin: ./bin/run_tests
             bench_bin: ./bin/benchmark
             tsan: 1
+          - os: ubuntu-latest
+            test_bin: ./bin/run_tests
+            bench_bin: ./bin/benchmark
+            tsan: 0
           - os: macos-latest
             test_bin: ./bin/run_tests
             bench_bin: ./bin/benchmark
@@ -68,4 +72,4 @@ jobs:
       - name: Run benchmark
         if: matrix.tsan != 1
         timeout-minutes: 2
-        run: ${{ matrix.bench_bin }}
+        run: ${{ matrix.bench_bin }} --check benchmark_baseline.txt

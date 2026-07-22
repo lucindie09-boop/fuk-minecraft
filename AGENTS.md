@@ -92,8 +92,7 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 ## Next Steps
 - Expand automated test coverage further: the `tests/` suite now has 92 test cases / 481 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, and concurrency (shard locking, exclusive serialization, PaletteStorage R/W), but LOD edge cases, light propagation remove paths, and cross-chunk writer races still lack regression tests.
 - No gameplay layer exists yet beyond block break/place (no inventory, crafting, mobs, multiplayer); `player.gd` remains an explicit temporary placeholder pending a C++ player controller.
-- Re-benchmark and refresh any performance numbers before quoting them externally (e.g. in the README) — the last detailed profiling pass predates the water surface, emissive maps, shadow-map removal, and the new stride-based LOD system.
-- Replace `lock_all_exclusive()` on hot paths with key-tracking `lock_keys()` for better concurrency (only locks shards that are actually accessed, allows concurrent writes to different shards).
+- Replace `lock_all_exclusive()` on remaining BFS hot paths (`place_block`, `light_propagate_add/remove`, `update_block_light_incremental`, `PlayerLight::update`) with key-tracking `lock_keys()` — requires either a two-pass collect-then-lock approach or radius pre-lock since BFS has unbounded reach.
 
 ## Critical Context
 - Chunk size is 32×32×32 (`CHUNK_WIDTH`/`CHUNK_HEIGHT`/`CHUNK_DEPTH` in `chunk_coords.hpp`), world height 1024 (`WORLD_HEIGHT_Y`).
