@@ -5,6 +5,7 @@ env = SConscript("godot-cpp/SConstruct")
 env.Append(CPPPATH=["src/"])
 
 # Generate compile_commands.json for clang-tidy static analysis
+env.Tool('compilation_db')
 env.CompilationDatabase('compile_commands.json')
 
 # Optional TSan support (Linux/GCC/Clang only)

@@ -26,12 +26,12 @@ enum class BlockProperty : uint8_t {
 };
 
 constexpr inline BlockProperty operator|(BlockProperty a, BlockProperty b) noexcept {
-    // NOLINT(clang-analyzer-core.UndefinedBinaryOperatorResult) - Valid bitfield operation on uint8_t enum
+    // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult) - Valid bitfield operation on uint8_t enum
     return static_cast<BlockProperty>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
 }
 
 constexpr inline BlockProperty operator&(BlockProperty a, BlockProperty b) noexcept {
-    // NOLINT(clang-analyzer-core.UndefinedBinaryOperatorResult) - Valid bitfield operation on uint8_t enum
+    // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult) - Valid bitfield operation on uint8_t enum
     return static_cast<BlockProperty>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
 }
 
