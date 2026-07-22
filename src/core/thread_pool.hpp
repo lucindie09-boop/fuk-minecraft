@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <queue>
 #include <thread>
+#include <stdexcept>
 #include <vector>
 
 namespace VoxelEngine {
