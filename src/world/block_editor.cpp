@@ -24,51 +24,99 @@ void BlockEditor::place_block(int32_t world_x, int32_t world_y, int32_t world_z,
     int32_t chunk_x, chunk_y, chunk_z, local_x, local_y, local_z;
     world_to_chunk_local(world_x, world_y, world_z, chunk_x, chunk_y, chunk_z, local_x, local_y, local_z);
 
-    ChunkData* chunk_data = chunk_world->get_chunk_data(chunk_x, chunk_y, chunk_z);
-    if (!chunk_data) {
-        chunk_world->queue_pending_placement(world_x, world_y, world_z, static_cast<int>(new_block));
-        return;
+    ChunkMap& cm = chunk_world->get_chunk_map();
+
+    // Quick check: if chunk not loaded, queue pending placement and bail.
+    // Uses shared lock only — safe before exclusive scope.
+    {
+        auto sl = cm.lock_chunk(chunk_x, chunk_y, chunk_z);
+        if (!cm.get_chunk_render_data_fast(chunk_x, chunk_y, chunk_z)) {
+            chunk_world->queue_pending_placement(world_x, world_y, world_z, static_cast<int>(new_block));
+            return;
+        }
     }
 
-    if (!is_local_in_bounds(local_x, local_y, local_z)) {
-        return;
+    // Track mud variant chunk for post-lock dirty-marking.
+    int32_t mud_cx = 0, mud_cy = 0, mud_cz = 0;
+    bool did_mud = false;
+
+    {
+        auto lock = cm.lock_all_exclusive();
+        ChunkData* chunk_data = cm.get_chunk_data_fast(chunk_x, chunk_y, chunk_z);
+        if (!chunk_data) return;
+        if (!is_local_in_bounds(local_x, local_y, local_z)) return;
+
+        const BlockID old_block = chunk_data->get_block_unsafe(local_x, local_y, local_z);
+        if (old_block == new_block) return;
+
+        const BlockRegistry& registry = BlockRegistry::get_instance();
+        const BlockType& old_type = registry.get_block(old_block);
+        const BlockType& new_type = registry.get_block(new_block);
+        const bool old_opaque = HasProperty(old_type.properties, BlockProperty::Opaque);
+        const bool new_opaque = HasProperty(new_type.properties, BlockProperty::Opaque);
+
+        const uint8_t old_r = chunk_data->get_light_r(local_x, local_y, local_z);
+        const uint8_t old_g = chunk_data->get_light_g(local_x, local_y, local_z);
+        const uint8_t old_b = chunk_data->get_light_b(local_x, local_y, local_z);
+
+        chunk_data->set_block(local_x, local_y, local_z, new_block);
+
+        if (old_opaque != new_opaque) {
+            ChunkData* above = cm.get_chunk_data_fast(chunk_x, chunk_y + 1, chunk_z);
+            chunk_data->propagate_sky_light_column(local_x, local_z, above);
+        }
+
+        light_propagator->update_block_light_incremental_locked(
+            chunk_x, chunk_y, chunk_z, chunk_x, chunk_y, chunk_z,
+            local_x, local_y, local_z,
+            old_block, new_block, old_r, old_g, old_b);
+
+        ChunkRenderData* render_data = cm.get_chunk_render_data_fast(chunk_x, chunk_y, chunk_z);
+        if (render_data) {
+            render_data->is_mesh_dirty = true;
+            render_data->mesh_version++;
+            render_data->dirty_subchunks |= static_cast<uint8_t>(1 << subchunk_index(local_x, local_y, local_z));
+        }
+
+        // Mud variant: inline update_mud_variants logic while lock is held.
+        if (world_y > 0) {
+            int32_t bw_cx, bw_cy, bw_cz, bw_lx, bw_ly, bw_lz;
+            world_to_chunk_local(world_x, world_y - 1, world_z, bw_cx, bw_cy, bw_cz, bw_lx, bw_ly, bw_lz);
+            ChunkData* below_chunk = cm.get_chunk_data_fast(bw_cx, bw_cy, bw_cz);
+            if (below_chunk && is_local_in_bounds(bw_lx, bw_ly, bw_lz)) {
+                const BlockID below = below_chunk->get_block_unsafe(bw_lx, bw_ly, bw_lz);
+                BlockID variant = BlockIDs::AIR;
+                if (new_block != BlockIDs::AIR) {
+                    if (below == BlockIDs::MUD) variant = BlockIDs::MUD_FULL;
+                    else if (below == BlockIDs::WET_SAND) variant = BlockIDs::WET_SAND_FULL;
+                } else {
+                    if (below == BlockIDs::MUD_FULL) variant = BlockIDs::MUD;
+                    else if (below == BlockIDs::WET_SAND_FULL) variant = BlockIDs::WET_SAND;
+                }
+                if (variant != BlockIDs::AIR && below != variant) {
+                    below_chunk->set_block(bw_lx, bw_ly, bw_lz, variant);
+                    ChunkRenderData* bw_rd = cm.get_chunk_render_data_fast(bw_cx, bw_cy, bw_cz);
+                    if (bw_rd) {
+                        bw_rd->is_mesh_dirty = true;
+                        bw_rd->mesh_version++;
+                        bw_rd->dirty_subchunks |= static_cast<uint8_t>(1 << subchunk_index(bw_lx, bw_ly, bw_lz));
+                    }
+                    mud_cx = bw_cx;
+                    mud_cy = bw_cy;
+                    mud_cz = bw_cz;
+                    did_mud = true;
+                }
+            }
+        }
     }
-
-    const BlockID old_block = chunk_data->get_block(local_x, local_y, local_z);
-    if (old_block == new_block) return;
-
-    const BlockRegistry& registry = BlockRegistry::get_instance();
-    const BlockType& old_type = registry.get_block(old_block);
-    const BlockType& new_type = registry.get_block(new_block);
-    const bool old_opaque = HasProperty(old_type.properties, BlockProperty::Opaque);
-    const bool new_opaque = HasProperty(new_type.properties, BlockProperty::Opaque);
-
-    const uint8_t old_r = chunk_data->get_light_r(local_x, local_y, local_z);
-    const uint8_t old_g = chunk_data->get_light_g(local_x, local_y, local_z);
-    const uint8_t old_b = chunk_data->get_light_b(local_x, local_y, local_z);
-
-    chunk_data->set_block(local_x, local_y, local_z, new_block);
-
-    if (old_opaque != new_opaque) {
-        chunk_data->propagate_sky_light_column(local_x, local_z, chunk_world->get_chunk_data(chunk_x, chunk_y + 1, chunk_z));
-    }
-
-    light_propagator->update_block_light_incremental(chunk_x, chunk_y, chunk_z, chunk_x, chunk_y, chunk_z,
-                               local_x, local_y, local_z,
-                               old_block, new_block, old_r, old_g, old_b);
+    // Lock released — auto-locking accessors are safe now.
 
     chunk_world->mark_chunk_dirty(chunk_x, chunk_y, chunk_z);
-
-    ChunkRenderData* render_data = chunk_world->get_chunk_render_data(chunk_x, chunk_y, chunk_z);
-    if (render_data) {
-        render_data->is_mesh_dirty = true;
-        render_data->mesh_version++;
-        render_data->dirty_subchunks |= static_cast<uint8_t>(1 << subchunk_index(local_x, local_y, local_z));
-    }
-
     queue_player_edit_chunk_refresh(chunk_x, chunk_y, chunk_z);
-
-    post_block_change(world_x, world_y, world_z, new_block);
+    if (did_mud) {
+        chunk_world->mark_chunk_dirty(mud_cx, mud_cy, mud_cz);
+        mesh_manager->queue_dirty_chunk(mud_cx, mud_cy, mud_cz);
+    }
 }
 
 Dictionary BlockEditor::raycast(godot::Node* chunk_manager, const NodePath& player_path, double max_distance) const {
@@ -209,19 +257,24 @@ void BlockEditor::post_block_change(int32_t world_x, int32_t world_y, int32_t wo
 void BlockEditor::set_block_variant(int32_t world_x, int32_t world_y, int32_t world_z, BlockID block_id) {
     int32_t chunk_x, chunk_y, chunk_z, local_x, local_y, local_z;
     world_to_chunk_local(world_x, world_y, world_z, chunk_x, chunk_y, chunk_z, local_x, local_y, local_z);
-    ChunkData* chunk_data = chunk_world->get_chunk_data(chunk_x, chunk_y, chunk_z);
-    if (!chunk_data) return;
-    if (!is_local_in_bounds(local_x, local_y, local_z)) return;
-    const BlockID old_block = chunk_data->get_block(local_x, local_y, local_z);
-    if (old_block == block_id) return;
-    chunk_data->set_block(local_x, local_y, local_z, block_id);
-    chunk_world->mark_chunk_dirty(chunk_x, chunk_y, chunk_z);
-    ChunkRenderData* render_data = chunk_world->get_chunk_render_data(chunk_x, chunk_y, chunk_z);
-    if (render_data) {
-        render_data->is_mesh_dirty = true;
-        render_data->mesh_version++;
-        render_data->dirty_subchunks |= static_cast<uint8_t>(1 << subchunk_index(local_x, local_y, local_z));
+
+    ChunkMap& cm = chunk_world->get_chunk_map();
+    {
+        auto lock = cm.lock_all_exclusive();
+        ChunkData* chunk_data = cm.get_chunk_data_fast(chunk_x, chunk_y, chunk_z);
+        if (!chunk_data) return;
+        if (!is_local_in_bounds(local_x, local_y, local_z)) return;
+        const BlockID old_block = chunk_data->get_block_unsafe(local_x, local_y, local_z);
+        if (old_block == block_id) return;
+        chunk_data->set_block(local_x, local_y, local_z, block_id);
+        ChunkRenderData* render_data = cm.get_chunk_render_data_fast(chunk_x, chunk_y, chunk_z);
+        if (render_data) {
+            render_data->is_mesh_dirty = true;
+            render_data->mesh_version++;
+            render_data->dirty_subchunks |= static_cast<uint8_t>(1 << subchunk_index(local_x, local_y, local_z));
+        }
     }
+    chunk_world->mark_chunk_dirty(chunk_x, chunk_y, chunk_z);
     mesh_manager->queue_dirty_chunk(chunk_x, chunk_y, chunk_z);
 }
 

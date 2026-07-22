@@ -23,15 +23,16 @@ public:
     void light_propagate_remove(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue);
     void update_block_light_incremental(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b);
 
-    void try_fixup_chunk(uint64_t key, int32_t cx, int32_t cy, int32_t cz);
-
-private:
-    // _locked variants: assume caller already holds lock_all_exclusive().
-    // MUST NOT call mark_chunks_dirty_for_light or any auto-locking accessor.
-    void propagate_block_light_region_locked(int32_t cx, int32_t cy, int32_t cz);
+    // _locked BFS variants: caller MUST already hold lock_all_exclusive().
+    // Uses _fast accessors only. MUST NOT call mark_chunks_dirty_for_light.
     void light_propagate_add_locked(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& queue);
     void light_propagate_remove_locked(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue);
     void update_block_light_incremental_locked(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b);
+
+    void try_fixup_chunk(uint64_t key, int32_t cx, int32_t cy, int32_t cz);
+
+private:
+    void propagate_block_light_region_locked(int32_t cx, int32_t cy, int32_t cz);
 
     ChunkMap* chunk_map = nullptr;
     MeshManager* mesh_manager = nullptr;

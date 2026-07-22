@@ -224,7 +224,10 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
     ChunkData* chunk = chunk_map->get_chunk_data(cx, cy, cz);
     if (!chunk) return;
 
-    update_block_light_incremental_locked(origin_cx, origin_cy, origin_cz, cx, cy, cz, x, y, z, old_block, new_block, old_cell_r, old_cell_g, old_cell_b);
+    {
+        auto lock = chunk_map->lock_all_exclusive();
+        update_block_light_incremental_locked(origin_cx, origin_cy, origin_cz, cx, cy, cz, x, y, z, old_block, new_block, old_cell_r, old_cell_g, old_cell_b);
+    }
 
     if (mesh_manager) {
         mesh_manager->mark_chunks_dirty_for_light(origin_cx, origin_cy, origin_cz);
@@ -232,7 +235,8 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
 }
 
 // -------------------------------------------------------------------------
-// _locked variant: acquires lock_all_exclusive() internally, calls _locked BFS.
+// _locked variant: caller already holds lock_all_exclusive().
+// Uses _fast accessors only. MUST NOT call mark_chunks_dirty_for_light.
 // -------------------------------------------------------------------------
 void LightPropagator::update_block_light_incremental_locked(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b) {
     const BlockRegistry& registry = BlockRegistry::get_instance();
@@ -259,7 +263,6 @@ void LightPropagator::update_block_light_incremental_locked(int32_t origin_cx, i
         remove_b = old_type.light_b;
     }
 
-    auto lock = chunk_map->lock_all_exclusive();
     ChunkData* chunk = chunk_map->get_chunk_data_fast(cx, cy, cz);
     if (!chunk) return;
 

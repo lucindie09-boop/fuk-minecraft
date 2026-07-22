@@ -39,7 +39,23 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - Removed a committed Windows `.lnk` shortcut (`src/fuk-minecraft.lnk`) that leaked a local filesystem path; scrubbed it from git history (not just HEAD) via a history rewrite, then force-pushed. Added `*.lnk` to `.gitignore`.
 - Removed a stray empty file (`s`) and three orphaned Godot `.obj.import` files (`RealSkeleton.obj.import` and two `tools/*.obj.import` files pointing at build binaries, not real assets). Added `/s` and `*.import` to `.gitignore`.
 - Added a `LICENSE` file (GPL-3.0) — the repo had none before, meaning it was technically all-rights-reserved despite being public.
-- Added CI (`.github/workflows/build.yml`): builds via SCons on `windows-latest` for every push/PR, then runs `scons test` and the resulting `run_tests.exe`. Not yet extended to Linux/macOS builds.
+- Added CI (`.github/workflows/build.yml`): cross-platform matrix (ubuntu-latest, macos-latest, windows-latest), SCons build + test on every push/PR, TSan on Linux via `TSAN=1` flag, `tsan_suppressions.txt` for doctest/godot-cpp noise, timeouts on all steps.
+
+**Light-propagation lock fixes (7 deadlock classes, all resolved):**
+- Discovered that `lock_all()` returns `ShardLock` (shared_lock) but write paths in light propagation assumed mutual exclusion. Identified 5 deadlock classes (A–E) in the locking hierarchy.
+- **Deadlock A**: `process_completed_chunks:142` held `lock_all()` shared → else-branch called `propagate_block_light_region` → tried `lock_all_exclusive()` → shared→exclusive upgrade fails.
+- **Deadlocks B–D**: `propagate_block_light_region`, `light_propagate_add`, `light_propagate_remove` held `lock_all_exclusive()` → called `mark_chunks_dirty_for_light` → `get_chunk_render_data()` → shared_lock on same shards → self-deadlock. Fixed by moving `mark_chunks_dirty_for_light` calls outside the lock scope in all public wrappers.
+- **Deadlock E**: `block_editor.cpp:place_block` — unlocked `set_block` writes to ChunkData while mesh builders read under shared shard locks. Fixed by wrapping all ChunkData reads/writes in `lock_all_exclusive()`, using `_fast` accessors, calling `_locked` light variant, then releasing lock before auto-locking operations (mark_dirty, queue_dirty_chunk).
+- **Deadlock F (naming trap)**: `update_block_light_incremental_locked` acquired its own `lock_all_exclusive()` despite the `_locked` naming convention meaning "caller already holds lock". If `place_block` had called it from inside its own lock scope, same self-deadlock. Fixed by moving the lock acquisition to the public wrapper, making `_locked` truly lock-free.
+- **Bug G**: `player_light.hpp` lines 70/91 wrote `set_light_rgb` without any lock while light propagation BFS could run concurrently on worker threads. Fixed by adding `ChunkMap&` parameter to `update()`, acquiring `lock_all_exclusive()` for all ChunkData operations, binding BFS callbacks to public `_locked` methods, and deferring `mark_dirty` calls to after lock release.
+- `pending_light_removals_` protected with `std::mutex` — narrow scope in `try_fixup_chunk` (find/erase only, release before calling `propagate_block_light_region`).
+- Added `lock_all_exclusive()` to `ChunkMap` (returns `ExclusiveShardLock` with `std::unique_lock`).
+- Public `_locked` BFS methods (`light_propagate_add_locked`, `light_propagate_remove_locked`, `update_block_light_incremental_locked`) moved to public — contract documented: caller MUST already hold `lock_all_exclusive()`, uses `_fast` accessors only, MUST NOT call `mark_chunks_dirty_for_light`.
+
+**Concurrency tests and cross-platform CI:**
+- 9 concurrency regression tests in `tests/test_concurrency.cpp` using `TestShardMap` (mirrors ChunkMap's 64-shard architecture without needing `godot::RID` which segfaults without Godot runtime). Covers: shard lock concurrency, ascending-order deadlock prevention, exclusive serialization, PaletteStorage R/W, `pending_light_removals_` pattern, and RAII lock correctness.
+- 91 tests / 479 assertions total across 11 test files.
+- CI: cross-platform matrix (ubuntu/macos/windows), TSan on Linux via `TSAN=1` build flag, timeouts on all steps, plain tests skipped on TSan leg.
 
 ### In Progress
 - (none)
@@ -58,6 +74,7 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - **LOD approach**: after removing the group-merge system, the project settled on per-chunk distance-based stride/detail reduction (`lod_distance`/`lod_detail_level`) rather than re-introducing chunk merging — simpler to reason about and to keep correct at boundaries, at the cost of not reducing draw-call count the way merged groups did.
 - **Block definitions are data, not code**: `data/block_definitions.json` is the only place block properties/textures/emissive maps are defined; C++ and the texture-array generator both read from it.
 - Solid-block fast paths in the mesher require zeroing `solid_cache` at the start of every build — stale `BlockID`s from a reused thread-local builder previously caused wrong registry lookups in all-air sections.
+- **Locking hierarchy for ChunkData writes**: all ChunkData reads/writes must hold `lock_all_exclusive()`. Public `_locked` BFS methods use `_fast` accessors under that lock. Auto-locking accessors (`get_chunk_data`, `get_chunk_render_data`, `mark_chunks_dirty_for_light`, `queue_dirty_chunk`) acquire their own shared locks — they MUST NOT be called under `lock_all_exclusive()`. Public wrappers: acquire exclusive lock → call `_locked` → release lock → call auto-locking accessors for dirty-marking.
 
 ## Next Steps
 - Expand automated test coverage further: the `tests/` suite now has ~82 test cases / 463 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, and face emission, but concurrency (shard locking, cross-chunk writer races), LOD edge cases, and light propagation remove paths still lack regression tests.
@@ -72,7 +89,7 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - Block + light memory per chunk: dense layout was ~130KB; paletted layout is ~1–20KB on typical (uniform-heavy) terrain.
 - `data/block_definitions.json` is the single source of truth for block properties, per-face textures, and emissive maps — do not hardcode block properties in C++.
 - The old merged-mesh LOD system is gone; the current LOD system is stride/detail-based inside the greedy mesher, controlled by `lod_distance`/`lod_detail_level`.
-- CI runs on GitHub Actions (`.github/workflows/build.yml`), Windows-only, build + test on every push/PR.
+- CI runs on GitHub Actions (`.github/workflows/build.yml`), cross-platform matrix (ubuntu/macos/windows), TSan on Linux via `TSAN=1` flag, timeouts on all steps.
 - Performance numbers quoted in earlier sessions (e.g. ~1120 FPS idle, ~9,645 chunks loaded) came from profiling before the water surface, emissive maps, shadow-map removal, and new LOD system landed — treat them as historical, not current, until re-measured.
 
 ## Relevant Files
@@ -98,6 +115,6 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - `src/render/material_manager.hpp/cpp`: `get_water_material()`, per-frame parameter push to terrain + water
 - `src/render/environment_controller.cpp`: Sun light setup (shadows disabled)
 - `src/core/thread_pool.hpp`: Shared worker pool, `hardware_concurrency() - 1` sizing, high-priority queue
-- `.github/workflows/build.yml`: CI — SCons build + `scons test` + `run_tests.exe` on Windows
+- `.github/workflows/build.yml`: CI — cross-platform matrix (ubuntu/macos/windows), TSan on Linux
 - `LICENSE`: GPL-3.0
-- `tests/*.cpp`: doctest suite — ~82 test cases, 463 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, noise, and light propagation
+- `tests/*.cpp`: doctest suite — 91 tests, 479 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, noise, light propagation, and concurrency

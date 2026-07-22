@@ -112,12 +112,12 @@ void EnvironmentController::update_player_light(const godot::Vector3& player_pos
         player_pos,
         runtime_elapsed,
         initial_loading_duration,
-        [&cw](int32_t cx, int32_t cy, int32_t cz) { return cw.get_chunk_data(cx, cy, cz); },
+        cw.get_chunk_map(),
         [&lp](int32_t cx, int32_t cy, int32_t cz, std::vector<LightNode>& remove, std::vector<LightNode>& add) {
-            lp.light_propagate_remove(cx, cy, cz, remove, add);
+            lp.light_propagate_remove_locked(cx, cy, cz, remove, add);
         },
         [&lp](int32_t cx, int32_t cy, int32_t cz, std::vector<LightNode>& add) {
-            lp.light_propagate_add(cx, cy, cz, add);
+            lp.light_propagate_add_locked(cx, cy, cz, add);
         },
         [&mm](int32_t cx, int32_t cy, int32_t cz) { mm.mark_chunks_dirty_for_light(cx, cy, cz); }
     );
