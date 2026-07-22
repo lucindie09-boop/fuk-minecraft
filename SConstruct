@@ -78,6 +78,26 @@ if sys.platform != "win32":
     fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
     fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
     fuzz_light = fuzz_env.Program("bin/fuzz_light_propagation", ["tools/fuzz_light_propagation.cpp"] + fuzz_sources_common)
-    # Note: fuzz_mesh_builder requires full Godot linkage (gdextension_interface.h, etc.)
-    # and cannot be built in standalone fuzz environment
     Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light])
+
+    # Separate fuzz target for mesh_builder with full Godot linkage
+    # Clone base env to get godot-cpp library linkage, then override to clang
+    fuzz_godot_env = env.Clone()
+    fuzz_godot_env["CC"] = "clang"
+    fuzz_godot_env["CXX"] = "clang++"
+    fuzz_godot_env.Append(CPPDEFINES=["FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"])
+    fuzz_godot_env.Append(CCFLAGS=["-std=c++17", "-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
+    fuzz_godot_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
+    # Filter out GCC-specific flags that clang doesn't understand
+    if "-fno-gnu-unique" in fuzz_godot_env["CCFLAGS"]:
+        fuzz_godot_env["CCFLAGS"].remove("-fno-gnu-unique")
+    fuzz_sources_mesh = fuzz_sources_common + [
+        "src/mesh/mesh_builder.cpp",
+        "src/mesh/mesh_builder_faces.cpp",
+        "src/mesh/mesh_builder_greedy.cpp",
+        "src/mesh/chunk_neighbor_accessor.cpp",
+        "src/mesh/ambient_occlusion.cpp",
+        "src/mesh/smooth_lighting.cpp"
+    ]
+    fuzz_mesh = fuzz_godot_env.Program("bin/fuzz_mesh_builder", ["tools/fuzz_mesh_builder.cpp"] + fuzz_sources_mesh)
+    Alias("fuzz-godot", fuzz_mesh)
