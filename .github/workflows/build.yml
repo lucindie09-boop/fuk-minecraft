@@ -143,7 +143,9 @@ jobs:
 
       - name: Run clang-tidy
         run: |
-          clang-tidy -p . --header-filter=src/ \
+          # Extract source files from compile_commands.json to avoid duplicates
+          files=$(jq -r '.[].file' compile_commands.json | grep -E '^src/.*\.cpp$' | sort -u)
+          clang-tidy $files -p . --header-filter=src/ \
             -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
             2>&1 | tee clang-tidy-output.txt
           if [ -s clang-tidy-output.txt ]; then
