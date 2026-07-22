@@ -61,13 +61,15 @@ test_prog = test_env.Program("bin/run_tests", test_sources)
 Alias("test", test_prog)
 
 # LibFuzzer harnesses (Clang-only, Linux/macOS)
-# Build with: scons fuzz FUZZ=1  (requires clang++)
+# Build with: scons fuzz  (requires clang++)
 if sys.platform != "win32":
     fuzz_env = env.Clone()
     fuzz_env.Append(CPPPATH=["src/"])
     fuzz_env.Append(CCFLAGS=["-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
-    fuzz_sources_common = ["src/core/chunk_data.cpp", "src/core/block_types.cpp"]
+    # Use separate build dir to avoid .obj collisions with test environment
+    VariantDir("build/fuzz", "src", duplicate=1)
+    fuzz_sources_common = ["build/fuzz/core/chunk_data.cpp", "build/fuzz/core/block_types.cpp"]
     fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
     fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
     Alias("fuzz", [fuzz_palette, fuzz_chunk])
