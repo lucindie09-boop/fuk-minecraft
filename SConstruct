@@ -6,7 +6,7 @@ env.Append(CPPPATH=["src/"])
 
 # Generate compile_commands.json for clang-tidy static analysis
 env.Tool('compilation_db')
-env.CompilationDatabase('compile_commands.json')
+cdb = env.CompilationDatabase('compile_commands.json')
 
 # Optional TSan support (Linux/GCC/Clang only)
 tsan = ARGUMENTS.get("TSAN", "0")
@@ -27,7 +27,7 @@ sources = Glob("src/*.cpp") + Glob("src/*/*.cpp")
 lib_sources = [s for s in sources if os.path.basename(str(s)) not in ("terrain_debug.cpp", "benchmark.cpp")]
 
 library = env.SharedLibrary("bin/libgdextension{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=lib_sources)
-Default(library)
+Default(library, cdb)
 
 # Debug terrain renderer (standalone executable)
 debug_env = env.Clone()
