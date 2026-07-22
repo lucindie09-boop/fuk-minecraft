@@ -83,6 +83,9 @@ inline bool decode_rle_column(const uint8_t* body, size_t body_size, size_t& pos
         uint16_t block_id = body[pos + 4] | (body[pos + 5] << 8);
         pos += 6;
 
+        // Reject out-of-range block IDs (malformed input)
+        if (block_id >= MAX_BLOCK_TYPES) return false;
+
         for (uint16_t y = 0; y < length; y++) {
             int32_t wy = static_cast<int32_t>(start_y) + y;
             if (wy < CHUNK_HEIGHT) {
