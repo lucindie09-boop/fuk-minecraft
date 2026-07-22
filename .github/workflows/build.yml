@@ -6,7 +6,22 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            test_bin: ./bin/run_tests
+            tsan: 1
+          - os: macos-latest
+            test_bin: ./bin/run_tests
+            tsan: 0
+          - os: windows-latest
+            test_bin: .\bin\run_tests.exe
+            tsan: 0
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,9 +35,16 @@ jobs:
         run: pip install scons
 
       - name: Build
-        run: scons -j16
+        run: scons -j$(nproc || echo 4) TSAN=${{ matrix.tsan }}
 
-      - name: Test
-        run: |
-          scons test -j16
-          .\bin\run_tests.exe
+      - name: Build tests
+        run: scons test -j$(nproc || echo 4) TSAN=${{ matrix.tsan }}
+
+      - name: Run tests
+        run: ${{ matrix.test_bin }}
+
+      - name: Run tests (TSan)
+        if: matrix.tsan == 1
+        env:
+          TSAN_OPTIONS: suppressions=tsan_suppressions.txt halt_on_error=1
+        run: ${{ matrix.test_bin }}

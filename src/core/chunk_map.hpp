@@ -127,6 +127,14 @@ public:
         return sl;
     }
 
+    ExclusiveShardLock lock_all_exclusive() const {
+        ExclusiveShardLock sl;
+        sl.locks_.reserve(kNumShards);
+        for (auto& s : shards_)
+            sl.locks_.emplace_back(s.mutex);
+        return sl;
+    }
+
     // -- Per-shard chunk accessors (auto-locking) --
 
     [[nodiscard]] ChunkData* get_chunk_data(int32_t cx, int32_t cy, int32_t cz) const {

@@ -1,0 +1,9 @@
+# ThreadSanitizer suppressions for farlands tests
+# Reference: TSAN_OPTIONS=suppressions=tsan_suppressions.txt
+
+# doctest internals — false positives from its test runner state machine
+race:doctest*
+race:*doctest*
+
+# godot-cpp internal statics — not our code, not testable
+race:godot::*

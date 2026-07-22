@@ -10,24 +10,16 @@ using namespace godot;
 
 namespace VoxelEngine {
 
-
+// -------------------------------------------------------------------------
+// Public wrapper: acquire lock, call _locked, release, dirty-mark.
+// -------------------------------------------------------------------------
 void LightPropagator::propagate_block_light_region(int32_t cx, int32_t cy, int32_t cz) {
     ChunkData* chunk = chunk_map->get_chunk_data(cx, cy, cz);
     if (!chunk) return;
-    ChunkData* region_grid[3][3][3] = {};
-    auto lock = chunk_map->lock_all();
-    for (int dz = -1; dz <= 1; dz++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                region_grid[dx + 1][dy + 1][dz + 1] = chunk_map->get_chunk_data_fast(cx + dx, cy + dy, cz + dz);
-            }
-        }
+    {
+        auto lock = chunk_map->lock_all_exclusive();
+        propagate_block_light_region_locked(cx, cy, cz);
     }
-    BlockLightRegion light_region(region_grid);
-    std::vector<EmissiveSource> sources;
-    light_region.collect_emissive_sources(sources);
-    light_region.clear_block_light();
-    light_region.propagate_additive(sources);
     if (mesh_manager) {
         mesh_manager->mark_chunks_dirty_for_light(cx, cy, cz);
     }
@@ -59,6 +51,47 @@ void LightPropagator::propagate_from_existing_light(int32_t cx, int32_t cy, int3
 }
 
 void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& queue) {
+    {
+        auto lock = chunk_map->lock_all_exclusive();
+        light_propagate_add_locked(origin_cx, origin_cy, origin_cz, queue);
+    }
+    if (mesh_manager) {
+        mesh_manager->mark_chunks_dirty_for_light(origin_cx, origin_cy, origin_cz);
+    }
+}
+
+void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue) {
+    {
+        auto lock = chunk_map->lock_all_exclusive();
+        light_propagate_remove_locked(origin_cx, origin_cy, origin_cz, remove_queue, add_queue);
+    }
+    if (mesh_manager) {
+        mesh_manager->mark_chunks_dirty_for_light(origin_cx, origin_cy, origin_cz);
+    }
+}
+
+// -------------------------------------------------------------------------
+// _locked variants: caller already holds lock_all_exclusive().
+// MUST NOT call mark_chunks_dirty_for_light or any auto-locking accessor.
+// -------------------------------------------------------------------------
+
+void LightPropagator::propagate_block_light_region_locked(int32_t cx, int32_t cy, int32_t cz) {
+    ChunkData* region_grid[3][3][3] = {};
+    for (int dz = -1; dz <= 1; dz++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                region_grid[dx + 1][dy + 1][dz + 1] = chunk_map->get_chunk_data_fast(cx + dx, cy + dy, cz + dz);
+            }
+        }
+    }
+    BlockLightRegion light_region(region_grid);
+    std::vector<EmissiveSource> sources;
+    light_region.collect_emissive_sources(sources);
+    light_region.clear_block_light();
+    light_region.propagate_additive(sources);
+}
+
+void LightPropagator::light_propagate_add_locked(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& queue) {
     const BlockRegistry& registry = BlockRegistry::get_instance();
     static constexpr int16_t offsets[6][3] = {
         {1, 0, 0}, {-1, 0, 0},
@@ -67,7 +100,6 @@ void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, 
     };
 
     queue.reserve(512);
-    auto lock = chunk_map->lock_all();
     size_t idx = 0;
     while (idx < queue.size()) {
         const LightNode node = queue[idx++];
@@ -88,9 +120,10 @@ void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, 
 
             ChunkData* dst = chunk_map->get_chunk_data_fast(ncx, ncy, ncz);
             if (!dst) {
-pending_light_removals_.insert(chunk_map->get_chunk_key(ncx, ncy, ncz));
-continue;
-}
+                std::lock_guard<std::mutex> guard(pending_light_removals_mutex_);
+                pending_light_removals_.insert(chunk_map->get_chunk_key(ncx, ncy, ncz));
+                continue;
+            }
 
             const BlockID neighbor_block = dst->get_block_unsafe(nx, ny, nz);
             const BlockType& neighbor_type = registry.get_block(neighbor_block);
@@ -109,12 +142,9 @@ continue;
             }
         }
     }
-    if (mesh_manager) {
-        mesh_manager->mark_chunks_dirty_for_light(origin_cx, origin_cy, origin_cz);
-    }
 }
 
-void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue) {
+void LightPropagator::light_propagate_remove_locked(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue) {
     static constexpr int16_t offsets[6][3] = {
         {1, 0, 0}, {-1, 0, 0},
         {0, 1, 0}, {0, -1, 0},
@@ -123,7 +153,6 @@ void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_c
 
     remove_queue.reserve(512);
     add_queue.reserve(512);
-    auto lock = chunk_map->lock_all();
     size_t idx = 0;
     while (idx < remove_queue.size()) {
         const LightNode node = remove_queue[idx++];
@@ -140,9 +169,10 @@ void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_c
 
             ChunkData* dst = chunk_map->get_chunk_data_fast(ncx, ncy, ncz);
             if (!dst) {
-pending_light_removals_.insert(chunk_map->get_chunk_key(ncx, ncy, ncz));
-continue;
-}
+                std::lock_guard<std::mutex> guard(pending_light_removals_mutex_);
+                pending_light_removals_.insert(chunk_map->get_chunk_key(ncx, ncy, ncz));
+                continue;
+            }
 
             const uint8_t cur_r = dst->get_light_r(nx, ny, nz);
             const uint8_t cur_g = dst->get_light_g(nx, ny, nz);
@@ -172,26 +202,39 @@ continue;
             }
         }
     }
+}
+
+void LightPropagator::try_fixup_chunk(uint64_t key, int32_t cx, int32_t cy, int32_t cz) {
+    {
+        std::lock_guard<std::mutex> guard(pending_light_removals_mutex_);
+        auto it = pending_light_removals_.find(key);
+        if (it == pending_light_removals_.end()) return;
+        pending_light_removals_.erase(it);
+    }
+    propagate_block_light_region(cx, cy, cz);
+    if (mesh_manager) {
+        mesh_manager->mark_chunks_dirty_for_light(cx, cy, cz);
+    }
+}
+
+// -------------------------------------------------------------------------
+// update_block_light_incremental: public wrapper
+// -------------------------------------------------------------------------
+void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b) {
+    ChunkData* chunk = chunk_map->get_chunk_data(cx, cy, cz);
+    if (!chunk) return;
+
+    update_block_light_incremental_locked(origin_cx, origin_cy, origin_cz, cx, cy, cz, x, y, z, old_block, new_block, old_cell_r, old_cell_g, old_cell_b);
+
     if (mesh_manager) {
         mesh_manager->mark_chunks_dirty_for_light(origin_cx, origin_cy, origin_cz);
     }
 }
 
-
-void LightPropagator::try_fixup_chunk(uint64_t key, int32_t cx, int32_t cy, int32_t cz) {
-auto it = pending_light_removals_.find(key);
-if (it == pending_light_removals_.end()) return;
-pending_light_removals_.erase(it);
-propagate_block_light_region(cx, cy, cz);
-if (mesh_manager) {
-mesh_manager->mark_chunks_dirty_for_light(cx, cy, cz);
-}
-}
-
-void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b) {
-    ChunkData* chunk = chunk_map->get_chunk_data(cx, cy, cz);
-    if (!chunk) return;
-
+// -------------------------------------------------------------------------
+// _locked variant: acquires lock_all_exclusive() internally, calls _locked BFS.
+// -------------------------------------------------------------------------
+void LightPropagator::update_block_light_incremental_locked(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, int32_t cx, int32_t cy, int32_t cz, int32_t x, int32_t y, int32_t z, BlockID old_block, BlockID new_block, uint8_t old_cell_r, uint8_t old_cell_g, uint8_t old_cell_b) {
     const BlockRegistry& registry = BlockRegistry::get_instance();
     const BlockType& old_type = registry.get_block(old_block);
     const BlockType& new_type = registry.get_block(new_block);
@@ -216,6 +259,10 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
         remove_b = old_type.light_b;
     }
 
+    auto lock = chunk_map->lock_all_exclusive();
+    ChunkData* chunk = chunk_map->get_chunk_data_fast(cx, cy, cz);
+    if (!chunk) return;
+
     std::vector<LightNode> remove_queue;
     std::vector<LightNode> add_queue;
     remove_queue.reserve(64);
@@ -224,7 +271,7 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
     if (old_light_level > 0 && old_light_level > target_level) {
         chunk->set_light_rgb(x, y, z, 0, 0, 0);
         remove_queue.push_back({cx, cy, cz, static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(z), remove_r, remove_g, remove_b});
-        light_propagate_remove(cx, cy, cz, remove_queue, add_queue);
+        light_propagate_remove_locked(cx, cy, cz, remove_queue, add_queue);
     }
 
     if (target_level > 0) {
@@ -236,7 +283,6 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
             {0, 1, 0}, {0, -1, 0},
             {0, 0, 1}, {0, 0, -1}
         };
-        auto lock = chunk_map->lock_all();
         for (int i = 0; i < 6; i++) {
             int32_t ncx = cx;
             int32_t ncy = cy;
@@ -262,10 +308,7 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
     }
 
     if (!add_queue.empty()) {
-        light_propagate_add(cx, cy, cz, add_queue);
-    }
-    if (mesh_manager) {
-        mesh_manager->mark_chunks_dirty_for_light(cx, cy, cz);
+        light_propagate_add_locked(cx, cy, cz, add_queue);
     }
 }
 

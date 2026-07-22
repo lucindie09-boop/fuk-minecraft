@@ -4,6 +4,12 @@ import os, sys
 env = SConscript("godot-cpp/SConstruct")
 env.Append(CPPPATH=["src/"])
 
+# Optional TSan support (Linux/GCC/Clang only)
+tsan = ARGUMENTS.get("TSAN", "0")
+if tsan == "1" and sys.platform != "win32":
+    env.Append(CCFLAGS=["-fsanitize=thread", "-g", "-O1"])
+    env.Append(LINKFLAGS=["-fsanitize=thread"])
+
 # Collect all .cpp files in src/ and subdirectories
 sources = Glob("src/*.cpp") + Glob("src/*/*.cpp")
 

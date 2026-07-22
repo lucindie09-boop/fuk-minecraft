@@ -138,8 +138,10 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
             }
 
             uint64_t key = chunk_map.get_chunk_key(stage.chunk_x, stage.chunk_y, stage.chunk_z);
+            bool any_emissive_in_region = false;
+            bool took_fire_and_forget = false;
             {
-                auto lock = chunk_map.lock_all();
+                auto lock = chunk_map.lock_all_exclusive();
                 if (!chunk_map.contains_fast(key)) continue;
 
                 if (light_propagated_chunks.find(key) != light_propagated_chunks.end()) {
@@ -158,14 +160,16 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
                         }
                     }
                 }
+                any_emissive_in_region = any_emissive;
 
                 if (any_emissive && thread_pool) {
+                    took_fire_and_forget = true;
                     int32_t cx = stage.chunk_x;
                     int32_t cy = stage.chunk_y;
                     int32_t cz = stage.chunk_z;
                     thread_pool->fire_and_forget([this, cx, cy, cz, epoch]() {
                         {
-                            auto wlock = chunk_map.lock_all();
+                            auto wlock = chunk_map.lock_all_exclusive();
                             ChunkData* region_grid[3][3][3] = {};
                             for (int dz = -1; dz <= 1; dz++) {
                                 for (int dy = -1; dy <= 1; dy++) {
@@ -183,11 +187,12 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
                         chunk_scheduler.push_completed_light_propagation({cx, cy, cz, epoch});
                     });
                 } else {
-                    if (any_emissive && light_propagator) {
-                        light_propagator->propagate_block_light_region(stage.chunk_x, stage.chunk_y, stage.chunk_z);
-                    }
                     pending_chunk_dirty_mesh.push_back({stage.chunk_x, stage.chunk_y, stage.chunk_z, stage.epoch});
                 }
+            }
+
+            if (!took_fire_and_forget && any_emissive_in_region && light_propagator) {
+                light_propagator->propagate_block_light_region(stage.chunk_x, stage.chunk_y, stage.chunk_z);
             }
 
             continue;
