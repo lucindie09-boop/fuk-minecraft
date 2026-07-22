@@ -3,15 +3,18 @@
 #include <vector>
 #include <string>
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#endif
 
 namespace VoxelEngine {
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 bool BlockRegistry::load_from_json(const godot::String& json_path) noexcept {
     godot::Ref<godot::FileAccess> file = godot::FileAccess::open(json_path, godot::FileAccess::READ);
     if (!file.is_valid()) {
@@ -96,6 +99,7 @@ bool BlockRegistry::load_from_json(const godot::String& json_path) noexcept {
 
     return true;
 }
+#endif
 
 void BlockRegistry::initialize_default_blocks() noexcept {
     // Helper for solid, opaque, AO-generating blocks with all 6 faces visible.

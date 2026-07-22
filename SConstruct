@@ -63,13 +63,13 @@ Alias("test", test_prog)
 # LibFuzzer harnesses (Clang-only, Linux/macOS)
 # Build with: scons fuzz  (requires clang++)
 if sys.platform != "win32":
-    # Clone base env to get godot-cpp library linkage, then override for fuzzing
-    fuzz_env = env.Clone()
+    # Create fresh environment to avoid godot-cpp GCC-specific flags
+    fuzz_env = Environment()
     fuzz_env["CC"] = "clang"
     fuzz_env["CXX"] = "clang++"
-    # Filter out GCC-specific flags that clang doesn't support
-    fuzz_env["CCFLAGS"] = [f for f in fuzz_env["CCFLAGS"] if f != "-fno-gnu-unique"]
-    fuzz_env.Append(CCFLAGS=["-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
+    fuzz_env.Append(CPPPATH=["src/"])
+    fuzz_env.Append(CPPDEFINES=["FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"])
+    fuzz_env.Append(CCFLAGS=["-std=c++17", "-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
     # Use separate build dir to avoid .obj collisions with test environment
     VariantDir("build/fuzz", "src", duplicate=1)
