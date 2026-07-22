@@ -173,10 +173,7 @@ jobs:
       - name: Build tests with coverage
         shell: bash
         timeout-minutes: 15
-        run: |
-          CC=clang CXX=clang++ scons test -j$(nproc) \
-            CCFLAGS="--coverage" \
-            LINKFLAGS="--coverage"
+        run: CC=clang CXX=clang++ scons test -j$(nproc) COVERAGE=1
 
       - name: Run tests
         timeout-minutes: 5
