@@ -139,7 +139,7 @@ jobs:
 
       - name: Run clang-tidy
         run: |
-          clang-tidy src/**/*.cpp -p . \
+          clang-tidy src/**/*.cpp -p . --header-filter=src/ \
             -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
             2>&1 | tee clang-tidy-output.txt
           if [ -s clang-tidy-output.txt ]; then
