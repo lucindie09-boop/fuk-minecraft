@@ -8,6 +8,7 @@
 #include "worldgen/chunk_generator.hpp"
 #include "mesh/chunk_boundary_dirty.hpp"
 #include "core/crc32.hpp"
+#include "core/rle_codec.hpp"
 
 namespace VoxelEngine {
 
@@ -441,43 +442,7 @@ void ChunkWorld::save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t ch
 
     // Build RLE body into a byte buffer so we can CRC32 it before writing.
     std::vector<uint8_t> body;
-    body.reserve(32 * 32 * 6); // rough estimate
-
-    struct Run { uint16_t start_y; uint16_t length; uint16_t block_id; };
-    std::vector<Run> runs;
-    runs.reserve(32);
-    for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-        for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-            runs.clear();
-            uint16_t current_id = static_cast<uint16_t>(chunk_data->get_block_unsafe(x, 0, z));
-            uint16_t run_start = 0;
-            uint16_t run_len = 1;
-            for (int32_t y = 1; y < CHUNK_HEIGHT; y++) {
-                uint16_t block_id = static_cast<uint16_t>(chunk_data->get_block_unsafe(x, y, z));
-                if (block_id == current_id && run_len < 65535) {
-                    run_len++;
-                } else {
-                    runs.push_back({run_start, run_len, current_id});
-                    current_id = block_id;
-                    run_start = static_cast<uint16_t>(y);
-                    run_len = 1;
-                }
-            }
-            runs.push_back({run_start, run_len, current_id});
-
-            uint16_t num_runs = static_cast<uint16_t>(runs.size());
-            body.push_back(num_runs & 0xFF);
-            body.push_back((num_runs >> 8) & 0xFF);
-            for (const auto& run : runs) {
-                body.push_back(run.start_y & 0xFF);
-                body.push_back((run.start_y >> 8) & 0xFF);
-                body.push_back(run.length & 0xFF);
-                body.push_back((run.length >> 8) & 0xFF);
-                body.push_back(run.block_id & 0xFF);
-                body.push_back((run.block_id >> 8) & 0xFF);
-            }
-        }
-    }
+    encode_chunk_rle(*chunk_data, body);
 
     uint32_t checksum = crc32(body.data(), body.size());
 
@@ -554,27 +519,8 @@ bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t 
                 return false;
             }
 
-            // Decode body buffer
-            size_t pos = 0;
-            for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-                for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-                    if (pos + 2 > body_size) return false;
-                    uint16_t num_runs = body[pos] | (body[pos + 1] << 8);
-                    pos += 2;
-                    for (uint16_t r = 0; r < num_runs; r++) {
-                        if (pos + 6 > body_size) return false;
-                        uint16_t start_y = body[pos] | (body[pos + 1] << 8);
-                        uint16_t length  = body[pos + 2] | (body[pos + 3] << 8);
-                        uint16_t block_id = body[pos + 4] | (body[pos + 5] << 8);
-                        pos += 6;
-                        for (uint16_t y = 0; y < length; y++) {
-                            int32_t wy = static_cast<int32_t>(start_y) + y;
-                            if (wy < CHUNK_HEIGHT) {
-                                out_chunk_data.set_block(x, wy, z, static_cast<BlockID>(block_id));
-                            }
-                        }
-                    }
-                }
+            if (!decode_chunk_rle(body.data(), body_size, out_chunk_data)) {
+                return false;
             }
             out_chunk_data.compute_fully_solid();
             return true;
