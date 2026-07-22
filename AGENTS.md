@@ -77,10 +77,10 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - **Locking hierarchy for ChunkData writes**: all ChunkData reads/writes must hold `lock_all_exclusive()`. Public `_locked` BFS methods use `_fast` accessors under that lock. Auto-locking accessors (`get_chunk_data`, `get_chunk_render_data`, `mark_chunks_dirty_for_light`, `queue_dirty_chunk`) acquire their own shared locks — they MUST NOT be called under `lock_all_exclusive()`. Public wrappers: acquire exclusive lock → call `_locked` → release lock → call auto-locking accessors for dirty-marking.
 
 ## Next Steps
-- Expand automated test coverage further: the `tests/` suite now has ~82 test cases / 463 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, and face emission, but concurrency (shard locking, cross-chunk writer races), LOD edge cases, and light propagation remove paths still lack regression tests.
-- Extend CI to Linux and/or macOS builds — it currently only builds/tests on `windows-latest`.
+- Expand automated test coverage further: the `tests/` suite now has 91 test cases / 479 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, and concurrency (shard locking, exclusive serialization, PaletteStorage R/W), but LOD edge cases, light propagation remove paths, and cross-chunk writer races still lack regression tests.
 - No gameplay layer exists yet beyond block break/place (no inventory, crafting, mobs, multiplayer); `player.gd` remains an explicit temporary placeholder pending a C++ player controller.
 - Re-benchmark and refresh any performance numbers before quoting them externally (e.g. in the README) — the last detailed profiling pass predates the water surface, emissive maps, shadow-map removal, and the new stride-based LOD system.
+- Replace `lock_all_exclusive()` on hot paths with key-tracking `lock_keys()` for better concurrency (only locks shards that are actually accessed, allows concurrent writes to different shards).
 
 ## Critical Context
 - Chunk size is 32×32×32 (`CHUNK_WIDTH`/`CHUNK_HEIGHT`/`CHUNK_DEPTH` in `chunk_coords.hpp`), world height 1024 (`WORLD_HEIGHT_Y`).
