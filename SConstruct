@@ -10,6 +10,12 @@ if tsan == "1" and sys.platform != "win32":
     env.Append(CCFLAGS=["-fsanitize=thread", "-g", "-O1"])
     env.Append(LINKFLAGS=["-fsanitize=thread"])
 
+# Optional ASan+UBSan support (Linux/GCC/Clang only)
+asan = ARGUMENTS.get("ASAN", "0")
+if asan == "1" and sys.platform != "win32":
+    env.Append(CCFLAGS=["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
+    env.Append(LINKFLAGS=["-fsanitize=address,undefined"])
+
 # Collect all .cpp files in src/ and subdirectories
 sources = Glob("src/*.cpp") + Glob("src/*/*.cpp")
 
@@ -29,7 +35,7 @@ Alias("debug", debug_prog)
 bench_env = env.Clone()
 bench_env.Append(CPPPATH=["src/"])
 bench_env.Append(LIBS=[])
-bench_sources = ["tools/benchmark.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp", "src/mesh/mesh_builder.cpp", "src/mesh/mesh_builder_faces.cpp", "src/mesh/mesh_builder_greedy.cpp", "src/mesh/chunk_neighbor_accessor.cpp", "src/mesh/ambient_occlusion.cpp", "src/mesh/smooth_lighting.cpp"]
+bench_sources = ["tools/benchmark.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp", "src/mesh/mesh_builder.cpp", "src/mesh/mesh_builder_faces.cpp", "src/mesh/mesh_builder_greedy.cpp", "src/mesh/chunk_neighbor_accessor.cpp", "src/mesh/ambient_occlusion.cpp", "src/mesh/smooth_lighting.cpp", "src/lighting/block_light_region.cpp"]
 bench_prog = bench_env.Program("bin/benchmark", bench_sources)
 Alias("bench", bench_prog)
 
@@ -53,3 +59,15 @@ test_sources = Glob("build/test_src/*.cpp") + [
 ]
 test_prog = test_env.Program("bin/run_tests", test_sources)
 Alias("test", test_prog)
+
+# LibFuzzer harnesses (Clang-only, Linux/macOS)
+# Build with: scons fuzz FUZZ=1  (requires clang++)
+if sys.platform != "win32":
+    fuzz_env = env.Clone()
+    fuzz_env.Append(CPPPATH=["src/"])
+    fuzz_env.Append(CCFLAGS=["-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
+    fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
+    fuzz_sources_common = ["src/core/chunk_data.cpp", "src/core/block_types.cpp"]
+    fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
+    fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
+    Alias("fuzz", [fuzz_palette, fuzz_chunk])

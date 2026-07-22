@@ -1,5 +1,6 @@
 #include "worldgen/chunk_generator.hpp"
 #include "mesh/mesh_builder.hpp"
+#include "lighting/block_light_region.hpp"
 #include "core/chunk_data.hpp"
 #include "core/block_types.hpp"
 #include <cstdio>
@@ -90,6 +91,50 @@ static BenchResult bench_palette_ops(int n) {
     return {"palette_write_avg_ms", avg};
 }
 
+static BenchResult bench_light_propagation(int n) {
+    VoxelEngine::BlockRegistry::get_instance().initialize_default_blocks();
+
+    // 3×3×3 grid of chunks with an emissive block in the center
+    VoxelEngine::ChunkData region[3][3][3];
+    for (int dz = 0; dz < 3; dz++)
+        for (int dy = 0; dy < 3; dy++)
+            for (int dx = 0; dx < 3; dx++)
+                region[dz][dy][dx].clear();
+    region[1][1][1].set_block(16, 16, 16, VoxelEngine::BlockIDs::LIGHT_BLOCK);
+
+    VoxelEngine::ChunkData* grid[3][3][3];
+    for (int dz = 0; dz < 3; dz++)
+        for (int dy = 0; dy < 3; dy++)
+            for (int dx = 0; dx < 3; dx++)
+                grid[dz][dy][dx] = &region[dz][dy][dx];
+
+    VoxelEngine::BlockLightRegion light_region(grid);
+    std::vector<VoxelEngine::EmissiveSource> sources;
+
+    // Warmup
+    for (int i = 0; i < 50; i++) {
+        light_region.clear_block_light();
+        sources.clear();
+        light_region.collect_emissive_sources(sources);
+        light_region.propagate_additive(sources);
+    }
+
+    VoxelEngine::PerformanceTimer perf;
+    for (int i = 0; i < n; i++) {
+        light_region.clear_block_light();
+        sources.clear();
+        VoxelEngine::ScopedTimer timer(perf, VoxelEngine::TimerID::LightPropagation);
+        light_region.collect_emissive_sources(sources);
+        light_region.propagate_additive(sources);
+    }
+
+    double avg = perf.get_avg(VoxelEngine::TimerID::LightPropagation);
+    printf("  light_prop:     avg=%.3f ms  min=%.3f ms  max=%.3f ms  (n=%d)\n",
+           avg, perf.get_min(VoxelEngine::TimerID::LightPropagation),
+           perf.get_max(VoxelEngine::TimerID::LightPropagation), n);
+    return {"light_propagation_avg_ms", avg};
+}
+
 struct BaselineEntry {
     std::string name;
     double max_avg_ms;
@@ -130,6 +175,7 @@ int main(int argc, char** argv) {
     results.push_back(bench_generation(1000));
     results.push_back(bench_meshing(1000));
     results.push_back(bench_palette_ops(100));
+    results.push_back(bench_light_propagation(1000));
 
     if (!check_mode || !baseline_path) return 0;
 

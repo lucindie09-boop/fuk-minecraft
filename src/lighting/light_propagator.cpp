@@ -58,7 +58,29 @@ void LightPropagator::propagate_from_existing_light(int32_t cx, int32_t cy, int3
 
 void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& queue) {
     {
-        auto lock = chunk_map->lock_all_exclusive();
+        // BFS can reach at most 1 chunk in each direction (max light level 15,
+        // chunk size 32). Collect all seed chunks' 3×3×3 neighborhoods and
+        // lock only those shards.
+        std::vector<uint64_t> keys;
+        keys.reserve(27 * 4);
+        bool seen[ChunkMap::kNumShards] = {};
+        auto add_key = [&](uint64_t k) {
+            size_t s = k % ChunkMap::kNumShards;
+            if (!seen[s]) { seen[s] = true; keys.push_back(k); }
+        };
+        // Origin chunk + its 3×3×3
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    add_key(chunk_map->get_chunk_key(origin_cx + dx, origin_cy + dy, origin_cz + dz));
+        // Each seed node's chunk + its 3×3×3
+        for (auto& node : queue) {
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                        add_key(chunk_map->get_chunk_key(node.cx + dx, node.cy + dy, node.cz + dz));
+        }
+        auto lock = chunk_map->lock_keys_exclusive(keys);
         light_propagate_add_locked(origin_cx, origin_cy, origin_cz, queue);
     }
     if (mesh_manager) {
@@ -68,7 +90,25 @@ void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, 
 
 void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_cy, int32_t origin_cz, std::vector<LightNode>& remove_queue, std::vector<LightNode>& add_queue) {
     {
-        auto lock = chunk_map->lock_all_exclusive();
+        // Same bounded-reach reasoning as light_propagate_add.
+        std::vector<uint64_t> keys;
+        keys.reserve(27 * 4);
+        bool seen[ChunkMap::kNumShards] = {};
+        auto add_key = [&](uint64_t k) {
+            size_t s = k % ChunkMap::kNumShards;
+            if (!seen[s]) { seen[s] = true; keys.push_back(k); }
+        };
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    add_key(chunk_map->get_chunk_key(origin_cx + dx, origin_cy + dy, origin_cz + dz));
+        for (auto& node : remove_queue) {
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                        add_key(chunk_map->get_chunk_key(node.cx + dx, node.cy + dy, node.cz + dz));
+        }
+        auto lock = chunk_map->lock_keys_exclusive(keys);
         light_propagate_remove_locked(origin_cx, origin_cy, origin_cz, remove_queue, add_queue);
     }
     if (mesh_manager) {
@@ -231,7 +271,18 @@ void LightPropagator::update_block_light_incremental(int32_t origin_cx, int32_t 
     if (!chunk) return;
 
     {
-        auto lock = chunk_map->lock_all_exclusive();
+        // BFS from a single block change can reach at most 1 chunk in each
+        // direction (max light level 15 < chunk size 32). Lock 3×3×3 around
+        // both the origin and center chunk positions.
+        uint64_t keys[27 * 2];
+        int idx = 0;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    keys[idx++] = chunk_map->get_chunk_key(origin_cx + dx, origin_cy + dy, origin_cz + dz);
+                    keys[idx++] = chunk_map->get_chunk_key(cx + dx, cy + dy, cz + dz);
+                }
+        auto lock = chunk_map->lock_keys_exclusive(keys);
         update_block_light_incremental_locked(origin_cx, origin_cy, origin_cz, cx, cy, cz, x, y, z, old_block, new_block, old_cell_r, old_cell_g, old_cell_b);
     }
 

@@ -60,7 +60,22 @@ public:
         std::vector<std::array<int32_t, 3>> dirty_chunks;
 
         {
-            auto lock = chunk_map.lock_all_exclusive();
+            // BFS from remove + add can each reach at most 1 chunk in each
+            // direction (max light level 12 < chunk size 32). Lock the union
+            // of 3×3×3 neighborhoods around old and new chunk positions.
+            std::vector<uint64_t> keys;
+            keys.reserve(54);
+            if (last_x != INT32_MIN) {
+                for (int dz = -1; dz <= 1; dz++)
+                    for (int dy = -1; dy <= 1; dy++)
+                        for (int dx = -1; dx <= 1; dx++)
+                            keys.push_back(chunk_map.get_chunk_key(old_cx + dx, old_cy + dy, old_cz + dz));
+            }
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                        keys.push_back(chunk_map.get_chunk_key(new_cx + dx, new_cy + dy, new_cz + dz));
+            auto lock = chunk_map.lock_keys_exclusive(keys);
 
             // Remove light from old position
             if (last_x != INT32_MIN) {

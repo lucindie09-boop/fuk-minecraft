@@ -16,7 +16,7 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - Dynamic mesh budget: visible-chunk ratio scales `mesh_rebuild_budget`/`upload_budget` from 0.5× (sparse) to 1.0× (full).
 - Collision: binary-search AABB approach (a 3D DDA variant was tried and reverted after side-face ghosting bugs).
 - **Sharded chunk map**: 64 shards, each with its own `shared_mutex` + `unordered_map`. `ShardLock`/`ExclusiveShardLock` RAII types; `lock_chunk()`, `lock_keys()`, `lock_all()` for ordered multi-shard locking. Single-chunk/block accessors lock only their own shard; batch methods lock all relevant shards in ascending order to avoid deadlock.
-- **PaletteStorage** (blocks and light): 8 × 16³ paletted sections per chunk replace the old dense arrays. Uniform sections (all air, all stone) cost only a palette entry; non-uniform sections use 4/8/16-bit indices as needed. Per-chunk memory dropped from ~130KB to ~1–20KB on typical terrain (was ~1.25GB → ~10–200MB at ~9,645 loaded chunks in earlier measurements; not re-benchmarked since).
+- **PaletteStorage** (blocks and light): 8 × 16³ paletted sections per chunk replace the old dense arrays. Uniform sections (all air, all stone) cost only a palette entry; non-uniform sections use 4/8/16-bit indices as needed. Per-chunk memory dropped from ~130KB to ~1–20KB on typical terrain.
 - Renamed Mountains→StonePlateau biome across enum, block selection, and debug renderers.
 - Fixed several correctness bugs found via play-testing: incorrect interior-chunk mesh culling next to non-fully-solid neighbors; a Y-index formula bug in `count_section_blocks`; stale `solid_cache` entries causing missing faces (fixed by zeroing at build start); an editor-viewport `_process` bug.
 - Added translucent water as a second mesh surface with its own shader (`voxel_shader_water.gdshader`, `voxel_material_water.tres`) — edge fade, tint, shimmer, Beer-Lambert depth absorption — and wired sky/fog/player-light parameter updates to both terrain and water materials every frame.
@@ -39,7 +39,7 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - Removed a committed Windows `.lnk` shortcut (`src/fuk-minecraft.lnk`) that leaked a local filesystem path; scrubbed it from git history (not just HEAD) via a history rewrite, then force-pushed. Added `*.lnk` to `.gitignore`.
 - Removed a stray empty file (`s`) and three orphaned Godot `.obj.import` files (`RealSkeleton.obj.import` and two `tools/*.obj.import` files pointing at build binaries, not real assets). Added `/s` and `*.import` to `.gitignore`.
 - Added a `LICENSE` file (GPL-3.0) — the repo had none before, meaning it was technically all-rights-reserved despite being public.
-- Added CI (`.github/workflows/build.yml`): cross-platform matrix (ubuntu-latest, macos-latest, windows-latest), SCons build + test on every push/PR, TSan on Linux via `TSAN=1` flag, `tsan_suppressions.txt` for doctest/godot-cpp noise, timeouts on all steps.
+- Added CI (`.github/workflows/build.yml`): cross-platform matrix (ubuntu-latest, macos-latest, windows-latest), SCons build + test on every push/PR, TSan on Linux via `TSAN=1` flag, `tsan_suppressions.txt` for doctest/godot-cpp noise, timeouts on all steps. Added ASan+UBSan leg on ubuntu.
 
 **Light-propagation lock fixes (7 deadlock classes, all resolved):**
 - Discovered that `lock_all()` returns `ShardLock` (shared_lock) but write paths in light propagation assumed mutual exclusion. Identified 5 deadlock classes (A–E) in the locking hierarchy.
@@ -52,23 +52,45 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - Added `lock_all_exclusive()` to `ChunkMap` (returns `ExclusiveShardLock` with `std::unique_lock`).
 - Public `_locked` BFS methods (`light_propagate_add_locked`, `light_propagate_remove_locked`, `update_block_light_incremental_locked`) moved to public — contract documented: caller MUST already hold `lock_all_exclusive()`, uses `_fast` accessors only, MUST NOT call `mark_chunks_dirty_for_light`.
 
-**Concurrency tests and cross-platform CI:**
-- 10 concurrency regression tests in `tests/test_concurrency.cpp` using `TestShardMap` (mirrors ChunkMap's 64-shard architecture without needing `godot::RID` which segfaults without Godot runtime). Covers: shard lock concurrency, ascending-order deadlock prevention, exclusive serialization, PaletteStorage R/W, `pending_light_removals_` pattern, RAII lock correctness, and `OrderedExclusiveShardLock` target verification.
-- 92 tests / 481 assertions total across 11 test files.
-- CI: cross-platform matrix (ubuntu/macos/windows), TSan on Linux via `TSAN=1` build flag, timeouts on all steps, plain tests skipped on TSan leg. Benchmark runs on non-TSan legs and logs results.
-
-**Targeted shard locking (`lock_keys_exclusive`):**
+**Targeted shard locking (`lock_keys_exclusive`) — fully migrated:**
 - Added `lock_keys_exclusive<N>()` to `ChunkMap` — returns `ExclusiveShardLock` on only the shards whose keys appear in the input, in ascending shard order (deadlock-safe). Template and vector overloads.
-- Migrated 4 hot paths from `lock_all_exclusive()` (all 64 shards) to `lock_keys_exclusive()`:
+- Migrated ALL hot paths from `lock_all_exclusive()` (all 64 shards) to `lock_keys_exclusive()`:
   - `set_block_variant()` — 1 chunk key
   - `propagate_block_light_region()` — 27 keys (3×3×3 neighborhood)
   - `fire_and_forget` lambda in `chunk_world.cpp` — 27 keys (3×3×3 neighborhood)
   - `update()` outer scope in `chunk_world.cpp` — 28 keys (1 center + 3×3×3 neighbors)
-- Remaining BFS call sites (`place_block`, `light_propagate_add/remove`, `update_block_light_incremental`, `PlayerLight::update`) still use `lock_all_exclusive()` due to unbounded BFS reach — deferred to a future phase.
+  - `place_block` (block_editor.cpp) — 27 keys (3×3×3 center)
+  - `light_propagate_add` — origin 3×3×3 + each seed node's 3×3×3, deduplicated via `seen[]`
+  - `light_propagate_remove` — same pattern as add
+  - `update_block_light_incremental` — 54 keys (origin + center 3×3×3)
+  - `PlayerLight::update` — vector of up to 54 keys (old+new chunk 3×3×3)
+- BFS bounded reach: max light level 15 < chunk size 32, so 3×3×3 neighborhood (27 keys) covers all BFS paths from a single seed chunk.
+
+**Concurrency tests and cross-platform CI:**
+- 16 concurrency regression tests in `tests/test_concurrency.cpp` using `TestShardMap` (mirrors ChunkMap's 64-shard architecture without needing `godot::RID`). Covers: shard lock concurrency, ascending-order deadlock prevention, exclusive serialization, PaletteStorage R/W, `pending_light_removals_` pattern, RAII lock correctness, `OrderedExclusiveShardLock` target verification, light removal tests, cross-chunk writer race tests, and `pending_light_removals_` stress test.
+- 102 tests / 525 assertions total across 11 test files.
+- CI: cross-platform matrix with 4 legs — ubuntu TSan, ubuntu ASan+UBSan, ubuntu plain, macos plain, windows plain. Benchmark runs on non-sanitizer legs with `--check` regression detection.
 
 **Expanded benchmark tool:**
-- `tools/benchmark.cpp` now benchmarks three hot paths: `generate_chunk` (1,000 iters), `build_mesh` (1,000 iters), and `palette_write` (100 full-chunk fills).
-- Wired into CI (`scons bench`) on non-TSan legs; output logged per run for regression tracking.
+- `tools/benchmark.cpp` benchmarks four hot paths: `generate_chunk` (1,000 iters), `build_mesh` (1,000 iters), `palette_write` (100 full-chunk fills), and `light_propagation` (1,000 iters on 3×3×3 grid with emissive source).
+- `benchmark_baseline.txt` checked into repo with 2× measured values as regression thresholds.
+- `--check <baseline>` mode exits non-zero on regression; wired into CI.
+- `LightPropagation` TimerID added to `performance_timer.hpp`.
+
+**Save format versioning (chunk persistence):**
+- Chunk files bumped from v2 to v3: header now includes a CRC32 checksum of the RLE body.
+- Format: `[width:u32][height:u32][depth:u32][version:u32=3][crc32:u32][RLE body...]`.
+- `load_chunk_from_disk` handles v3 (CRC32 verified), v2 (legacy RLE, no check), and v1 (flat, legacy) transparently.
+- Corrupted v3 files are rejected at load time (returns `false`).
+- `crc32.hpp` is a header-only IEEE 802.3 CRC32 implementation in `src/core/`.
+
+**Sanitizer/fuzz infrastructure:**
+- Added `ASAN=1` build flag to SConstruct (ASan+UBSan, Linux/Clang only, mirrors TSan pattern).
+- Added ASan+UBSan CI leg on ubuntu-latest with `halt_on_error=1` and `detect_leaks=1`.
+- Added libFuzzer harnesses (Linux/Clang only, `-fsanitize=fuzzer,address,undefined`):
+  - `tools/fuzz_palette.cpp` — random set/get on `ChunkData`
+  - `tools/fuzz_chunk_load.cpp` — random `ChunkData` header parsing
+- Built via `scons fuzz` target.
 
 ### In Progress
 - (none)
@@ -87,12 +109,12 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - **LOD approach**: after removing the group-merge system, the project settled on per-chunk distance-based stride/detail reduction (`lod_distance`/`lod_detail_level`) rather than re-introducing chunk merging — simpler to reason about and to keep correct at boundaries, at the cost of not reducing draw-call count the way merged groups did.
 - **Block definitions are data, not code**: `data/block_definitions.json` is the only place block properties/textures/emissive maps are defined; C++ and the texture-array generator both read from it.
 - Solid-block fast paths in the mesher require zeroing `solid_cache` at the start of every build — stale `BlockID`s from a reused thread-local builder previously caused wrong registry lookups in all-air sections.
-- **Locking hierarchy for ChunkData writes**: all ChunkData reads/writes must hold `lock_all_exclusive()`. Public `_locked` BFS methods use `_fast` accessors under that lock. Auto-locking accessors (`get_chunk_data`, `get_chunk_render_data`, `mark_chunks_dirty_for_light`, `queue_dirty_chunk`) acquire their own shared locks — they MUST NOT be called under `lock_all_exclusive()`. Public wrappers: acquire exclusive lock → call `_locked` → release lock → call auto-locking accessors for dirty-marking.
+- **Locking hierarchy for ChunkData writes**: all ChunkData reads/writes must hold `lock_all_exclusive()` or `lock_keys_exclusive()` for targeted shards. Public `_locked` BFS methods use `_fast` accessors under that lock. Auto-locking accessors (`get_chunk_data`, `get_chunk_render_data`, `mark_chunks_dirty_for_light`, `queue_dirty_chunk`) acquire their own shared locks — they MUST NOT be called under an exclusive lock. Public wrappers: acquire exclusive lock → call `_locked` → release lock → call auto-locking accessors for dirty-marking.
 
 ## Next Steps
-- Expand automated test coverage further: the `tests/` suite now has 92 test cases / 481 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, and concurrency (shard locking, exclusive serialization, PaletteStorage R/W), but LOD edge cases, light propagation remove paths, and cross-chunk writer races still lack regression tests.
+- Expand automated test coverage further: the `tests/` suite now has 102 test cases / 525 assertions covering palette storage, mesh culling, greedy mesher, LOD, neighbor accessor, face emission, concurrency (shard locking, exclusive serialization, PaletteStorage R/W, cross-chunk writer races, light removal), but edge cases in light propagation BFS paths across chunk boundaries still lack regression tests.
 - No gameplay layer exists yet beyond block break/place (no inventory, crafting, mobs, multiplayer); `player.gd` remains an explicit temporary placeholder pending a C++ player controller.
-- Replace `lock_all_exclusive()` on remaining BFS hot paths (`place_block`, `light_propagate_add/remove`, `update_block_light_incremental`, `PlayerLight::update`) with key-tracking `lock_keys()` — requires either a two-pass collect-then-lock approach or radius pre-lock since BFS has unbounded reach.
+- Expand fuzz coverage: harness for `propagate_chunk_block_light_additive`, harness for `build_mesh` with random block layouts.
 
 ## Critical Context
 - Chunk size is 32×32×32 (`CHUNK_WIDTH`/`CHUNK_HEIGHT`/`CHUNK_DEPTH` in `chunk_coords.hpp`), world height 1024 (`WORLD_HEIGHT_Y`).
@@ -101,32 +123,48 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - Block + light memory per chunk: dense layout was ~130KB; paletted layout is ~1–20KB on typical (uniform-heavy) terrain.
 - `data/block_definitions.json` is the single source of truth for block properties, per-face textures, and emissive maps — do not hardcode block properties in C++.
 - The old merged-mesh LOD system is gone; the current LOD system is stride/detail-based inside the greedy mesher, controlled by `lod_distance`/`lod_detail_level`.
-- CI runs on GitHub Actions (`.github/workflows/build.yml`), cross-platform matrix (ubuntu/macos/windows), TSan on Linux via `TSAN=1` flag, timeouts on all steps.
-- Performance numbers quoted in earlier sessions (e.g. ~1120 FPS idle, ~9,645 chunks loaded) came from profiling before the water surface, emissive maps, shadow-map removal, and new LOD system landed — treat them as historical, not current, until re-measured.
+- CI runs on GitHub Actions (`.github/workflows/build.yml`): 4 legs — ubuntu TSan, ubuntu ASan+UBSan, ubuntu plain, macos plain, windows plain. Benchmark with `--check` on non-sanitizer legs.
+- Light propagation: `propagate_chunk_block_light_additive` is additive-only (single-chunk, no ChunkMap needed). Multi-chunk BFS requires `LightPropagator` + ChunkMap. To simulate removal, call `clear_light()` before re-propagating.
+- BFS bounded reach: max light level 15 < chunk size 32, so `lock_keys_exclusive` with 3×3×3 neighborhoods (27 keys) covers all BFS paths from a single seed chunk.
 
 ## Relevant Files
-- `src/core/chunk_data.hpp/cpp`: `PaletteStorage`, `PalSection`, section-based block + light accessors
-- `src/core/chunk_map.hpp`: Sharded locking (64 shards, `ShardLock`, `lock_keys`, `lock_all`, auto-locking methods)
+- `src/core/chunk_data.hpp/cpp`: `PaletteStorage`, `PalSection`, section-based block + light accessors, `clear_light()`, `clear_block_light()`, `clear_sky_light()`
+- `src/core/chunk_map.hpp`: Sharded locking (64 shards, `ShardLock`, `lock_keys`, `lock_keys_exclusive`, `lock_all`, `lock_all_exclusive`, auto-locking methods)
 - `src/core/chunk_coords.hpp`: Constants (`CHUNK_WIDTH`, `SECTION_HEIGHT`, `WORLD_HEIGHT_Y`, etc.)
 - `src/core/frustum.hpp`: Frustum utility (AABB test, chunk visibility)
 - `src/core/block_types.hpp/cpp`: `BlockRegistry`, `load_from_json` — reads `data/block_definitions.json`
+- `src/core/crc32.hpp`: Header-only IEEE 802.3 CRC32 — used for chunk save checksum
+- `src/core/performance_timer.hpp`: `TIMER_LIST` macro (includes `LightPropagation`), `PerformanceTimer`, `ScopedTimer`
+- `src/core/thread_pool.hpp`: Shared worker pool, `hardware_concurrency() - 1` sizing, high-priority queue, uses `std::abort()` for TSan compat
 - `data/block_definitions.json`: Single source of truth for block properties, textures, emissive maps
 - `src/mesh/mesh_manager.hpp/cpp`: Per-chunk mesh builds, upload, instance management, `lod_distance`/`lod_detail_level` stride logic
 - `src/mesh/mesh_builder.cpp` / `mesh_builder_greedy.cpp` / `mesh_builder_faces.cpp`: Greedy meshing, solid-cache fast paths, water/emissive face routing
+- `src/mesh/chunk_neighbor_accessor.hpp/cpp`: 26 neighbor pointers for mesh building
 - `src/worldgen/chunk_generator.hpp/cpp`: Biome/terrain generation
 - `src/worldgen/vegetation_generator.hpp/cpp`: Tree placement, cross-chunk deferred writes
 - `src/worldgen/texture_array_generator.hpp`: Diffuse + emissive `Texture2DArray` generation from block definitions
 - `src/world/world_updater.hpp/cpp`: `set_frustum()`, budgets, frustum pass
+- `src/world/chunk_world.cpp`: Save/load (v3+CRC32), all hot paths use `lock_keys_exclusive()`
+- `src/world/block_editor.cpp`: `place_block` (27 keys), `set_block_variant` (1 key)
+- `src/world/player_light.hpp`: `update()` uses `lock_keys_exclusive()` with vector of up to 54 keys
+- `src/lighting/light_propagator.hpp/cpp`: Public wrappers + public `_locked` variants, all 4 use `lock_keys_exclusive()`
+- `src/lighting/block_light_region.hpp/cpp`: `propagate_chunk_block_light_additive()` — single-chunk additive-only
+- `src/render/environment_controller.cpp`: `update_player_light` passes `ChunkMap&`, binds `_locked` BFS methods
 - `src/engine/collision_resolver.hpp/cpp`: Binary-search collision
 - `src/core/frame_budgets.hpp`: Budget constants
 - `src/godot_bindings/chunk_manager.cpp`: All inspector-exposed properties, block ID constants, camera/frustum entry point
 - `src/engine/voxel_engine_controller.hpp/cpp`: Bridges frustum and other state from `ChunkManager` to `WorldUpdater`
-- `src/lighting/light_propagator.cpp`: Async light propagation using `lock_all()` + fast methods
-- `src/world/block_editor.cpp`: Block break/place using auto-locking `get_block_world`
 - `shaders/voxel_shader_water.gdshader`, `materials/voxel_material_water.tres`: Water rendering
 - `src/render/material_manager.hpp/cpp`: `get_water_material()`, per-frame parameter push to terrain + water
-- `src/render/environment_controller.cpp`: Sun light setup (shadows disabled)
-- `src/core/thread_pool.hpp`: Shared worker pool, `hardware_concurrency() - 1` sizing, high-priority queue
-- `.github/workflows/build.yml`: CI — cross-platform matrix (ubuntu/macos/windows), TSan on Linux
+- `.github/workflows/build.yml`: CI — 4-leg matrix (ubuntu TSan, ubuntu ASan+UBSan, ubuntu plain, macos plain, windows plain), benchmark with `--check`
+- `tsan_suppressions.txt`: TSan suppressions for doctest/godot-cpp noise
 - `LICENSE`: GPL-3.0
-- `tests/*.cpp`: doctest suite — 91 tests, 479 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, noise, light propagation, and concurrency
+- `SConstruct`: Build targets (`test`, `bench`, `fuzz`), `VariantDir`, TSan/ASan support, bench sources include light propagation
+- `tools/benchmark.cpp`: 4 benchmarks with `--check baseline` mode
+- `tools/fuzz_palette.cpp`: libFuzzer harness for PaletteStorage random set/get
+- `tools/fuzz_chunk_load.cpp`: libFuzzer harness for ChunkData header parsing
+- `tests/doctest.h`: doctest v2.5.0
+- `tests/test_main.cpp`: `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`
+- `tests/test_concurrency.cpp`: 16 tests — TestShardMap, shard lock concurrency, ascending-order deadlock prevention, exclusive serialization, PaletteStorage R/W, pending_removals pattern, RAII correctness, OrderedExclusiveShardLock, light removal tests, cross-chunk writer race tests, pending_removals stress, serialization verification
+- `tests/test_mesh_builder.cpp`: 7 tests — 2x2x2 cube, empty chunk, fully solid, LOD stride computation, LOD vertex reduction, LOD all levels valid
+- `tests/test_palette_storage.cpp`, `test_mesh_culling.cpp`, `test_mesh_greedy.cpp`, `test_chunk_neighbor_accessor.cpp`, `test_mesh_face_emission.cpp`, `test_chunk_data.cpp`, `test_chunk_map.cpp`, `test_noise.cpp`, `test_light_propagation.cpp`

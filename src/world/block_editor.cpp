@@ -41,7 +41,16 @@ void BlockEditor::place_block(int32_t world_x, int32_t world_y, int32_t world_z,
     bool did_mud = false;
 
     {
-        auto lock = cm.lock_all_exclusive();
+        // Block change + light propagation can reach at most 1 chunk in each
+        // direction (max light level 15 < chunk size 32). Lock 3×3×3 around
+        // the center chunk — covers block write, light BFS, and mud variant.
+        uint64_t keys[27];
+        int idx = 0;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    keys[idx++] = cm.get_chunk_key(chunk_x + dx, chunk_y + dy, chunk_z + dz);
+        auto lock = cm.lock_keys_exclusive(keys);
         ChunkData* chunk_data = cm.get_chunk_data_fast(chunk_x, chunk_y, chunk_z);
         if (!chunk_data) return;
         if (!is_local_in_bounds(local_x, local_y, local_z)) return;

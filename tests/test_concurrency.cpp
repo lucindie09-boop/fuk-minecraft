@@ -1,6 +1,7 @@
 #include "doctest.h"
 #include "core/chunk_data.hpp"
 #include "core/block_types.hpp"
+#include "lighting/light_propagation.hpp"
 #include <thread>
 #include <vector>
 #include <atomic>
@@ -500,4 +501,271 @@ TEST_CASE("OrderedExclusiveShardLock only locks specified shards") {
     auto* d9 = m.shards_[m.shard_of(TestShardMap::key(0, 0, 9))]
                 .chunks[TestShardMap::key(0, 0, 9)].get();
     CHECK(d9->get_block(0, 0, 0) == BlockIDs::STONE);
+}
+
+// =========================================================================
+// 11. Light propagation remove path — place emissive, propagate, remove,
+//     re-propagate (single-chunk standalone test)
+// =========================================================================
+TEST_CASE("light removal via re-propagation clears light on single chunk") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData chunk;
+    chunk.clear();
+
+    chunk.set_block(16, 16, 16, BlockIDs::LIGHT_BLOCK);
+    propagate_chunk_block_light_additive(chunk);
+
+    CHECK(chunk.get_light_unsafe(16, 16, 16) > 0);
+    CHECK(chunk.get_light_unsafe(16, 17, 16) > 0);
+    CHECK(chunk.get_light_unsafe(16, 15, 16) > 0);
+
+    chunk.set_block(16, 16, 16, BlockIDs::AIR);
+    chunk.clear_light();
+    propagate_chunk_block_light_additive(chunk);
+
+    CHECK(chunk.get_light_unsafe(16, 16, 16) == 0);
+    CHECK(chunk.get_light_unsafe(16, 17, 16) == 0);
+    CHECK(chunk.get_light_unsafe(16, 15, 16) == 0);
+}
+
+// =========================================================================
+// 12. Light removal: replace emissive with opaque block clears neighbors
+// =========================================================================
+TEST_CASE("replacing emissive with opaque clears propagated light") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData chunk;
+    chunk.clear();
+
+    chunk.set_block(16, 16, 16, BlockIDs::LIGHT_BLOCK);
+    propagate_chunk_block_light_additive(chunk);
+    CHECK(chunk.get_light_unsafe(16, 17, 16) > 0);
+
+    chunk.set_block(16, 16, 16, BlockIDs::STONE);
+    chunk.clear_light();
+    propagate_chunk_block_light_additive(chunk);
+
+    CHECK(chunk.get_light_unsafe(16, 16, 16) == 0);
+    CHECK(chunk.get_light_unsafe(16, 17, 16) == 0);
+}
+
+// =========================================================================
+// 13. Cross-chunk writer race: concurrent pending placement writes
+//     and main-thread drain must not lose or corrupt entries
+// =========================================================================
+struct TestPlacement {
+    int32_t world_x = 0;
+    int32_t world_y = 0;
+    int32_t world_z = 0;
+    int block_id = 0;
+};
+
+TEST_CASE("cross-chunk writer concurrent pending placements") {
+    std::unordered_map<uint64_t, std::vector<TestPlacement>> pending;
+    std::mutex mu;
+
+    constexpr int NUM_THREADS = 4;
+    constexpr int PLACEMENTS_PER_THREAD = 500;
+
+    auto writer = [&](int thread_id) {
+        for (int i = 0; i < PLACEMENTS_PER_THREAD; i++) {
+            int32_t wx = thread_id * 1000 + i;
+            int32_t wy = 10;
+            int32_t wz = i;
+            int32_t cx, cy, cz, lx, ly, lz;
+            world_to_chunk_local(wx, wy, wz, cx, cy, cz, lx, ly, lz);
+            uint64_t ck = TestShardMap::key(cx, cy, cz);
+            TestPlacement p;
+            p.world_x = wx;
+            p.world_y = wy;
+            p.world_z = wz;
+            p.block_id = i % 10;
+            std::lock_guard<std::mutex> g(mu);
+            pending[ck].push_back(p);
+        }
+    };
+
+    std::thread writers[NUM_THREADS];
+    for (int i = 0; i < NUM_THREADS; i++)
+        writers[i] = std::thread(writer, i);
+    for (auto& t : writers) t.join();
+
+    size_t total = 0;
+    for (auto& [k, v] : pending)
+        total += v.size();
+    CHECK(total == static_cast<size_t>(NUM_THREADS * PLACEMENTS_PER_THREAD));
+
+    std::unordered_set<int32_t> seen_x;
+    for (auto& [k, vec] : pending) {
+        for (auto& p : vec) {
+            seen_x.insert(p.world_x);
+        }
+    }
+    CHECK(seen_x.size() == static_cast<size_t>(NUM_THREADS * PLACEMENTS_PER_THREAD));
+}
+
+// =========================================================================
+// 14. Cross-chunk writer: concurrent push + drain under contention
+// =========================================================================
+TEST_CASE("cross-chunk writer concurrent push and drain") {
+    std::vector<TestPlacement> queue;
+    std::mutex mu;
+    std::atomic<bool> stop_writers{false};
+
+    constexpr int NUM_WRITERS = 4;
+    std::atomic<int> total_pushed{0};
+    std::atomic<int> total_drained{0};
+
+    auto writer = [&](int base) {
+        int count = 0;
+        while (!stop_writers.load(std::memory_order_acquire)) {
+            TestPlacement p;
+            p.world_x = base + count;
+            p.world_y = 0;
+            p.world_z = 0;
+            p.block_id = 1;
+            {
+                std::lock_guard<std::mutex> g(mu);
+                queue.push_back(p);
+            }
+            count++;
+            total_pushed.fetch_add(1, std::memory_order_relaxed);
+        }
+    };
+
+    auto drainer = [&]() {
+        while (!stop_writers.load(std::memory_order_acquire) ||
+               total_drained.load(std::memory_order_relaxed) <
+                   total_pushed.load(std::memory_order_relaxed)) {
+            std::vector<TestPlacement> batch;
+            {
+                std::lock_guard<std::mutex> g(mu);
+                batch.swap(queue);
+            }
+            total_drained.fetch_add(static_cast<int>(batch.size()),
+                                    std::memory_order_relaxed);
+            std::this_thread::yield();
+        }
+    };
+
+    std::thread drains(drainer);
+    std::thread writers[NUM_WRITERS];
+    for (int i = 0; i < NUM_WRITERS; i++)
+        writers[i] = std::thread(writer, i * 10000);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    stop_writers.store(true, std::memory_order_release);
+    for (auto& t : writers) t.join();
+
+    {
+        std::lock_guard<std::mutex> g(mu);
+        total_drained.fetch_add(static_cast<int>(queue.size()),
+                                std::memory_order_relaxed);
+        queue.clear();
+    }
+    drains.join();
+
+    CHECK(total_drained.load() == total_pushed.load());
+}
+
+// =========================================================================
+// 15. pending_light_removals_ stress: concurrent BFS insert + fixup erase
+// =========================================================================
+TEST_CASE("pending_light_removals_ BFS insert and fixup erase stress") {
+    std::unordered_set<uint64_t> pending;
+    std::mutex mu;
+    constexpr int NUM_KEYS = 2000;
+
+    std::atomic<int> fixed_count{0};
+
+    auto bfs_inserter = [&](int start, int end) {
+        for (int i = start; i < end; i++) {
+            uint64_t k = static_cast<uint64_t>(i);
+            std::lock_guard<std::mutex> g(mu);
+            pending.insert(k);
+        }
+    };
+
+    auto fixupper = [&](int start, int end) {
+        for (int i = start; i < end; i++) {
+            uint64_t k = static_cast<uint64_t>(i);
+            std::lock_guard<std::mutex> g(mu);
+            auto it = pending.find(k);
+            if (it != pending.end()) {
+                pending.erase(it);
+                fixed_count.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    };
+
+    std::thread t1(bfs_inserter, 0, NUM_KEYS);
+    std::thread t2(bfs_inserter, NUM_KEYS, 2 * NUM_KEYS);
+    std::thread t3(fixupper, 0, NUM_KEYS);
+    std::thread t4(fixupper, NUM_KEYS / 2, NUM_KEYS + NUM_KEYS / 2);
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+
+    CHECK(fixed_count.load() > 0);
+    CHECK(pending.size() <= static_cast<size_t>(2 * NUM_KEYS));
+}
+
+// =========================================================================
+// 16. OrderedExclusiveShardLock serializes writers on overlapping shards
+// =========================================================================
+TEST_CASE("OrderedExclusiveShardLock serializes concurrent writers") {
+    TestShardMap m;
+    for (int i = 0; i < 10; i++) {
+        auto cd = std::make_unique<ChunkData>();
+        cd->clear();
+        m.insert(TestShardMap::key(i, 0, 0), std::move(cd));
+    }
+
+    std::atomic<int> write_count_a{0};
+    std::atomic<int> write_count_b{0};
+
+    std::vector<uint64_t> shared_keys = {
+        TestShardMap::key(0, 0, 0),
+        TestShardMap::key(1, 0, 0),
+        TestShardMap::key(2, 0, 0)
+    };
+
+    auto writer_a = [&]() {
+        for (int iter = 0; iter < 100; iter++) {
+            TestShardMap::OrderedExclusiveShardLock lk(m, shared_keys);
+            for (int i = 0; i < 3; i++) {
+                auto* d = m.shards_[m.shard_of(shared_keys[i])]
+                            .chunks[shared_keys[i]].get();
+                d->set_block(0, 0, 0, BlockIDs::STONE);
+            }
+            write_count_a.fetch_add(1, std::memory_order_relaxed);
+        }
+    };
+
+    auto writer_b = [&]() {
+        for (int iter = 0; iter < 100; iter++) {
+            TestShardMap::OrderedExclusiveShardLock lk(m, shared_keys);
+            for (int i = 0; i < 3; i++) {
+                auto* d = m.shards_[m.shard_of(shared_keys[i])]
+                            .chunks[shared_keys[i]].get();
+                d->set_block(0, 0, 0, BlockIDs::GRASS);
+            }
+            write_count_b.fetch_add(1, std::memory_order_relaxed);
+        }
+    };
+
+    std::thread ta(writer_a);
+    std::thread tb(writer_b);
+    ta.join();
+    tb.join();
+
+    CHECK(write_count_a.load() == 100);
+    CHECK(write_count_b.load() == 100);
+
+    for (int i = 0; i < 3; i++) {
+        auto* d = m.shards_[m.shard_of(shared_keys[i])]
+                    .chunks[shared_keys[i]].get();
+        BlockID v = d->get_block(0, 0, 0);
+        CHECK((v == BlockIDs::STONE || v == BlockIDs::GRASS));
+    }
 }

@@ -18,6 +18,11 @@ jobs:
             test_bin: ./bin/run_tests
             bench_bin: ./bin/benchmark
             tsan: 0
+          - os: ubuntu-latest
+            test_bin: ./bin/run_tests
+            bench_bin: ./bin/benchmark
+            tsan: 0
+            asan: 1
           - os: macos-latest
             test_bin: ./bin/run_tests
             bench_bin: ./bin/benchmark
@@ -44,12 +49,12 @@ jobs:
       - name: Build
         shell: bash
         timeout-minutes: 15
-        run: scons -j$(nproc || echo 4) TSAN=${{ matrix.tsan }}
+        run: scons -j$(nproc || echo 4) TSAN=${{ matrix.tsan }} ASAN=${{ matrix.asan || 0 }}
 
       - name: Build tests
         shell: bash
         timeout-minutes: 15
-        run: scons test -j$(nproc || echo 4) TSAN=${{ matrix.tsan }}
+        run: scons test -j$(nproc || echo 4) TSAN=${{ matrix.tsan }} ASAN=${{ matrix.asan || 0 }}
 
       - name: Run tests
         if: matrix.tsan != 1
@@ -63,13 +68,21 @@ jobs:
           TSAN_OPTIONS: suppressions=tsan_suppressions.txt halt_on_error=1
         run: ${{ matrix.test_bin }}
 
+      - name: Run tests (ASan+UBSan)
+        if: matrix.asan == 1
+        timeout-minutes: 10
+        env:
+          ASAN_OPTIONS: detect_leaks=1 abort_on_error=1 print_stacktrace=1
+          UBSAN_OPTIONS: print_stacktrace=1 halt_on_error=1
+        run: ${{ matrix.test_bin }}
+
       - name: Build benchmark
-        if: matrix.tsan != 1
+        if: matrix.tsan != 1 && matrix.asan != 1
         shell: bash
         timeout-minutes: 10
         run: scons bench -j$(nproc || echo 4)
 
       - name: Run benchmark
-        if: matrix.tsan != 1
+        if: matrix.tsan != 1 && matrix.asan != 1
         timeout-minutes: 2
         run: ${{ matrix.bench_bin }} --check benchmark_baseline.txt

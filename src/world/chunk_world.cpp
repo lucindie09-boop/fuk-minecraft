@@ -7,6 +7,7 @@
 #include "lighting/block_light_region.hpp"
 #include "worldgen/chunk_generator.hpp"
 #include "mesh/chunk_boundary_dirty.hpp"
+#include "core/crc32.hpp"
 
 namespace VoxelEngine {
 
@@ -438,13 +439,9 @@ void ChunkWorld::save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t ch
         dir->make_dir_recursive("chunks");
     }
 
-    Ref<FileAccess> file = FileAccess::open(filename, FileAccess::WRITE);
-    if (!file.is_valid()) return;
-
-    file->store_32(CHUNK_WIDTH);
-    file->store_32(CHUNK_HEIGHT);
-    file->store_32(CHUNK_DEPTH);
-    file->store_32(2);
+    // Build RLE body into a byte buffer so we can CRC32 it before writing.
+    std::vector<uint8_t> body;
+    body.reserve(32 * 32 * 6); // rough estimate
 
     struct Run { uint16_t start_y; uint16_t length; uint16_t block_id; };
     std::vector<Run> runs;
@@ -468,14 +465,34 @@ void ChunkWorld::save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t ch
             }
             runs.push_back({run_start, run_len, current_id});
 
-            file->store_16(static_cast<uint16_t>(runs.size()));
+            uint16_t num_runs = static_cast<uint16_t>(runs.size());
+            body.push_back(num_runs & 0xFF);
+            body.push_back((num_runs >> 8) & 0xFF);
             for (const auto& run : runs) {
-                file->store_16(run.start_y);
-                file->store_16(run.length);
-                file->store_16(run.block_id);
+                body.push_back(run.start_y & 0xFF);
+                body.push_back((run.start_y >> 8) & 0xFF);
+                body.push_back(run.length & 0xFF);
+                body.push_back((run.length >> 8) & 0xFF);
+                body.push_back(run.block_id & 0xFF);
+                body.push_back((run.block_id >> 8) & 0xFF);
             }
         }
     }
+
+    uint32_t checksum = crc32(body.data(), body.size());
+
+    Ref<FileAccess> file = FileAccess::open(filename, FileAccess::WRITE);
+    if (!file.is_valid()) return;
+
+    // Header: dimensions + version + CRC32
+    file->store_32(CHUNK_WIDTH);
+    file->store_32(CHUNK_HEIGHT);
+    file->store_32(CHUNK_DEPTH);
+    file->store_32(3);             // version = 3 (v2 + CRC32)
+    file->store_32(checksum);
+
+    // Body
+    file->store_buffer(body.data(), body.size());
     file->close();
 }
 
@@ -521,25 +538,67 @@ bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t 
         }
     } else {
         int32_t version = file->get_32();
-        if (version != 2) {
+        if (version == 3) {
+            // v3: RLE + CRC32 checksum
+            uint32_t expected_crc = file->get_32();
+            int64_t body_start = file->get_position();
+            int64_t body_end = file->get_length();
+            size_t body_size = static_cast<size_t>(body_end - body_start);
+
+            std::vector<uint8_t> body(body_size);
+            file->get_buffer(body.data(), body_size);
             file->close();
-            return false;
-        }
-        for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
-            for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-                uint16_t num_runs = file->get_16();
-                for (uint16_t r = 0; r < num_runs; r++) {
-                    uint16_t start_y = file->get_16();
-                    uint16_t length = file->get_16();
-                    uint16_t block_id = file->get_16();
-                    for (uint16_t y = 0; y < length; y++) {
-                        int32_t wy = static_cast<int32_t>(start_y) + y;
-                        if (wy < CHUNK_HEIGHT) {
-                            out_chunk_data.set_block(x, wy, z, static_cast<BlockID>(block_id));
+
+            uint32_t actual_crc = crc32(body.data(), body_size);
+            if (actual_crc != expected_crc) {
+                return false;
+            }
+
+            // Decode body buffer
+            size_t pos = 0;
+            for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
+                for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
+                    if (pos + 2 > body_size) return false;
+                    uint16_t num_runs = body[pos] | (body[pos + 1] << 8);
+                    pos += 2;
+                    for (uint16_t r = 0; r < num_runs; r++) {
+                        if (pos + 6 > body_size) return false;
+                        uint16_t start_y = body[pos] | (body[pos + 1] << 8);
+                        uint16_t length  = body[pos + 2] | (body[pos + 3] << 8);
+                        uint16_t block_id = body[pos + 4] | (body[pos + 5] << 8);
+                        pos += 6;
+                        for (uint16_t y = 0; y < length; y++) {
+                            int32_t wy = static_cast<int32_t>(start_y) + y;
+                            if (wy < CHUNK_HEIGHT) {
+                                out_chunk_data.set_block(x, wy, z, static_cast<BlockID>(block_id));
+                            }
                         }
                     }
                 }
             }
+            out_chunk_data.compute_fully_solid();
+            return true;
+        } else if (version == 2) {
+            // v2: RLE, no checksum (legacy)
+            for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
+                for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
+                    uint16_t num_runs = file->get_16();
+                    for (uint16_t r = 0; r < num_runs; r++) {
+                        uint16_t start_y = file->get_16();
+                        uint16_t length = file->get_16();
+                        uint16_t block_id = file->get_16();
+                        for (uint16_t y = 0; y < length; y++) {
+                            int32_t wy = static_cast<int32_t>(start_y) + y;
+                            if (wy < CHUNK_HEIGHT) {
+                                out_chunk_data.set_block(x, wy, z, static_cast<BlockID>(block_id));
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            file->close();
+            return false;
         }
     }
     file->close();

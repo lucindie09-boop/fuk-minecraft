@@ -36,7 +36,8 @@ X(Voxelization) \
 X(LodUpdate) \
 X(GroupMeshBuild) \
 X(GroupMeshUpload) \
-X(PaletteWrite)
+X(PaletteWrite) \
+X(LightPropagation)
 
 enum class TimerID : size_t {
 #define X(name) name,
