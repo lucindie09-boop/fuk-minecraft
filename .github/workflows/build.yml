@@ -133,20 +133,16 @@ jobs:
       - name: Install clang-tidy
         run: sudo apt-get install -y clang-tidy
 
-      - name: Run scons to generate godot-cpp headers
+      - name: Run scons to generate godot-cpp headers and compile_commands.json
         timeout-minutes: 10
         run: scons -j$(nproc)
 
       - name: Run clang-tidy
         run: |
-          clang-tidy src/**/*.cpp src/**/*.hpp -- -std=c++17 -Isrc -Igodot-cpp/include -Igodot-cpp/gen/include -Igodot-cpp/gdextension \
+          clang-tidy src/**/*.cpp src/**/*.hpp -p . \
             -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
-            -warnings-as-errors='' \
             2>&1 | tee clang-tidy-output.txt
-          # Filter out clang-analyzer false positives on valid bitfield operations
-          grep -v "value.*provided to the cast expression is not in the valid range" clang-tidy-output.txt | grep -v "Found compiler error" > clang-tidy-filtered.txt || true
-          if [ -s clang-tidy-filtered.txt ]; then
+          if [ -s clang-tidy-output.txt ]; then
             echo "Static analysis found issues"
-            cat clang-tidy-filtered.txt
             exit 1
           fi

@@ -4,6 +4,9 @@ import os, sys
 env = SConscript("godot-cpp/SConstruct")
 env.Append(CPPPATH=["src/"])
 
+# Generate compile_commands.json for clang-tidy static analysis
+env.CompilationDatabase('compile_commands.json')
+
 # Optional TSan support (Linux/GCC/Clang only)
 tsan = ARGUMENTS.get("TSAN", "0")
 if tsan == "1" and sys.platform != "win32":
