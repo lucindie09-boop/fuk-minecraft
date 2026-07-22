@@ -69,22 +69,15 @@ if sys.platform != "win32":
     fuzz_env = Environment()
     fuzz_env["CC"] = "clang"
     fuzz_env["CXX"] = "clang++"
-    fuzz_env.Append(CPPPATH=["src/", "godot-cpp/", "godot-cpp/include/", "godot-cpp/gen/include/", "godot-cpp/include/godot-cpp/"])
+    fuzz_env.Append(CPPPATH=["src/"])
     fuzz_env.Append(CPPDEFINES=["FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"])
     fuzz_env.Append(CCFLAGS=["-std=c++17", "-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
     # Reference source files directly to avoid VariantDir file locking
     fuzz_sources_common = ["src/core/chunk_data.cpp", "src/core/block_types.cpp", "src/lighting/block_light_region.cpp"]
-    fuzz_sources_mesh = fuzz_sources_common + [
-        "src/mesh/mesh_builder.cpp",
-        "src/mesh/mesh_builder_faces.cpp",
-        "src/mesh/mesh_builder_greedy.cpp",
-        "src/mesh/chunk_neighbor_accessor.cpp",
-        "src/mesh/ambient_occlusion.cpp",
-        "src/mesh/smooth_lighting.cpp"
-    ]
     fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
     fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
     fuzz_light = fuzz_env.Program("bin/fuzz_light_propagation", ["tools/fuzz_light_propagation.cpp"] + fuzz_sources_common)
-    fuzz_mesh = fuzz_env.Program("bin/fuzz_mesh_builder", ["tools/fuzz_mesh_builder.cpp"] + fuzz_sources_mesh)
-    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light, fuzz_mesh])
+    # Note: fuzz_mesh_builder requires full Godot linkage (gdextension_interface.h, etc.)
+    # and cannot be built in standalone fuzz environment
+    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light])
