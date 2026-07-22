@@ -47,19 +47,17 @@ Alias("bench", bench_prog)
 test_env = env.Clone()
 test_env.Append(CPPPATH=["src/", "tests/"])
 test_env.Append(LIBS=[])
-# Use separate build dir to avoid .obj collisions with the shared library
-VariantDir("build/tests", "src", duplicate=1)
-VariantDir("build/test_src", "tests", duplicate=1)
-test_sources = Glob("build/test_src/*.cpp") + [
-    "build/tests/core/chunk_data.cpp",
-    "build/tests/core/block_types.cpp",
-    "build/tests/mesh/mesh_builder.cpp",
-    "build/tests/mesh/mesh_builder_faces.cpp",
-    "build/tests/mesh/mesh_builder_greedy.cpp",
-    "build/tests/mesh/chunk_neighbor_accessor.cpp",
-    "build/tests/mesh/ambient_occlusion.cpp",
-    "build/tests/lighting/block_light_region.cpp",
-    "build/tests/mesh/smooth_lighting.cpp",
+# Reference source files directly to avoid VariantDir file locking on Windows
+test_sources = Glob("tests/*.cpp") + [
+    "src/core/chunk_data.cpp",
+    "src/core/block_types.cpp",
+    "src/mesh/mesh_builder.cpp",
+    "src/mesh/mesh_builder_faces.cpp",
+    "src/mesh/mesh_builder_greedy.cpp",
+    "src/mesh/chunk_neighbor_accessor.cpp",
+    "src/mesh/ambient_occlusion.cpp",
+    "src/lighting/block_light_region.cpp",
+    "src/mesh/smooth_lighting.cpp",
 ]
 test_prog = test_env.Program("bin/run_tests", test_sources)
 Alias("test", test_prog)
@@ -75,9 +73,8 @@ if sys.platform != "win32":
     fuzz_env.Append(CPPDEFINES=["FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"])
     fuzz_env.Append(CCFLAGS=["-std=c++17", "-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
-    # Use separate build dir to avoid .obj collisions with test environment
-    VariantDir("build/fuzz", "src", duplicate=1)
-    fuzz_sources_common = ["build/fuzz/core/chunk_data.cpp", "build/fuzz/core/block_types.cpp"]
+    # Reference source files directly to avoid VariantDir file locking
+    fuzz_sources_common = ["src/core/chunk_data.cpp", "src/core/block_types.cpp"]
     fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
     fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
     Alias("fuzz", [fuzz_palette, fuzz_chunk])
