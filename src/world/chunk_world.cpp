@@ -432,6 +432,8 @@ void ChunkWorld::save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t ch
 
     String save_dir = "user://chunks/";
     String filename = save_dir + "chunk_" + String::num_int64(chunk_x) + "_" + String::num_int64(chunk_y) + "_" + String::num_int64(chunk_z) + ".chunk";
+    String temp_filename = filename + ".tmp";
+    String backup_filename = filename + ".bak";
 
     std::lock_guard<std::mutex> lock(file_access_mutex);
 
@@ -446,7 +448,8 @@ void ChunkWorld::save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t ch
 
     uint32_t checksum = crc32(body.data(), body.size());
 
-    Ref<FileAccess> file = FileAccess::open(filename, FileAccess::WRITE);
+    // Write to temporary file first (atomic write pattern)
+    Ref<FileAccess> file = FileAccess::open(temp_filename, FileAccess::WRITE);
     if (!file.is_valid()) return;
 
     // Header: dimensions + version + CRC32
@@ -459,6 +462,22 @@ void ChunkWorld::save_chunk_to_disk(int32_t chunk_x, int32_t chunk_y, int32_t ch
     // Body
     file->store_buffer(body.data(), body.size());
     file->close();
+
+    // Create backup of existing file before overwriting
+    if (dir.is_valid() && FileAccess::file_exists(filename)) {
+        // Remove old backup if it exists
+        if (FileAccess::file_exists(backup_filename)) {
+            dir->remove(backup_filename);
+        }
+        // Move current file to backup
+        dir->rename(filename, backup_filename);
+    }
+
+    // Atomic rename: temp -> target
+    // On POSIX this is atomic; on Windows it's atomic if both files are on the same volume
+    if (dir.is_valid()) {
+        dir->rename(temp_filename, filename);
+    }
 }
 
 bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, ChunkData& out_chunk_data) {
@@ -516,6 +535,46 @@ bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t 
 
             uint32_t actual_crc = crc32(body.data(), body_size);
             if (actual_crc != expected_crc) {
+                // CRC mismatch - file is corrupted
+                // Try to load from backup if it exists
+                String backup_filename = target + ".bak";
+                if (FileAccess::file_exists(backup_filename)) {
+                    Ref<FileAccess> backup_file = FileAccess::open(backup_filename, FileAccess::READ);
+                    if (backup_file.is_valid()) {
+                        int32_t backup_width = backup_file->get_32();
+                        int32_t backup_height = backup_file->get_32();
+                        int32_t backup_depth = backup_file->get_32();
+                        int32_t backup_version = backup_file->get_32();
+                        uint32_t backup_expected_crc = backup_file->get_32();
+                        int64_t backup_body_start = backup_file->get_position();
+                        int64_t backup_body_end = backup_file->get_length();
+                        size_t backup_body_size = static_cast<size_t>(backup_body_end - backup_body_start);
+
+                        if (backup_width == CHUNK_WIDTH && backup_height == CHUNK_HEIGHT && 
+                            backup_depth == CHUNK_DEPTH && backup_version == 3) {
+                            std::vector<uint8_t> backup_body(backup_body_size);
+                            backup_file->get_buffer(backup_body.data(), backup_body_size);
+                            backup_file->close();
+
+                            uint32_t backup_actual_crc = crc32(backup_body.data(), backup_body_size);
+                            if (backup_actual_crc == backup_expected_crc && 
+                                decode_chunk_rle(backup_body.data(), backup_body_size, out_chunk_data)) {
+                                out_chunk_data.compute_fully_solid();
+                                // Backup loaded successfully - restore it as the main file
+                                Ref<DirAccess> recovery_dir = DirAccess::open("user://");
+                                if (recovery_dir.is_valid()) {
+                                    recovery_dir->rename(backup_filename, target);
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                }
+                // No valid backup - delete corrupted file to prevent future load attempts
+                Ref<DirAccess> cleanup_dir = DirAccess::open("user://");
+                if (cleanup_dir.is_valid()) {
+                    cleanup_dir->remove(target);
+                }
                 return false;
             }
 
