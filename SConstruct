@@ -65,8 +65,8 @@ Alias("test", test_prog)
 # LibFuzzer harnesses (Clang-only, Linux/macOS)
 # Build with: scons fuzz  (requires clang++)
 if sys.platform != "win32":
-    # Create fresh environment to avoid godot-cpp GCC-specific flags
-    fuzz_env = Environment()
+    # Clone base env to get godot-cpp library linkage
+    fuzz_env = env.Clone()
     fuzz_env["CC"] = "clang"
     fuzz_env["CXX"] = "clang++"
     fuzz_env.Append(CPPPATH=["src/"])
@@ -75,8 +75,16 @@ if sys.platform != "win32":
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
     # Reference source files directly to avoid VariantDir file locking
     fuzz_sources_common = ["src/core/chunk_data.cpp", "src/core/block_types.cpp", "src/lighting/block_light_region.cpp"]
+    fuzz_sources_mesh = fuzz_sources_common + [
+        "src/mesh/mesh_builder.cpp",
+        "src/mesh/mesh_builder_faces.cpp",
+        "src/mesh/mesh_builder_greedy.cpp",
+        "src/mesh/chunk_neighbor_accessor.cpp",
+        "src/mesh/ambient_occlusion.cpp",
+        "src/mesh/smooth_lighting.cpp"
+    ]
     fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
     fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
     fuzz_light = fuzz_env.Program("bin/fuzz_light_propagation", ["tools/fuzz_light_propagation.cpp"] + fuzz_sources_common)
-    # Note: fuzz_mesh_builder requires Godot headers (PackedVector3Array, etc.) and cannot be built standalone
-    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light])
+    fuzz_mesh = fuzz_env.Program("bin/fuzz_mesh_builder", ["tools/fuzz_mesh_builder.cpp"] + fuzz_sources_mesh)
+    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light, fuzz_mesh])
