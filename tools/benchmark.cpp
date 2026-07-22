@@ -5,7 +5,6 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
-#include <chrono>
 #include <vector>
 #include <string>
 
@@ -67,18 +66,27 @@ static BenchResult bench_palette_ops(int n) {
     VoxelEngine::ChunkData chunk;
     chunk.clear();
 
-    auto t0 = std::chrono::high_resolution_clock::now();
+    VoxelEngine::PerformanceTimer perf;
+
+    for (int i = 0; i < 50; i++) {
+        for (int x = 0; x < VoxelEngine::CHUNK_WIDTH; x++)
+            for (int z = 0; z < VoxelEngine::CHUNK_DEPTH; z++)
+                for (int y = 0; y < VoxelEngine::CHUNK_HEIGHT; y++)
+                    chunk.set_block(x, y, z, VoxelEngine::BlockIDs::AIR);
+    }
+
     for (int i = 0; i < n; i++) {
+        VoxelEngine::ScopedTimer timer(perf, VoxelEngine::TimerID::PaletteWrite);
         for (int x = 0; x < VoxelEngine::CHUNK_WIDTH; x++)
             for (int z = 0; z < VoxelEngine::CHUNK_DEPTH; z++)
                 for (int y = 0; y < VoxelEngine::CHUNK_HEIGHT; y++)
                     chunk.set_block(x, y, z, VoxelEngine::BlockIDs::STONE);
     }
-    auto t1 = std::chrono::high_resolution_clock::now();
-    double avg = std::chrono::duration<double, std::milli>(t1 - t0).count() / n;
 
+    double avg = perf.get_avg(VoxelEngine::TimerID::PaletteWrite);
     printf("  palette_write:  avg=%.3f ms  min=%.3f ms  max=%.3f ms  (n=%d full chunk fills)\n",
-           avg, avg, avg, n);
+           avg, perf.get_min(VoxelEngine::TimerID::PaletteWrite),
+           perf.get_max(VoxelEngine::TimerID::PaletteWrite), n);
     return {"palette_write_avg_ms", avg};
 }
 
