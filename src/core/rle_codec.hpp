@@ -2,6 +2,7 @@
 #define FUK_MINECRAFT_RLE_CODEC_HPP
 #include "core/chunk_coords.hpp"
 #include "core/chunk_data.hpp"
+#include "core/block_types.hpp"
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -84,7 +85,7 @@ inline bool decode_rle_column(const uint8_t* body, size_t body_size, size_t& pos
         pos += 6;
 
         // Reject out-of-range block IDs (malformed input)
-        if (block_id >= MAX_BLOCK_TYPES) return false;
+        if (block_id >= BlockRegistry::MAX_BLOCK_TYPES) return false;
 
         for (uint16_t y = 0; y < length; y++) {
             int32_t wy = static_cast<int32_t>(start_y) + y;
