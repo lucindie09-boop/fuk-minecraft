@@ -305,26 +305,7 @@ void VoxelEngineController::set_vegetation_enabled(bool enabled) { vegetation_en
 bool VoxelEngineController::is_vegetation_enabled() const { return vegetation_enabled; }
 
 void VoxelEngineController::save_world_metadata() {
-    TerrainParams params;
-    params.seed = seed;
-    params.sea_level = sea_level;
-    params.base_height = base_height;
-    params.height_scale = height_scale;
-    params.mountain_scale = mountain_scale;
-    params.bedrock_height = 5;
-    params.cave_threshold = 0.4f;
-    params.cave_scale = 0.05f;
-    params.continentalness_scale = 0.00010f;
-    params.ocean_threshold = 0.48f;
-    params.land_threshold = 0.48f;
-    params.shelf_width = 0.025f;
-    params.shelf_depth = 18.0f;
-    params.deep_ocean_depth = 48.0f;
-    params.beach_width = 0.002f;
-    params.subsurface_cover_depth = 4;
-    params.climate_temp_scale = 0.00015f;
-    params.climate_humidity_scale = 0.00020f;
-    params.biome_size = biome_size;
+    const TerrainParams& params = world_updater.get_terrain_params();
     chunk_world.save_world_metadata(params);
 }
 
@@ -333,6 +314,10 @@ bool VoxelEngineController::load_world_metadata() {
     int32_t chunk_version;
     if (!chunk_world.load_world_metadata(params, chunk_version)) {
         return false;
+    }
+    // Check for seed mismatch before applying
+    if (params.seed != seed) {
+        WARN_PRINT("World metadata seed mismatch: saved=" + String::num_int64(params.seed) + ", current=" + String::num_int64(seed) + ". Loading saved world may generate incoherent terrain.");
     }
     // Apply loaded params to controller state
     seed = params.seed;

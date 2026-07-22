@@ -56,6 +56,7 @@ public:
     float get_lod_detail_level() const { return lod_detail_level; }
     void set_vegetation_enabled(bool enabled);
     bool is_vegetation_enabled() const { return vegetation_enabled; }
+    const TerrainParams& get_terrain_params() const { return terrain_params; }
     void set_frustum(const Frustum& f) {
         frustum = f;
         frustum_cursor = 0;

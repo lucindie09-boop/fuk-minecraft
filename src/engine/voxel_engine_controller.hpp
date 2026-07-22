@@ -141,6 +141,7 @@ void toggle_day_night_cycle();
     ChunkWorld& get_chunk_world() { return chunk_world; }
     MeshManager& get_mesh_manager() { return mesh_manager; }
     WorldUpdater& get_world_updater() { return world_updater; }
+    const WorldUpdater& get_world_updater() const { return world_updater; }
     EnvironmentController& get_environment_controller() { return environment_controller; }
     BlockEditor& get_block_editor() { return block_editor; }
 

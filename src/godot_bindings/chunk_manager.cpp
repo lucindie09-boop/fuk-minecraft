@@ -39,6 +39,16 @@ void ChunkManager::_ready() {
     Engine* engine = Engine::get_singleton();
     bool is_editor = engine && engine->is_editor_hint();
     controller->get_environment_controller().update_environment(get_parent());
+
+    // Load world metadata if it exists, otherwise save initial metadata
+    if (controller->world_metadata_exists()) {
+        if (!controller->load_world_metadata()) {
+            WARN_PRINT("Failed to load world metadata, using current defaults");
+        }
+    } else {
+        controller->save_world_metadata();
+    }
+
     ready_for_auto_update = true;
 }
 
