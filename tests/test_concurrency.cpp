@@ -692,17 +692,6 @@ TEST_CASE("cross-chunk writer concurrent push and drain") {
             }
             std::this_thread::yield();
         }
-        // After writers stop, keep draining until all entries are processed
-        // This handles the race where writers pushed entries after the last drain snapshot
-        while (true) {
-            auto keys = writer.get_all_keys();
-            if (keys.empty()) break;
-            for (auto key : keys) {
-                auto placements = writer.dequeue_placements(key);
-                total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
-            }
-            std::this_thread::yield();
-        }
     };
 
     std::thread drain_thread(drainer);
@@ -714,6 +703,17 @@ TEST_CASE("cross-chunk writer concurrent push and drain") {
     stop_writers.store(true, std::memory_order_release);
     for (auto& t : writers) t.join();
     drain_thread.join();
+    // After both writers and drainer are joined, do a final drain pass
+    // to catch any entries that were pushed after the drainer's last snapshot
+    while (true) {
+        auto keys = writer.get_all_keys();
+        if (keys.empty()) break;
+        for (auto key : keys) {
+            auto placements = writer.dequeue_placements(key);
+            total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
+        }
+        std::this_thread::yield();
+    }
 
     // Final verification: all pushed entries were drained
     CHECK(total_drained.load() == total_pushed.load());
