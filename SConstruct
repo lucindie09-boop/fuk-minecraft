@@ -64,6 +64,9 @@ Alias("test", test_prog)
 # Build with: scons fuzz  (requires clang++)
 if sys.platform != "win32":
     fuzz_env = env.Clone()
+    # Force clang since -fsanitize=fuzzer is clang-only
+    fuzz_env["CC"] = "clang"
+    fuzz_env["CXX"] = "clang++"
     fuzz_env.Append(CPPPATH=["src/"])
     fuzz_env.Append(CCFLAGS=["-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
