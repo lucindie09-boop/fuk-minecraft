@@ -618,6 +618,16 @@ public:
         return {};
     }
 
+    // Get all keys currently in the map (for draining)
+    std::vector<uint64_t> get_all_keys() const {
+        std::lock_guard<std::mutex> lock(pending_placement_mutex);
+        std::vector<uint64_t> keys;
+        keys.reserve(pending_block_placements.size());
+        for (const auto& [k, v] : pending_block_placements)
+            keys.push_back(k);
+        return keys;
+    }
+
 private:
     std::unordered_map<uint64_t, std::vector<PendingBlockPlacement>> pending_block_placements;
     mutable std::mutex pending_placement_mutex;
@@ -676,17 +686,17 @@ TEST_CASE("cross-chunk writer concurrent push and drain") {
         while (!stop_writers.load(std::memory_order_acquire) ||
                total_drained.load(std::memory_order_relaxed) <
                    total_pushed.load(std::memory_order_relaxed)) {
-            // Drain a few keys to simulate apply_pending_placements
-            for (int i = 0; i < 10; i++) {
-                uint64_t key = TestShardMap::key(i, 0, 0);
+            // Drain all keys currently present to simulate apply_pending_placements
+            auto keys = writer.get_all_keys();
+            for (auto key : keys) {
                 auto placements = writer.dequeue_placements(key);
                 total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
             }
             std::this_thread::yield();
         }
         // Final drain of any remaining entries
-        for (int i = 0; i < 100; i++) {
-            uint64_t key = TestShardMap::key(i, 0, 0);
+        auto keys = writer.get_all_keys();
+        for (auto key : keys) {
             auto placements = writer.dequeue_placements(key);
             total_drained.fetch_add(static_cast<int>(placements.size()), std::memory_order_relaxed);
         }
