@@ -35,10 +35,12 @@ jobs:
         run: pip install scons
 
       - name: Build
+        shell: bash
         timeout-minutes: 15
         run: scons -j$(nproc || echo 4) TSAN=${{ matrix.tsan }}
 
       - name: Build tests
+        shell: bash
         timeout-minutes: 15
         run: scons test -j$(nproc || echo 4) TSAN=${{ matrix.tsan }}
 
