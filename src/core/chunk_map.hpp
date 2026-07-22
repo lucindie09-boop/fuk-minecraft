@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <memory>
 #include <shared_mutex>
+#include <mutex>
 #include <functional>
 #include <array>
 #include <vector>
