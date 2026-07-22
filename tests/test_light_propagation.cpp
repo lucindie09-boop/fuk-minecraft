@@ -2,6 +2,8 @@
 #include "lighting/light_propagation.hpp"
 #include "lighting/block_light_region.hpp"
 #include "core/chunk_data.hpp"
+#include "core/chunk_map.hpp"
+#include "core/chunk_types.hpp"
 #include "core/block_types.hpp"
 #include <cstring>
 
@@ -69,3 +71,68 @@ TEST_CASE("wrap_local_to_region wraps negative") {
     CHECK(nx == 31);
     CHECK(rdx == -1);
 }
+
+// =========================================================================
+// Cross-chunk BFS edge case tests
+// =========================================================================
+
+TEST_CASE("wrap_local_to_world crosses positive x boundary") {
+    int32_t cx = 0, cy = 0, cz = 0;
+    int16_t x = 32, y = 16, z = 16; // Out of bounds
+    wrap_local_to_world(x, y, z, cx, cy, cz);
+    CHECK(x == 0);
+    CHECK(y == 16);
+    CHECK(z == 16);
+    CHECK(cx == 1);
+    CHECK(cy == 0);
+    CHECK(cz == 0);
+}
+
+TEST_CASE("wrap_local_to_world crosses negative x boundary") {
+    int32_t cx = 0, cy = 0, cz = 0;
+    int16_t x = -1, y = 16, z = 16; // Out of bounds
+    wrap_local_to_world(x, y, z, cx, cy, cz);
+    CHECK(x == 31);
+    CHECK(y == 16);
+    CHECK(z == 16);
+    CHECK(cx == -1);
+    CHECK(cy == 0);
+    CHECK(cz == 0);
+}
+
+TEST_CASE("wrap_local_to_world crosses positive y boundary") {
+    int32_t cx = 0, cy = 0, cz = 0;
+    int16_t x = 16, y = 32, z = 16; // Out of bounds (CHUNK_HEIGHT is 32)
+    wrap_local_to_world(x, y, z, cx, cy, cz);
+    CHECK(x == 16);
+    CHECK(y == 0);
+    CHECK(z == 16);
+    CHECK(cx == 0);
+    CHECK(cy == 1);
+    CHECK(cz == 0);
+}
+
+TEST_CASE("wrap_local_to_world crosses positive z boundary") {
+    int32_t cx = 0, cy = 0, cz = 0;
+    int16_t x = 16, y = 16, z = 32; // Out of bounds
+    wrap_local_to_world(x, y, z, cx, cy, cz);
+    CHECK(x == 16);
+    CHECK(y == 16);
+    CHECK(z == 0);
+    CHECK(cx == 0);
+    CHECK(cy == 0);
+    CHECK(cz == 1);
+}
+
+TEST_CASE("wrap_local_to_world stays in bounds") {
+    int32_t cx = 0, cy = 0, cz = 0;
+    int16_t x = 16, y = 16, z = 16;
+    wrap_local_to_world(x, y, z, cx, cy, cz);
+    CHECK(x == 16);
+    CHECK(y == 16);
+    CHECK(z == 16);
+    CHECK(cx == 0);
+    CHECK(cy == 0);
+    CHECK(cz == 0);
+}
+
