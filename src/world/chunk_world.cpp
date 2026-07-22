@@ -552,6 +552,106 @@ bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t 
     return true;
 }
 
+void ChunkWorld::save_world_metadata(const TerrainParams& params) {
+    String filename = "user://chunks/world.meta";
+
+    std::lock_guard<std::mutex> lock(file_access_mutex);
+
+    Ref<DirAccess> dir = DirAccess::open("user://");
+    if (dir.is_valid()) {
+        dir->make_dir_recursive("chunks");
+    }
+
+    Ref<FileAccess> file = FileAccess::open(filename, FileAccess::WRITE);
+    if (!file.is_valid()) return;
+
+    // Header: magic + version
+    file->store_32(0x574F524C); // "WORL" magic
+    file->store_32(1);           // metadata version
+
+    // Terrain params
+    file->store_32(params.seed);
+    file->store_float(params.sea_level);
+    file->store_float(params.base_height);
+    file->store_float(params.height_scale);
+    file->store_float(params.mountain_scale);
+    file->store_32(params.bedrock_height);
+    file->store_float(params.cave_threshold);
+    file->store_float(params.cave_scale);
+    file->store_float(params.continentalness_scale);
+    file->store_float(params.ocean_threshold);
+    file->store_float(params.land_threshold);
+    file->store_float(params.shelf_width);
+    file->store_float(params.shelf_depth);
+    file->store_float(params.deep_ocean_depth);
+    file->store_float(params.beach_width);
+    file->store_32(params.subsurface_cover_depth);
+    file->store_float(params.climate_temp_scale);
+    file->store_float(params.climate_humidity_scale);
+    file->store_float(params.biome_size);
+
+    // Chunk save format version (for future compatibility)
+    file->store_32(3); // current chunk format version
+
+    file->close();
+}
+
+bool ChunkWorld::load_world_metadata(TerrainParams& out_params, int32_t& out_version) {
+    String filename = "user://chunks/world.meta";
+
+    std::lock_guard<std::mutex> lock(file_access_mutex);
+
+    if (!FileAccess::file_exists(filename)) return false;
+
+    Ref<FileAccess> file = FileAccess::open(filename, FileAccess::READ);
+    if (!file.is_valid()) return false;
+
+    // Header: magic + version
+    uint32_t magic = file->get_32();
+    if (magic != 0x574F524C) { // "WORL"
+        file->close();
+        return false;
+    }
+
+    int32_t meta_version = file->get_32();
+    if (meta_version != 1) {
+        file->close();
+        return false;
+    }
+
+    // Terrain params
+    out_params.seed = file->get_32();
+    out_params.sea_level = file->get_float();
+    out_params.base_height = file->get_float();
+    out_params.height_scale = file->get_float();
+    out_params.mountain_scale = file->get_float();
+    out_params.bedrock_height = file->get_32();
+    out_params.cave_threshold = file->get_float();
+    out_params.cave_scale = file->get_float();
+    out_params.continentalness_scale = file->get_float();
+    out_params.ocean_threshold = file->get_float();
+    out_params.land_threshold = file->get_float();
+    out_params.shelf_width = file->get_float();
+    out_params.shelf_depth = file->get_float();
+    out_params.deep_ocean_depth = file->get_float();
+    out_params.beach_width = file->get_float();
+    out_params.subsurface_cover_depth = file->get_32();
+    out_params.climate_temp_scale = file->get_float();
+    out_params.climate_humidity_scale = file->get_float();
+    out_params.biome_size = file->get_float();
+
+    // Chunk save format version
+    out_version = file->get_32();
+
+    file->close();
+    return true;
+}
+
+bool ChunkWorld::world_metadata_exists() const {
+    String filename = "user://chunks/world.meta";
+    return FileAccess::file_exists(filename);
+}
+
 void ChunkWorld::free_loaded_chunks() {
     RenderingServer* rs = RenderingServer::get_singleton();
     chunk_map.for_each([&](uint64_t key, const std::unique_ptr<ChunkRenderData>& render_data) {

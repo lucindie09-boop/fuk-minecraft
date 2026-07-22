@@ -304,6 +304,57 @@ float VoxelEngineController::get_biome_size() const { return biome_size; }
 void VoxelEngineController::set_vegetation_enabled(bool enabled) { vegetation_enabled = enabled; world_updater.set_vegetation_enabled(enabled); }
 bool VoxelEngineController::is_vegetation_enabled() const { return vegetation_enabled; }
 
+void VoxelEngineController::save_world_metadata() {
+    TerrainParams params;
+    params.seed = seed;
+    params.sea_level = sea_level;
+    params.base_height = base_height;
+    params.height_scale = height_scale;
+    params.mountain_scale = mountain_scale;
+    params.bedrock_height = 5;
+    params.cave_threshold = 0.4f;
+    params.cave_scale = 0.05f;
+    params.continentalness_scale = 0.00010f;
+    params.ocean_threshold = 0.48f;
+    params.land_threshold = 0.48f;
+    params.shelf_width = 0.025f;
+    params.shelf_depth = 18.0f;
+    params.deep_ocean_depth = 48.0f;
+    params.beach_width = 0.002f;
+    params.subsurface_cover_depth = 4;
+    params.climate_temp_scale = 0.00015f;
+    params.climate_humidity_scale = 0.00020f;
+    params.biome_size = biome_size;
+    chunk_world.save_world_metadata(params);
+}
+
+bool VoxelEngineController::load_world_metadata() {
+    TerrainParams params;
+    int32_t chunk_version;
+    if (!chunk_world.load_world_metadata(params, chunk_version)) {
+        return false;
+    }
+    // Apply loaded params to controller state
+    seed = params.seed;
+    sea_level = params.sea_level;
+    base_height = params.base_height;
+    height_scale = params.height_scale;
+    mountain_scale = params.mountain_scale;
+    biome_size = params.biome_size;
+    // Update world_updater with loaded params
+    world_updater.set_seed(seed);
+    world_updater.set_sea_level(sea_level);
+    world_updater.set_base_height(base_height);
+    world_updater.set_height_scale(height_scale);
+    world_updater.set_mountain_scale(mountain_scale);
+    world_updater.set_biome_size(biome_size);
+    return true;
+}
+
+bool VoxelEngineController::world_metadata_exists() const {
+    return chunk_world.world_metadata_exists();
+}
+
 void VoxelEngineController::set_auto_update(bool enabled) { auto_update = enabled; }
 bool VoxelEngineController::get_auto_update() const { return auto_update; }
 

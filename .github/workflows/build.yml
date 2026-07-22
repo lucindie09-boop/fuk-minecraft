@@ -115,3 +115,30 @@ jobs:
       - name: Run fuzz_palette
         timeout-minutes: 2
         run: timeout 60s ./bin/fuzz_palette -seed=12345 || [ $? -eq 124 ]
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install SCons
+        run: pip install scons
+
+      - name: Install clang-tidy
+        run: sudo apt-get install -y clang-tidy
+
+      - name: Run clang-tidy
+        run: |
+          clang-tidy src/**/*.cpp src/**/*.hpp -- -std=c++17 -Isrc -Igodot-cpp/include -Igodot-cpp/gen/include -Igodot-cpp/gdextension \
+            -checks=*,-bugprone-easily-swappable-parameters,-modernize-use-trailing-return-type,-cppcoreguidelines-avoid-magic-numbers \
+            2>&1 | tee clang-tidy-output.txt
+          if [ -s clang-tidy-output.txt ]; then
+            echo "Static analysis found issues"
+            exit 1
+          fi

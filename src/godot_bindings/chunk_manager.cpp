@@ -265,6 +265,10 @@ double ChunkManager::get_fog_density() const { return controller->get_fog_densit
 void ChunkManager::set_vegetation_enabled(bool enabled) { controller->set_vegetation_enabled(enabled); }
 bool ChunkManager::get_vegetation_enabled() const { return controller->is_vegetation_enabled(); }
 
+void ChunkManager::save_world_metadata() { controller->save_world_metadata(); }
+bool ChunkManager::load_world_metadata() { return controller->load_world_metadata(); }
+bool ChunkManager::world_metadata_exists() const { return controller->world_metadata_exists(); }
+
 // -------------------------------------------------------------------------
 // _bind_methods
 // -------------------------------------------------------------------------
@@ -281,6 +285,10 @@ void ChunkManager::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_block", "world_x", "world_y", "world_z"), &ChunkManager::get_block);
     ClassDB::bind_method(D_METHOD("get_block_name", "block_id"), &ChunkManager::get_block_name);
     ClassDB::bind_method(D_METHOD("resolve_voxel_collision", "position", "motion", "size"), &ChunkManager::resolve_voxel_collision);
+
+    ClassDB::bind_method(D_METHOD("save_world_metadata"), &ChunkManager::save_world_metadata);
+    ClassDB::bind_method(D_METHOD("load_world_metadata"), &ChunkManager::load_world_metadata);
+    ClassDB::bind_method(D_METHOD("world_metadata_exists"), &ChunkManager::world_metadata_exists);
 
 ClassDB::bind_method(D_METHOD("set_time", "time"), &ChunkManager::set_time);
 ClassDB::bind_method(D_METHOD("get_time"), &ChunkManager::get_time);

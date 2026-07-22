@@ -47,6 +47,11 @@ public:
     void queue_pending_placement(int32_t world_x, int32_t world_y, int32_t world_z, int block_id);
     void apply_pending_placements(uint64_t key, int32_t chunk_x, int32_t chunk_y, int32_t chunk_z, ChunkRenderData& render_data);
 
+    // World metadata (seed, terrain params, version)
+    void save_world_metadata(const TerrainParams& params);
+    bool load_world_metadata(TerrainParams& out_params, int32_t& out_version);
+    bool world_metadata_exists() const;
+
     void set_vegetation_enabled(bool enabled) { vegetation_enabled = enabled; }
     bool is_vegetation_enabled() const { return vegetation_enabled; }
 

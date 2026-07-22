@@ -58,7 +58,14 @@ scons bench    # benchmark executable
 scons test     # builds and can run the doctest suite (see tests/)
 ```
 
-CI (`.github/workflows/build.yml`) builds on `windows-latest` and runs `scons test` + the resulting `run_tests.exe` on every push and pull request. It does not currently cover Linux/macOS builds.
+CI (`.github/workflows/build.yml`) runs a 5-leg matrix on every push and pull request:
+- `ubuntu-latest` (plain build + tests)
+- `ubuntu-latest` with ThreadSanitizer (TSan)
+- `ubuntu-latest` with AddressSanitizer + UndefinedBehaviorSanitizer (ASan+UBSan)
+- `macos-latest` (plain build + tests)
+- `windows-latest` (plain build + tests)
+
+A separate fuzz job builds and runs libFuzzer harnesses (`fuzz_palette`, `fuzz_chunk_load`) for 60 seconds each on Linux.
 
 ## Running
 

@@ -134,6 +134,10 @@ void toggle_day_night_cycle();
     void set_vegetation_enabled(bool enabled);
     bool is_vegetation_enabled() const;
 
+    void save_world_metadata();
+    bool load_world_metadata();
+    bool world_metadata_exists() const;
+
     ChunkWorld& get_chunk_world() { return chunk_world; }
     MeshManager& get_mesh_manager() { return mesh_manager; }
     WorldUpdater& get_world_updater() { return world_updater; }
