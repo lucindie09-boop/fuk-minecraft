@@ -68,6 +68,9 @@ if sys.platform != "win32":
     fuzz_env["CC"] = "clang"
     fuzz_env["CXX"] = "clang++"
     fuzz_env.Append(CPPPATH=["src/"])
+    # Remove GCC-specific flags that clang doesn't support
+    if "-fno-gnu-unique" in fuzz_env["CCFLAGS"]:
+        fuzz_env["CCFLAGS"].remove("-fno-gnu-unique")
     fuzz_env.Append(CCFLAGS=["-fsanitize=fuzzer,address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     fuzz_env.Append(LINKFLAGS=["-fsanitize=fuzzer,address,undefined"])
     # Use separate build dir to avoid .obj collisions with test environment
