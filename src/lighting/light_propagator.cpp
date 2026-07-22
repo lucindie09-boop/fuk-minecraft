@@ -17,7 +17,13 @@ void LightPropagator::propagate_block_light_region(int32_t cx, int32_t cy, int32
     ChunkData* chunk = chunk_map->get_chunk_data(cx, cy, cz);
     if (!chunk) return;
     {
-        auto lock = chunk_map->lock_all_exclusive();
+        uint64_t keys[27];
+        int idx = 0;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    keys[idx++] = chunk_map->get_chunk_key(cx + dx, cy + dy, cz + dz);
+        auto lock = chunk_map->lock_keys_exclusive(keys);
         propagate_block_light_region_locked(cx, cy, cz);
     }
     if (mesh_manager) {

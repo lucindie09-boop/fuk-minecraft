@@ -120,6 +120,36 @@ public:
         return sl;
     }
 
+    ExclusiveShardLock lock_keys_exclusive(const std::vector<uint64_t>& keys) const {
+        ExclusiveShardLock sl;
+        if (keys.empty()) return sl;
+        bool seen[kNumShards] = {};
+        for (auto k : keys) seen[key_to_shard(k)] = true;
+        sl.locks_.reserve(kNumShards);
+        for (size_t i = 0; i < kNumShards; ++i)
+            if (seen[i]) sl.locks_.emplace_back(shards_[i].mutex);
+        return sl;
+    }
+
+    template<size_t N>
+    ExclusiveShardLock lock_keys_exclusive(const uint64_t (&keys)[N]) const {
+        ExclusiveShardLock sl;
+        if constexpr (N == 0) {
+            return sl;
+        }
+        bool seen[kNumShards] = {};
+        for (size_t i = 0; i < N; ++i) {
+            seen[key_to_shard(keys[i])] = true;
+        }
+        sl.locks_.reserve(kNumShards);
+        for (size_t i = 0; i < kNumShards; ++i) {
+            if (seen[i]) {
+                sl.locks_.emplace_back(shards_[i].mutex);
+            }
+        }
+        return sl;
+    }
+
     ShardLock lock_all() const {
         ShardLock sl;
         sl.locks_.reserve(kNumShards);

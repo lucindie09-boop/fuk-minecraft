@@ -53,9 +53,22 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - Public `_locked` BFS methods (`light_propagate_add_locked`, `light_propagate_remove_locked`, `update_block_light_incremental_locked`) moved to public — contract documented: caller MUST already hold `lock_all_exclusive()`, uses `_fast` accessors only, MUST NOT call `mark_chunks_dirty_for_light`.
 
 **Concurrency tests and cross-platform CI:**
-- 9 concurrency regression tests in `tests/test_concurrency.cpp` using `TestShardMap` (mirrors ChunkMap's 64-shard architecture without needing `godot::RID` which segfaults without Godot runtime). Covers: shard lock concurrency, ascending-order deadlock prevention, exclusive serialization, PaletteStorage R/W, `pending_light_removals_` pattern, and RAII lock correctness.
-- 91 tests / 479 assertions total across 11 test files.
-- CI: cross-platform matrix (ubuntu/macos/windows), TSan on Linux via `TSAN=1` build flag, timeouts on all steps, plain tests skipped on TSan leg.
+- 10 concurrency regression tests in `tests/test_concurrency.cpp` using `TestShardMap` (mirrors ChunkMap's 64-shard architecture without needing `godot::RID` which segfaults without Godot runtime). Covers: shard lock concurrency, ascending-order deadlock prevention, exclusive serialization, PaletteStorage R/W, `pending_light_removals_` pattern, RAII lock correctness, and `OrderedExclusiveShardLock` target verification.
+- 92 tests / 481 assertions total across 11 test files.
+- CI: cross-platform matrix (ubuntu/macos/windows), TSan on Linux via `TSAN=1` build flag, timeouts on all steps, plain tests skipped on TSan leg. Benchmark runs on non-TSan legs and logs results.
+
+**Targeted shard locking (`lock_keys_exclusive`):**
+- Added `lock_keys_exclusive<N>()` to `ChunkMap` — returns `ExclusiveShardLock` on only the shards whose keys appear in the input, in ascending shard order (deadlock-safe). Template and vector overloads.
+- Migrated 4 hot paths from `lock_all_exclusive()` (all 64 shards) to `lock_keys_exclusive()`:
+  - `set_block_variant()` — 1 chunk key
+  - `propagate_block_light_region()` — 27 keys (3×3×3 neighborhood)
+  - `fire_and_forget` lambda in `chunk_world.cpp` — 27 keys (3×3×3 neighborhood)
+  - `update()` outer scope in `chunk_world.cpp` — 28 keys (1 center + 3×3×3 neighbors)
+- Remaining BFS call sites (`place_block`, `light_propagate_add/remove`, `update_block_light_incremental`, `PlayerLight::update`) still use `lock_all_exclusive()` due to unbounded BFS reach — deferred to a future phase.
+
+**Expanded benchmark tool:**
+- `tools/benchmark.cpp` now benchmarks three hot paths: `generate_chunk` (1,000 iters), `build_mesh` (1,000 iters), and `palette_write` (100 full-chunk fills).
+- Wired into CI (`scons bench`) on non-TSan legs; output logged per run for regression tracking.
 
 ### In Progress
 - (none)
@@ -77,7 +90,7 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
 - **Locking hierarchy for ChunkData writes**: all ChunkData reads/writes must hold `lock_all_exclusive()`. Public `_locked` BFS methods use `_fast` accessors under that lock. Auto-locking accessors (`get_chunk_data`, `get_chunk_render_data`, `mark_chunks_dirty_for_light`, `queue_dirty_chunk`) acquire their own shared locks — they MUST NOT be called under `lock_all_exclusive()`. Public wrappers: acquire exclusive lock → call `_locked` → release lock → call auto-locking accessors for dirty-marking.
 
 ## Next Steps
-- Expand automated test coverage further: the `tests/` suite now has 91 test cases / 479 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, and concurrency (shard locking, exclusive serialization, PaletteStorage R/W), but LOD edge cases, light propagation remove paths, and cross-chunk writer races still lack regression tests.
+- Expand automated test coverage further: the `tests/` suite now has 92 test cases / 481 assertions across palette storage, mesh culling, greedy mesher, neighbor accessor, face emission, and concurrency (shard locking, exclusive serialization, PaletteStorage R/W), but LOD edge cases, light propagation remove paths, and cross-chunk writer races still lack regression tests.
 - No gameplay layer exists yet beyond block break/place (no inventory, crafting, mobs, multiplayer); `player.gd` remains an explicit temporary placeholder pending a C++ player controller.
 - Re-benchmark and refresh any performance numbers before quoting them externally (e.g. in the README) — the last detailed profiling pass predates the water surface, emissive maps, shadow-map removal, and the new stride-based LOD system.
 - Replace `lock_all_exclusive()` on hot paths with key-tracking `lock_keys()` for better concurrency (only locks shards that are actually accessed, allows concurrent writes to different shards).

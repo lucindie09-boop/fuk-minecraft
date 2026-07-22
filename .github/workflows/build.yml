@@ -12,12 +12,15 @@ jobs:
         include:
           - os: ubuntu-latest
             test_bin: ./bin/run_tests
+            bench_bin: ./bin/benchmark
             tsan: 1
           - os: macos-latest
             test_bin: ./bin/run_tests
+            bench_bin: ./bin/benchmark
             tsan: 0
           - os: windows-latest
             test_bin: .\bin\run_tests.exe
+            bench_bin: .\bin\benchmark.exe
             tsan: 0
 
     runs-on: ${{ matrix.os }}
@@ -55,3 +58,14 @@ jobs:
         env:
           TSAN_OPTIONS: suppressions=tsan_suppressions.txt halt_on_error=1
         run: ${{ matrix.test_bin }}
+
+      - name: Build benchmark
+        if: matrix.tsan != 1
+        shell: bash
+        timeout-minutes: 10
+        run: scons bench -j$(nproc || echo 4)
+
+      - name: Run benchmark
+        if: matrix.tsan != 1
+        timeout-minutes: 2
+        run: ${{ matrix.bench_bin }}

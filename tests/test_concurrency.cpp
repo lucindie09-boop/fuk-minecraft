@@ -119,6 +119,20 @@ public:
                 lks_.emplace_back(s.mutex);
         }
     };
+
+    // Lock shards in ascending order with exclusive locks (mirrors ChunkMap::lock_keys_exclusive)
+    class [[nodiscard]] OrderedExclusiveShardLock {
+        std::vector<std::unique_lock<std::shared_mutex>> lks_;
+    public:
+        OrderedExclusiveShardLock() = default;
+        OrderedExclusiveShardLock(const TestShardMap& m, const std::vector<uint64_t>& keys) {
+            bool seen[kNumShards] = {};
+            for (auto k : keys) seen[m.shard_of(k)] = true;
+            lks_.reserve(kNumShards);
+            for (size_t i = 0; i < kNumShards; ++i)
+                if (seen[i]) lks_.emplace_back(m.shards_[i].mutex);
+        }
+    };
 };
 
 // =========================================================================
@@ -363,8 +377,13 @@ TEST_CASE("ShardLock releases on destruction") {
         TestShardMap::ShardLock lk1(m, TestShardMap::key(0, 0, 0));
         TestShardMap::ShardLock lk2(m, TestShardMap::key(0, 0, 0));
     }
+    // After both shared locks are released, exclusive lock must succeed.
+    // If shared locks didn't release, this would deadlock (test timeout).
     TestShardMap::ExclusiveShardLock el(m, TestShardMap::key(0, 0, 0));
-    CHECK(true);
+    auto* d = m.shards_[m.shard_of(TestShardMap::key(0, 0, 0))]
+                .chunks[TestShardMap::key(0, 0, 0)].get();
+    d->set_block(0, 0, 0, BlockIDs::STONE);
+    CHECK(d->get_block(0, 0, 0) == BlockIDs::STONE);
 }
 
 // =========================================================================
@@ -432,7 +451,53 @@ TEST_CASE("exclusive lock serializes writer and reader on same shard") {
     tw.join();
     tr.join();
 
-    // Reader might see air (if it read before writer) or stone (after).
-    // The key invariant: no crash, no hang, no torn read.
-    CHECK(true);
+    // After both threads complete, verify the final state is consistent.
+    // The writer set STONE; the reader must see either AIR (pre-write) or STONE (post-write).
+    // No torn/inconsistent value is possible because PaletteStorage writes are atomic at the word level.
+    auto* d = m.shards_[m.shard_of(TestShardMap::key(5, 0, 0))]
+                .chunks[TestShardMap::key(5, 0, 0)].get();
+    BlockID final_val = d->get_block(0, 0, 0);
+    CHECK((final_val == BlockIDs::AIR || final_val == BlockIDs::STONE));
+}
+
+// =========================================================================
+// 10. OrderedExclusiveShardLock targets only specified shards
+// =========================================================================
+TEST_CASE("OrderedExclusiveShardLock only locks specified shards") {
+    TestShardMap m;
+    // Insert chunks at different z values so they land on different shards.
+    // key encoding: (ux << 42) | (uy << 21) | uz, shard = key % 64.
+    // Different z => different uz => different shard (for small z).
+    for (int i = 0; i < 10; i++) {
+        auto cd = std::make_unique<ChunkData>();
+        cd->clear();
+        m.insert(TestShardMap::key(0, 0, i), std::move(cd));
+    }
+
+    // Lock only keys for chunks (0,0,0) and (0,0,2) — shards 0 and 2
+    std::vector<uint64_t> keys = { TestShardMap::key(0, 0, 0), TestShardMap::key(0, 0, 2) };
+
+    std::atomic<bool> other_shard_writable{false};
+
+    // Write to chunk (0,0,9) which lives on shard 9 — should not be blocked
+    auto other_writer = [&]() {
+        TestShardMap::ExclusiveShardLock el(m, TestShardMap::key(0, 0, 9));
+        auto* d = m.shards_[m.shard_of(TestShardMap::key(0, 0, 9))]
+                    .chunks[TestShardMap::key(0, 0, 9)].get();
+        d->set_block(0, 0, 0, BlockIDs::STONE);
+        other_shard_writable.store(true, std::memory_order_release);
+    };
+
+    {
+        TestShardMap::OrderedExclusiveShardLock lk(m, keys);
+        std::thread t(other_writer);
+        // other_writer should complete quickly if chunk 9's shard is not locked
+        t.join();
+        CHECK(other_shard_writable.load());
+    }
+
+    // Verify chunk 9 was written
+    auto* d9 = m.shards_[m.shard_of(TestShardMap::key(0, 0, 9))]
+                .chunks[TestShardMap::key(0, 0, 9)].get();
+    CHECK(d9->get_block(0, 0, 0) == BlockIDs::STONE);
 }

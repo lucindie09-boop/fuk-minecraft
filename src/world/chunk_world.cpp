@@ -141,7 +141,14 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
             bool any_emissive_in_region = false;
             bool took_fire_and_forget = false;
             {
-                auto lock = chunk_map.lock_all_exclusive();
+                uint64_t keys[28];
+                keys[0] = key;
+                int idx = 1;
+                for (int dz = -1; dz <= 1; dz++)
+                    for (int dy = -1; dy <= 1; dy++)
+                        for (int dx = -1; dx <= 1; dx++)
+                            keys[idx++] = chunk_map.get_chunk_key(stage.chunk_x + dx, stage.chunk_y + dy, stage.chunk_z + dz);
+                auto lock = chunk_map.lock_keys_exclusive(keys);
                 if (!chunk_map.contains_fast(key)) continue;
 
                 if (light_propagated_chunks.find(key) != light_propagated_chunks.end()) {
@@ -169,7 +176,13 @@ int32_t ChunkWorld::process_completed_chunks(uint64_t epoch, double budget_ms, i
                     int32_t cz = stage.chunk_z;
                     thread_pool->fire_and_forget([this, cx, cy, cz, epoch]() {
                         {
-                            auto wlock = chunk_map.lock_all_exclusive();
+                            uint64_t keys[27];
+                            int idx = 0;
+                            for (int dz = -1; dz <= 1; dz++)
+                                for (int dy = -1; dy <= 1; dy++)
+                                    for (int dx = -1; dx <= 1; dx++)
+                                        keys[idx++] = chunk_map.get_chunk_key(cx + dx, cy + dy, cz + dz);
+                            auto wlock = chunk_map.lock_keys_exclusive(keys);
                             ChunkData* region_grid[3][3][3] = {};
                             for (int dz = -1; dz <= 1; dz++) {
                                 for (int dy = -1; dy <= 1; dy++) {

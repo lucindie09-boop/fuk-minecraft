@@ -29,7 +29,7 @@ Alias("debug", debug_prog)
 bench_env = env.Clone()
 bench_env.Append(CPPPATH=["src/"])
 bench_env.Append(LIBS=[])
-bench_sources = ["tools/benchmark.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp"]
+bench_sources = ["tools/benchmark.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp", "src/mesh/mesh_builder.cpp", "src/mesh/mesh_builder_faces.cpp", "src/mesh/mesh_builder_greedy.cpp", "src/mesh/chunk_neighbor_accessor.cpp", "src/mesh/ambient_occlusion.cpp", "src/mesh/smooth_lighting.cpp"]
 bench_prog = bench_env.Program("bin/benchmark", bench_sources)
 Alias("bench", bench_prog)
 

@@ -260,7 +260,8 @@ void BlockEditor::set_block_variant(int32_t world_x, int32_t world_y, int32_t wo
 
     ChunkMap& cm = chunk_world->get_chunk_map();
     {
-        auto lock = cm.lock_all_exclusive();
+        uint64_t key = cm.get_chunk_key(chunk_x, chunk_y, chunk_z);
+        auto lock = cm.lock_keys_exclusive({key});
         ChunkData* chunk_data = cm.get_chunk_data_fast(chunk_x, chunk_y, chunk_z);
         if (!chunk_data) return;
         if (!is_local_in_bounds(local_x, local_y, local_z)) return;
