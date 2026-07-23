@@ -58,9 +58,7 @@ BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_s
         return BlockIDs::SAND;
     }
     switch (biome) {
-        case BiomeType::AbyssalTrench:
-        case BiomeType::DeepOcean:
-        case BiomeType::ShallowOcean: return BlockIDs::SAND;
+        case BiomeType::Ocean:       return BlockIDs::SAND;
         case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
         case BiomeType::Desert:      return BlockIDs::SAND;
         default:                     return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
@@ -69,9 +67,7 @@ BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_s
 
 BlockID ChunkGenerator::get_subsurface_block(BiomeType biome, bool near_water) const {
     switch (biome) {
-        case BiomeType::AbyssalTrench:
-        case BiomeType::DeepOcean:
-        case BiomeType::ShallowOcean: return BlockIDs::SAND;
+        case BiomeType::Ocean:       return BlockIDs::SAND;
         case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
         case BiomeType::Desert:       return BlockIDs::SAND;
         default:                      return BlockIDs::DIRT;
@@ -275,9 +271,7 @@ void ChunkGenerator::render_biome_pgm(const char* filename, int img_w, int img_h
                                                static_cast<int32_t>(wz));
             uint8_t byte = 0;
             switch (col.biome) {
-                case BiomeType::AbyssalTrench: byte = 10;  break;
-                case BiomeType::DeepOcean:     byte = 30;  break;
-                case BiomeType::ShallowOcean:  byte = 60;  break;
+                case BiomeType::Ocean:         byte = 30;  break;
                 case BiomeType::Beach:         byte = 220; break;
                 case BiomeType::Plains:        byte = 150; break;
                 case BiomeType::Forest:        byte = 100; break;

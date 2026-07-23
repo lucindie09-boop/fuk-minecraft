@@ -66,6 +66,5 @@ debug_enabled = false
 debug_print_interval = 6.0
 smooth_lighting = true
 lod_distance = 6
-day_sky_color = Color(1, 1, 1, 1)
 fog_density = 0.1
 vegetation_enabled = false

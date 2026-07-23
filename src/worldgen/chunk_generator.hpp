@@ -19,9 +19,7 @@ namespace VoxelEngine {
 // Biome types
 // -------------------------------------------------------------------------
 enum class BiomeType : uint8_t {
-    AbyssalTrench,
-    DeepOcean,
-    ShallowOcean,
+    Ocean,
     Beach,
     Plains,
     Forest,
@@ -129,10 +127,7 @@ private:
             return BiomeType::Beach;
         }
         if (cont < params.ocean_threshold) {
-            float depth = params.ocean_threshold - cont;
-            if (depth > 0.10f) return BiomeType::AbyssalTrench;
-            if (depth > 0.05f) return BiomeType::DeepOcean;
-            return BiomeType::ShallowOcean;
+            return BiomeType::Ocean;
         }
         return land_biome_from_grid(temperature, humidity);
     }
