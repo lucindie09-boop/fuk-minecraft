@@ -209,12 +209,14 @@ void VegetationGenerator::place_boulder(
         }
     };
     
-    // Place boulder in spherical shape
+    // Place boulder in slightly irregular spherical shape
     for (int32_t dy = -radius; dy <= radius; dy++) {
         for (int32_t dx = -radius; dx <= radius; dx++) {
             for (int32_t dz = -radius; dz <= radius; dz++) {
                 int32_t dist_sq = dx*dx + dy*dy + dz*dz;
-                if (dist_sq <= radius * radius) {
+                // Add slight irregularity using seed-based noise (only subtracts blocks, never adds)
+                float noise_offset = (static_cast<float>((seed >> (dx + dz + 3)) & 7u)) * 0.15f;
+                if (dist_sq <= radius * radius - noise_offset * radius) {
                     place_block(dx, dz, dy);
                 }
             }
