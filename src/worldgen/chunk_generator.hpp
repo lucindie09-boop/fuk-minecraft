@@ -168,7 +168,7 @@ private:
             w_base  += w * centers[i].base_off;
             w_total += w;
         }
-        float base  = params.base_height + w_base / w_total;
+        float base  = 208.0f + w_base / w_total;
 
         // Terrain amplitude control — distinct flat, hilly, and mountainous regions
         float terrain_control = terrain_noise.fbm(x + 7000.0f, z + 7000.0f, 3, 0.50f, 0.0015f);

@@ -633,14 +633,11 @@ void ChunkWorld::save_world_metadata(const TerrainParams& params) {
 
     // Header: magic + version
     file->store_32(0x574F524C); // "WORL" magic
-    file->store_32(1);           // metadata version
+    file->store_32(2);           // metadata version
 
     // Terrain params
     file->store_32(params.seed);
     file->store_float(params.sea_level);
-    file->store_float(params.base_height);
-    file->store_float(params.height_scale);
-    file->store_float(params.mountain_scale);
     file->store_32(params.bedrock_height);
     file->store_float(params.cave_threshold);
     file->store_float(params.cave_scale);
@@ -680,7 +677,7 @@ bool ChunkWorld::load_world_metadata(TerrainParams& out_params, int32_t& out_ver
     }
 
     int32_t meta_version = file->get_32();
-    if (meta_version != 1) {
+    if (meta_version < 1 || meta_version > 2) {
         file->close();
         return false;
     }
@@ -688,9 +685,12 @@ bool ChunkWorld::load_world_metadata(TerrainParams& out_params, int32_t& out_ver
     // Terrain params
     out_params.seed = file->get_32();
     out_params.sea_level = file->get_float();
-    out_params.base_height = file->get_float();
-    out_params.height_scale = file->get_float();
-    out_params.mountain_scale = file->get_float();
+    if (meta_version == 1) {
+        // Skip old fields for backward compatibility
+        file->get_float(); // base_height
+        file->get_float(); // height_scale
+        file->get_float(); // mountain_scale
+    }
     out_params.bedrock_height = file->get_32();
     out_params.cave_threshold = file->get_float();
     out_params.cave_scale = file->get_float();

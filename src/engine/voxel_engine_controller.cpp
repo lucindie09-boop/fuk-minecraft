@@ -55,9 +55,6 @@ VoxelEngineController::VoxelEngineController()
     world_updater.set_owner(nullptr);
     world_updater.set_seed(seed);
     world_updater.set_sea_level(sea_level);
-    world_updater.set_base_height(base_height);
-    world_updater.set_height_scale(height_scale);
-    world_updater.set_mountain_scale(mountain_scale);
     world_updater.set_render_distance(render_distance);
     world_updater.set_editor_render_distance(editor_render_distance);
     world_updater.set_lod_distance(lod_distance);
@@ -121,7 +118,6 @@ void VoxelEngineController::reset_runtime_state(bool restart_thread_pool) {
     runtime_elapsed = 0.0;
     frame_time_accumulator = 0.0;
     frame_count = 0;
-    debug_accumulated_time = 0.0;
 
     if (restart_thread_pool) {
         create_thread_pool();
@@ -262,12 +258,7 @@ String VoxelEngineController::get_performance_report() {
 }
 
 void VoxelEngineController::print_debug_info(double delta) {
-    if (!debug_enabled) return;
-    debug_accumulated_time += delta;
-    if (debug_accumulated_time >= debug_print_interval) {
-        print_line(get_performance_report());
-        debug_accumulated_time = 0.0;
-    }
+    // Debug printing removed
 }
 
 // -------------------------------------------------------------------------
@@ -288,15 +279,6 @@ godot::Vector3 VoxelEngineController::get_player_position() const { return playe
 
 void VoxelEngineController::set_sea_level(float level) { sea_level = level; world_updater.set_sea_level(sea_level); }
 float VoxelEngineController::get_sea_level() const { return sea_level; }
-
-void VoxelEngineController::set_base_height(float height) { base_height = height; world_updater.set_base_height(base_height); }
-float VoxelEngineController::get_base_height() const { return base_height; }
-
-void VoxelEngineController::set_height_scale(float scale) { height_scale = scale; world_updater.set_height_scale(height_scale); }
-float VoxelEngineController::get_height_scale() const { return height_scale; }
-
-void VoxelEngineController::set_mountain_scale(float scale) { mountain_scale = scale; world_updater.set_mountain_scale(mountain_scale); }
-float VoxelEngineController::get_mountain_scale() const { return mountain_scale; }
 void VoxelEngineController::set_biome_size(float size) { biome_size = size; world_updater.set_biome_size(biome_size); }
 float VoxelEngineController::get_biome_size() const { return biome_size; }
 
@@ -321,16 +303,10 @@ bool VoxelEngineController::load_world_metadata() {
     // Apply loaded params to controller state
     seed = params.seed;
     sea_level = params.sea_level;
-    base_height = params.base_height;
-    height_scale = params.height_scale;
-    mountain_scale = params.mountain_scale;
     biome_size = params.biome_size;
     // Update world_updater with loaded params
     world_updater.set_seed(seed);
     world_updater.set_sea_level(sea_level);
-    world_updater.set_base_height(base_height);
-    world_updater.set_height_scale(height_scale);
-    world_updater.set_mountain_scale(mountain_scale);
     world_updater.set_biome_size(biome_size);
     return true;
 }
@@ -357,11 +333,6 @@ float VoxelEngineController::get_lod_detail_level() const { return lod_detail_le
 void VoxelEngineController::set_editor_enabled(bool enabled) { editor_enabled = enabled; }
 bool VoxelEngineController::get_editor_enabled() const { return editor_enabled; }
 
-void VoxelEngineController::set_debug_enabled(bool enabled) { debug_enabled = enabled; }
-bool VoxelEngineController::get_debug_enabled() const { return debug_enabled; }
-
-void VoxelEngineController::set_debug_print_interval(double interval) { debug_print_interval = interval; }
-double VoxelEngineController::get_debug_print_interval() const { return debug_print_interval; }
 
 void VoxelEngineController::set_player_light_enabled(bool enabled) { environment_controller.set_player_light_enabled(enabled); }
 bool VoxelEngineController::get_player_light_enabled() const { return environment_controller.get_player_light_enabled(); }

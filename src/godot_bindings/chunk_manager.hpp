@@ -68,14 +68,6 @@ public:
     void set_sea_level(float level);
     float get_sea_level() const;
 
-    void set_base_height(float height);
-    float get_base_height() const;
-
-    void set_height_scale(float scale);
-    float get_height_scale() const;
-
-    void set_mountain_scale(float scale);
-    float get_mountain_scale() const;
 
     void set_biome_size(float size);
     float get_biome_size() const;
@@ -85,11 +77,6 @@ public:
     void set_chunk_scenario(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);
     void clear_editor_chunks();
 
-    void set_debug_enabled(bool enabled);
-    bool get_debug_enabled() const;
-
-    void set_debug_print_interval(double interval);
-    double get_debug_print_interval() const;
 
     void set_editor_enabled(bool enabled);
     bool get_editor_enabled() const;

@@ -12,9 +12,6 @@ namespace VoxelEngine {
 struct TerrainParams {
     int32_t seed = 12345;
     float sea_level = 200.0f;
-    float base_height = 208.0f;
-    float height_scale = 48.0f;
-    float mountain_scale = 80.0f;
     int32_t bedrock_height = 5;
 
     float cave_threshold = 0.4f;

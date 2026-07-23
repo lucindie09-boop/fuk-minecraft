@@ -164,15 +164,6 @@ void ChunkManager::unload_chunk(int32_t chunk_x, int32_t chunk_y, int32_t chunk_
 void ChunkManager::set_sea_level(float level) { controller->set_sea_level(level); }
 float ChunkManager::get_sea_level() const { return controller->get_sea_level(); }
 
-void ChunkManager::set_base_height(float height) { controller->set_base_height(height); }
-float ChunkManager::get_base_height() const { return controller->get_base_height(); }
-
-void ChunkManager::set_height_scale(float scale) { controller->set_height_scale(scale); }
-float ChunkManager::get_height_scale() const { return controller->get_height_scale(); }
-
-void ChunkManager::set_mountain_scale(float scale) { controller->set_mountain_scale(scale); }
-float ChunkManager::get_mountain_scale() const { return controller->get_mountain_scale(); }
-
 void ChunkManager::set_biome_size(float size) { controller->set_biome_size(size); }
 float ChunkManager::get_biome_size() const { return controller->get_biome_size(); }
 
@@ -183,12 +174,6 @@ void ChunkManager::set_chunk_scenario(int32_t chunk_x, int32_t chunk_y, int32_t 
 }
 
 void ChunkManager::clear_editor_chunks() { controller->clear_editor_chunks(this); }
-
-void ChunkManager::set_debug_enabled(bool enabled) { controller->set_debug_enabled(enabled); }
-bool ChunkManager::get_debug_enabled() const { return controller->get_debug_enabled(); }
-
-void ChunkManager::set_debug_print_interval(double interval) { controller->set_debug_print_interval(interval); }
-double ChunkManager::get_debug_print_interval() const { return controller->get_debug_print_interval(); }
 
 void ChunkManager::set_editor_enabled(bool enabled) {
     controller->set_editor_enabled(enabled);
@@ -340,14 +325,9 @@ ClassDB::bind_method(D_METHOD("get_sun_direction"), &ChunkManager::get_sun_direc
     BIND_PROP(Variant::VECTOR3, player_position,           "position");
     BIND_PROP(Variant::BOOL,    auto_update,               "enabled");
     BIND_PROP(Variant::FLOAT,   sea_level,                 "level");
-    BIND_PROP(Variant::FLOAT,   base_height,               "height");
-    BIND_PROP(Variant::FLOAT,   height_scale,              "scale");
-    BIND_PROP(Variant::FLOAT,   mountain_scale,            "scale");
     ClassDB::bind_method(D_METHOD("set_biome_size", "size"), &ChunkManager::set_biome_size);
     ClassDB::bind_method(D_METHOD("get_biome_size"), &ChunkManager::get_biome_size);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "biome_size", PROPERTY_HINT_RANGE, "0.25,4.0,0.05"), "set_biome_size", "get_biome_size");
-    BIND_PROP(Variant::BOOL,    debug_enabled,             "enabled");
-    BIND_PROP(Variant::FLOAT,   debug_print_interval,      "interval");
     BIND_PROP(Variant::BOOL,    editor_enabled,            "enabled");
     BIND_PROP(Variant::INT,     editor_render_distance,    "distance");
 BIND_PROP(Variant::BOOL, smooth_lighting, "enabled");
