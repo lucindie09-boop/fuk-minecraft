@@ -19,12 +19,15 @@ public:
 private:
     static uint32_t hash_pos(int32_t x, int32_t z);
     static void place_tree(ChunkData& chunk,
-                           int32_t local_x, int32_t local_z,
-                           int32_t surface_y, int32_t world_y_start, int32_t world_y_end,
-                           uint32_t seed, int32_t chunk_x, int32_t chunk_z,
-                           const CrossChunkWriter& cross_writer = nullptr);
+                          int32_t local_x, int32_t local_z,
+                          int32_t surface_y, int32_t world_y_start, int32_t world_y_end,
+                          uint32_t seed, int32_t chunk_x, int32_t chunk_z,
+                          const CrossChunkWriter& cross_writer = nullptr);
     static void place_cactus(ChunkData& chunk, int32_t local_x, int32_t local_z,
                              int32_t surface_y, int32_t world_y_start, int32_t world_y_end);
+    static void place_boulder(ChunkData& chunk, int32_t local_x, int32_t local_z,
+                              int32_t surface_y, int32_t world_y_start, int32_t world_y_end,
+                              uint32_t seed);
 };
 
 } // namespace VoxelEngine

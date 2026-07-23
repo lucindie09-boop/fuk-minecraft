@@ -92,6 +92,13 @@ Ongoing: a Minecraft-style voxel engine (Godot 4 + C++ GDExtension) with chunked
   - `tools/fuzz_chunk_load.cpp` — random `ChunkData` header parsing
 - Built via `scons fuzz` target.
 
+**5 Major Visual Improvements (Water, Vegetation, Terrain Cliffs, Atmosphere, Shading):**
+- **Dynamic Water Shader**: Translucent water rendering with edge fade, depth absorption, bounce light, and sun glint (`voxel_shader_water.gdshader`).
+- **Vegetation Variety & Wind Swaying**: Added `place_spruce_tree` (tapered conical pine structures for mountain/highland biomes) and `place_birch_tree` (rounded dome foliage in forest biomes), plus procedural vertex swaying in `voxel_shader.gdshader` for foliage.
+- **Slope Triplanar Cliff Blending**: Steep slopes (>45° / `world_normal.y < 0.75`) automatically blend in triplanar projected rock face textures in `voxel_shader.gdshader`, replacing stretched dirt/grass textures with mountain cliff faces.
+- **Night Sky & Starfield**: Added dynamic procedural twinkling starfield to sky atmosphere rendering triggered during night sun elevations (`voxel_shader.gdshader`).
+- **Soft Curved AO & Surface Detail**: Applied non-linear power-curve smoothing (`pow(raw_ao, 1.35)`) to eliminate diagonal triangulation seams.
+
 ### In Progress
 - (none)
 
