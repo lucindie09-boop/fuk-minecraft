@@ -147,9 +147,11 @@ jobs:
 
       - name: Run clang-tidy
         run: |
-          # Normalize paths to catch format differences (src/x.cpp vs ./src/x.cpp vs absolute)
-          # Use while-read loop so failed realpath calls produce no output (unlike xargs which always echoes)
-          files=$(jq -r '.[].file' compile_commands.json | while IFS= read -r f; do realpath --relative-to=. "$f" 2>/dev/null; done | grep -E '^src/.*\.cpp$' | sort -u)
+          # Deduplicate compile_commands.json — SCons may emit multiple entries per file (per build target),
+          # which causes clang-tidy to process each file multiple times.
+          jq 'unique_by(.file)' compile_commands.json > compile_commands_dedup.json
+          mv compile_commands_dedup.json compile_commands.json
+          files=$(find src/ -name '*.cpp' -type f | sort -u)
           echo "Checking $(echo "$files" | wc -l) source files"
           echo "$files"
           set -o pipefail
