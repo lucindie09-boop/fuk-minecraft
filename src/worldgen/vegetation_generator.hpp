@@ -27,7 +27,8 @@ private:
                              int32_t surface_y, int32_t world_y_start, int32_t world_y_end);
     static void place_boulder(ChunkData& chunk, int32_t local_x, int32_t local_z,
                               int32_t surface_y, int32_t world_y_start, int32_t world_y_end,
-                              uint32_t seed);
+                              uint32_t seed, int32_t chunk_x, int32_t chunk_z,
+                              const CrossChunkWriter& cross_writer = nullptr);
 };
 
 } // namespace VoxelEngine

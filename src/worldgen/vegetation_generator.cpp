@@ -54,8 +54,8 @@ void VegetationGenerator::generate_vegetation(
                         }
                     }
                 }
-                // ~4 boulders per chunk avg (0.4% column density)
-                if ((h % 1000u) < 9u) {
+                // ~0.3 boulders per chunk avg (1 boulder every ~3-4 chunks)
+                if ((h % 10000u) < 3u) {
                     // Enforce minimum spacing from trees
                     constexpr int32_t MIN_BOULDER_TREE_RADIUS = 2;
                     bool too_close_to_tree = false;
@@ -69,7 +69,7 @@ void VegetationGenerator::generate_vegetation(
                         }
                     }
                     if (!too_close_to_tree) {
-                        place_boulder(chunk, x, z, surface_y, world_y_start, world_y_end, h);
+                        place_boulder(chunk, x, z, surface_y, world_y_start, world_y_end, h, chunk_x, chunk_z, cross_writer);
                     }
                 }
             } else if (biome == BiomeType::Plains) {
@@ -180,37 +180,41 @@ void VegetationGenerator::place_cactus(
 void VegetationGenerator::place_boulder(
     ChunkData& chunk, int32_t local_x, int32_t local_z,
     int32_t surface_y, int32_t world_y_start, int32_t world_y_end,
-    uint32_t seed)
+    uint32_t seed, int32_t chunk_x, int32_t chunk_z,
+    const CrossChunkWriter& cross_writer)
 {
-    // Boulder size: 1-3 blocks radius
-    int32_t radius = 1 + static_cast<int32_t>(seed & 2u);
+    // Boulder size: 3-4 blocks radius
+    int32_t radius = 3 + static_cast<int32_t>(seed & 1u);
     
-    // Mix of stone and gravel for natural look
     auto place_block = [&](int32_t dx, int32_t dz, int32_t dy) {
         int32_t lx = local_x + dx;
         int32_t lz = local_z + dz;
         int32_t ly = surface_y + dy;
         
-        if (ly < world_y_start || ly >= world_y_end) return;
-        if (lx < 0 || lx >= CHUNK_WIDTH || lz < 0 || lz >= CHUNK_DEPTH) return;
-        
-        // Skip if already occupied (don't overwrite trees/other vegetation)
-        if (chunk.get_block(lx, ly - world_y_start, lz) != BlockIDs::AIR) return;
-        
-        // Use gravel for bottom layer, stone for top
-        BlockID block_type = (dy < 0) ? BlockIDs::GRAVEL : BlockIDs::STONE;
-        chunk.set_block(lx, ly - world_y_start, lz, block_type);
+        if (ly < world_y_start || ly >= world_y_end) {
+            if (cross_writer) {
+                int32_t wx = chunk_x * CHUNK_WIDTH + lx;
+                int32_t wz = chunk_z * CHUNK_DEPTH + lz;
+                cross_writer(wx, ly, wz, BlockIDs::STONE);
+            }
+            return;
+        }
+        if (lx >= 0 && lx < CHUNK_WIDTH && lz >= 0 && lz < CHUNK_DEPTH) {
+            if (chunk.get_block(lx, ly - world_y_start, lz) == BlockIDs::AIR)
+                chunk.set_block(lx, ly - world_y_start, lz, BlockIDs::STONE);
+        } else if (cross_writer) {
+            int32_t wx = chunk_x * CHUNK_WIDTH + lx;
+            int32_t wz = chunk_z * CHUNK_DEPTH + lz;
+            cross_writer(wx, ly, wz, BlockIDs::STONE);
+        }
     };
     
-    // Place boulder in roughly spherical shape
+    // Place boulder in spherical shape
     for (int32_t dy = -radius; dy <= radius; dy++) {
         for (int32_t dx = -radius; dx <= radius; dx++) {
             for (int32_t dz = -radius; dz <= radius; dz++) {
-                float dist_sq = static_cast<float>(dx*dx + dy*dy + dz*dz);
-                float radius_sq = static_cast<float>(radius * radius);
-                // Slightly irregular shape using noise
-                float noise_offset = (static_cast<float>((seed >> (dx + dz + 3)) & 7u) - 3.5f) * 0.2f;
-                if (dist_sq + noise_offset * radius_sq <= radius_sq * 1.5f) {
+                int32_t dist_sq = dx*dx + dy*dy + dz*dz;
+                if (dist_sq <= radius * radius) {
                     place_block(dx, dz, dy);
                 }
             }

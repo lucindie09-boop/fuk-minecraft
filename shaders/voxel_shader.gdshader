@@ -65,14 +65,6 @@ void vertex(){
     world_position=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;
     world_normal=normalize((MODEL_MATRIX*vec4(decode_normal(CUSTOM1.b),0.0)).xyz);
 
-    // Wind vertex swaying for leaves and foliage
-    float layer_val = CUSTOM1.r * 255.0;
-    if (layer_val == 8.0) { // leaves layer index
-        float wind = sin(TIME * 2.5 + world_position.x * 0.8 + world_position.z * 0.8) * cos(TIME * 1.8 + world_position.y * 1.2);
-        world_position.x += wind * 0.08;
-        world_position.z += wind * 0.06;
-    }
-
     vec3 camera_position=INV_VIEW_MATRIX[3].xyz;
 
     view_direction=normalize(world_position-camera_position);
@@ -88,14 +80,6 @@ void fragment(){
     float layer=custom1_attr.r * 255.0;
     vec3 tex_coord = vec3(custom2_attr.xy, layer);
     vec4 color = texture(texture_array, tex_coord, mipmap_bias);
-
-    // Triplanar cliff rock blending on steep terrain slopes
-    float slope = clamp(world_normal.y, 0.0, 1.0);
-    if (slope < 0.75 && (layer == 2.0 || layer == 3.0 || layer == 1.0)) { // dirt (2), grass (3), stone (1)
-        float cliff_factor = 1.0 - smoothstep(0.35, 0.75, slope);
-        vec3 stone_tex = texture(texture_array, vec3(world_position.xz * 0.4, 1.0), mipmap_bias).rgb;
-        color.rgb = mix(color.rgb, stone_tex, cliff_factor * 0.85);
-    }
 
     float emissive_layer = custom1_attr.a * 255.0;
     vec3 emissive_color = texture(emissive_array, vec3(custom2_attr.xy, emissive_layer)).rgb;
@@ -214,16 +198,6 @@ void fragment(){
 	vec3 warmFog = mix(horizon_color, fog_scatter_color, 0.35);
 	finalFogColor = mix(finalFogColor, warmFog, sd4 * sd2 * 0.4 * sun_vis);
 	finalFogColor += scatter * (1.0 - fog_amount);
-
-    // Dynamic Night Sky Starfield
-    if (sun_elevation < 0.05) {
-        float night_factor = 1.0 - smoothstep(-0.15, 0.05, sun_elevation);
-        vec3 star_dir = view_norm * 140.0;
-        float star_h = sin(star_dir.x * 17.0) * cos(star_dir.y * 23.0 + TIME * 0.4) * sin(star_dir.z * 19.0);
-        float stars = pow(max(star_h, 0.0), 28.0) * 6.0;
-        stars *= max(view_norm.y, 0.0);
-        finalFogColor += vec3(0.85, 0.92, 1.0) * stars * night_factor;
-    }
 
     // ========= AERIAL PERSPECTIVE =========
     float aerial = fog_amount * fog_amount * aerial_strength;
