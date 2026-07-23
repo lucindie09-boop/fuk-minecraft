@@ -120,6 +120,10 @@ jobs:
         timeout-minutes: 2
         run: timeout 60s ./bin/fuzz_light_propagation -seed=12345 || [ $? -eq 124 ]
 
+      - name: Run fuzz_mesh_builder
+        timeout-minutes: 2
+        run: timeout 60s ./bin/fuzz_mesh_builder -seed=12345 || [ $? -eq 124 ]
+
   static-analysis:
     runs-on: ubuntu-latest
     steps:
