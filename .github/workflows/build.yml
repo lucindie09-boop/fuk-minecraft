@@ -146,7 +146,6 @@ jobs:
         run: scons -j$(nproc)
 
       - name: Run clang-tidy
-        continue-on-error: true
         run: |
           # Normalize paths to catch format differences (src/x.cpp vs ./src/x.cpp vs absolute)
           files=$(jq -r '.[].file' compile_commands.json | xargs -n1 realpath --relative-to=. 2>/dev/null | grep -E '^src/.*\.cpp$' | sort -u)
