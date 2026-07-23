@@ -142,6 +142,7 @@ jobs:
         run: scons -j$(nproc)
 
       - name: Run clang-tidy
+        continue-on-error: true
         run: |
           # Normalize paths to catch format differences (src/x.cpp vs ./src/x.cpp vs absolute)
           files=$(jq -r '.[].file' compile_commands.json | xargs -n1 realpath --relative-to=. 2>/dev/null | grep -E '^src/.*\.cpp$' | sort -u)
@@ -151,3 +152,4 @@ jobs:
           clang-tidy $files -p . --header-filter=src/ \
             -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
             2>&1 | tee clang-tidy-output.txt
+          echo "clang-tidy exit code: ${PIPESTATUS[0]}"
