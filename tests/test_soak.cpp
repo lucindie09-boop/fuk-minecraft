@@ -187,6 +187,25 @@ static void run_soak_test(int total_iterations, int render_distance) {
                 chunks_lighted.fetch_add(1, std::memory_order_relaxed);
             }
         }
+
+        // Phase 4: Unload distant chunks (main thread — exercises unload vs active work races)
+        int unload_distance = render_distance + 2;
+        for (int dz = -unload_distance; dz <= unload_distance; dz++) {
+            for (int dx = -unload_distance; dx <= unload_distance; dx++) {
+                int32_t cx = px + dx;
+                int32_t cz = pz + dz;
+                if (cx < x_min || cx > x_max || cz < z_min || cz > z_max) continue;
+
+                double dist = std::sqrt(static_cast<double>(dx * dx + dz * dz));
+                if (dist > unload_distance) {
+                    auto& entry = idx(cx, cz);
+                    if (entry.generated) {
+                        entry.data.clear();
+                        entry.generated = false;
+                    }
+                }
+            }
+        }
     }
 
     pool.shutdown();
