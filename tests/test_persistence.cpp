@@ -4,6 +4,7 @@
 #include "core/block_types.hpp"
 #include "core/crc32.hpp"
 #include "core/rle_codec.hpp"
+#include "core/chunk_persistence.hpp"
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -11,42 +12,41 @@
 
 using namespace VoxelEngine;
 
-static void write_v3_header(std::ofstream& f, uint32_t checksum) {
+// Write a v3 chunk file to disk (stand-in for Godot FileAccess).
+static void write_v3_file(const char* path, const uint8_t* body, size_t body_size, uint32_t checksum) {
+    std::ofstream f(path, std::ios::binary);
     uint32_t w = CHUNK_WIDTH, h = CHUNK_HEIGHT, d = CHUNK_DEPTH, v = 3;
     f.write(reinterpret_cast<const char*>(&w), 4);
     f.write(reinterpret_cast<const char*>(&h), 4);
     f.write(reinterpret_cast<const char*>(&d), 4);
     f.write(reinterpret_cast<const char*>(&v), 4);
     f.write(reinterpret_cast<const char*>(&checksum), 4);
+    f.write(reinterpret_cast<const char*>(body), body_size);
 }
 
-static bool read_v3_file(const char* path, ChunkData& out) {
+// Read a v3 chunk file from disk and return body + CRC (stand-in for Godot FileAccess).
+// Returns true on success (header parsed, body read).
+static bool read_v3_file_raw(const char* path, std::vector<uint8_t>& body, uint32_t& crc) {
     std::ifstream f(path, std::ios::binary);
     if (!f.is_open()) return false;
 
-    uint32_t w, h, d, v, expected_crc;
+    uint32_t w, h, d, v;
     f.read(reinterpret_cast<char*>(&w), 4);
     f.read(reinterpret_cast<char*>(&h), 4);
     f.read(reinterpret_cast<char*>(&d), 4);
     f.read(reinterpret_cast<char*>(&v), 4);
-    f.read(reinterpret_cast<char*>(&expected_crc), 4);
+    f.read(reinterpret_cast<char*>(&crc), 4);
 
-    if (w != CHUNK_WIDTH || h != CHUNK_HEIGHT || d != CHUNK_DEPTH) return false;
-    if (v != 3) return false;
+    if (w != CHUNK_WIDTH || h != CHUNK_HEIGHT || d != CHUNK_DEPTH || v != 3) return false;
 
-    // Read rest of file as body
     std::streampos body_start = f.tellg();
     f.seekg(0, std::ios::end);
     size_t body_size = static_cast<size_t>(f.tellg() - body_start);
     f.seekg(body_start);
 
-    std::vector<uint8_t> body(body_size);
+    body.resize(body_size);
     f.read(reinterpret_cast<char*>(body.data()), body_size);
-
-    uint32_t actual_crc = crc32(body.data(), body_size);
-    if (actual_crc != expected_crc) return false;
-
-    return decode_chunk_rle(body.data(), body_size, out);
+    return true;
 }
 
 TEST_CASE("v3 round-trip preserves all block data") {
@@ -65,16 +65,20 @@ TEST_CASE("v3 round-trip preserves all block data") {
     uint32_t checksum = crc32(body.data(), body.size());
 
     const char* path = "test_persistence_roundtrip.chunk";
-    {
-        std::ofstream f(path, std::ios::binary);
-        write_v3_header(f, checksum);
-        f.write(reinterpret_cast<const char*>(body.data()), body.size());
-    }
+    write_v3_file(path, body.data(), body.size(), checksum);
+
+    std::vector<uint8_t> read_body;
+    uint32_t read_crc;
+    bool file_ok = read_v3_file_raw(path, read_body, read_crc);
+    CHECK(file_ok);
 
     ChunkData loaded;
     loaded.clear();
-    bool ok = read_v3_file(path, loaded);
-    CHECK(ok);
+    ChunkLoadOutcome outcome = decode_v3_chunk(
+        read_body.data(), read_body.size(), read_crc,
+        nullptr, 0, 0,
+        loaded);
+    CHECK(outcome == ChunkLoadOutcome::LOADED_OK);
     CHECK(loaded.get_block(0, 0, 0) == BlockIDs::STONE);
     CHECK(loaded.get_block(31, 31, 31) == BlockIDs::GRASS);
     CHECK(loaded.get_block(16, 16, 16) == BlockIDs::LIGHT_BLOCK);
@@ -84,7 +88,7 @@ TEST_CASE("v3 round-trip preserves all block data") {
     std::remove(path);
 }
 
-TEST_CASE("CRC32 mismatch rejects corrupted file") {
+TEST_CASE("CRC32 mismatch returns BOTH_CORRUPTED") {
     BlockRegistry::get_instance().initialize_default_blocks();
     ChunkData original;
     original.clear();
@@ -95,11 +99,7 @@ TEST_CASE("CRC32 mismatch rejects corrupted file") {
     uint32_t checksum = crc32(body.data(), body.size());
 
     const char* path = "test_persistence_crc_mismatch.chunk";
-    {
-        std::ofstream f(path, std::ios::binary);
-        write_v3_header(f, checksum);
-        f.write(reinterpret_cast<const char*>(body.data()), body.size());
-    }
+    write_v3_file(path, body.data(), body.size(), checksum);
 
     // Corrupt one byte in the body
     {
@@ -109,18 +109,28 @@ TEST_CASE("CRC32 mismatch rejects corrupted file") {
         f.write(&bad, 1);
     }
 
+    std::vector<uint8_t> read_body;
+    uint32_t read_crc;
+    read_v3_file_raw(path, read_body, read_crc);
+
+    // Corrupt the body we pass to decode (simulating what was read from disk)
+    read_body[10] = 0xFF;
+
     ChunkData loaded;
     loaded.clear();
-    bool ok = read_v3_file(path, loaded);
-    CHECK(!ok);
+    ChunkLoadOutcome outcome = decode_v3_chunk(
+        read_body.data(), read_body.size(), read_crc,
+        nullptr, 0, 0,
+        loaded);
+    CHECK(outcome == ChunkLoadOutcome::BOTH_CORRUPTED);
 
     std::remove(path);
 }
 
-TEST_CASE("backup fallback on primary CRC failure") {
+TEST_CASE("backup fallback via decode_v3_chunk") {
     BlockRegistry::get_instance().initialize_default_blocks();
 
-    // Write a valid backup file
+    // Encode a valid backup
     ChunkData backup_data;
     backup_data.clear();
     backup_data.set_block(5, 5, 5, BlockIDs::GRASS);
@@ -129,77 +139,42 @@ TEST_CASE("backup fallback on primary CRC failure") {
     encode_chunk_rle(backup_data, backup_body);
     uint32_t backup_crc = crc32(backup_body.data(), backup_body.size());
 
-    const char* primary = "test_persistence_backup_fallback.chunk";
-    const char* backup = "test_persistence_backup_fallback.chunk.bak";
+    // Corrupt the primary body
+    std::vector<uint8_t> primary_body = backup_body;
+    primary_body[0] ^= 0xFF; // flip a byte
+    uint32_t primary_crc = backup_crc ^ 0xDEAD; // wrong CRC
 
-    {
-        std::ofstream f(backup, std::ios::binary);
-        write_v3_header(f, backup_crc);
-        f.write(reinterpret_cast<const char*>(backup_body.data()), backup_body.size());
-    }
-
-    // Write a corrupted primary file
-    {
-        std::ofstream f(primary, std::ios::binary);
-        write_v3_header(f, 0xDEADBEEF);
-        f.write("garbage", 7);
-    }
-
-    // Simulate the load-with-fallback logic: try primary, fall back to backup
     ChunkData loaded;
     loaded.clear();
+    ChunkLoadOutcome outcome = decode_v3_chunk(
+        primary_body.data(), primary_body.size(), primary_crc,
+        backup_body.data(), backup_body.size(), backup_crc,
+        loaded);
 
-    bool ok = read_v3_file(primary, loaded);
-    if (!ok) {
-        ok = read_v3_file(backup, loaded);
-    }
-
-    CHECK(ok);
+    CHECK(outcome == ChunkLoadOutcome::RECOVERED_FROM_BACKUP);
     CHECK(loaded.get_block(5, 5, 5) == BlockIDs::GRASS);
-
-    std::remove(primary);
-    std::remove(backup);
 }
 
-TEST_CASE("both corrupted files returns false") {
+TEST_CASE("both corrupted returns BOTH_CORRUPTED") {
     BlockRegistry::get_instance().initialize_default_blocks();
 
-    const char* primary = "test_persistence_both_corrupt.chunk";
-    const char* backup = "test_persistence_both_corrupt.chunk.bak";
-
-    // Write corrupted primary
-    {
-        std::ofstream f(primary, std::ios::binary);
-        write_v3_header(f, 0xCAFEBABE);
-        f.write("bad", 3);
-    }
-    // Write corrupted backup
-    {
-        std::ofstream f(backup, std::ios::binary);
-        write_v3_header(f, 0xDEADBEEF);
-        f.write("worse", 5);
-    }
+    uint8_t garbage[] = {0xFF, 0xFF, 0xFF, 0xFF};
+    uint32_t bad_crc = 0xDEADBEEF;
 
     ChunkData loaded;
     loaded.clear();
-
-    bool ok = read_v3_file(primary, loaded);
-    if (!ok) {
-        ok = read_v3_file(backup, loaded);
-    }
-
-    CHECK(!ok);
-
-    std::remove(primary);
-    std::remove(backup);
+    ChunkLoadOutcome outcome = decode_v3_chunk(
+        garbage, sizeof(garbage), bad_crc,
+        garbage, sizeof(garbage), bad_crc,
+        loaded);
+    CHECK(outcome == ChunkLoadOutcome::BOTH_CORRUPTED);
 }
 
-TEST_CASE("RLE pipeline round-trip all blocks") {
+TEST_CASE("RLE pipeline round-trip all block types") {
     BlockRegistry::get_instance().initialize_default_blocks();
     ChunkData original;
     original.clear();
 
-    // Fill with a pattern: each block type at known positions
     BlockID blocks[] = {BlockIDs::AIR, BlockIDs::STONE, BlockIDs::GRASS,
                         BlockIDs::DIRT, BlockIDs::SAND, BlockIDs::WOOD,
                         BlockIDs::LIGHT_BLOCK, BlockIDs::LIGHT_RED,
@@ -229,7 +204,7 @@ TEST_CASE("RLE pipeline round-trip all blocks") {
     }
 }
 
-TEST_CASE("dimension mismatch rejects file") {
+TEST_CASE("dimension mismatch detected by file reader") {
     const char* path = "test_persistence_dim_mismatch.chunk";
     {
         std::ofstream f(path, std::ios::binary);
@@ -241,9 +216,9 @@ TEST_CASE("dimension mismatch rejects file") {
         f.write(reinterpret_cast<const char*>(&crc), 4);
     }
 
-    ChunkData loaded;
-    loaded.clear();
-    bool ok = read_v3_file(path, loaded);
+    std::vector<uint8_t> body;
+    uint32_t crc;
+    bool ok = read_v3_file_raw(path, body, crc);
     CHECK(!ok);
 
     std::remove(path);

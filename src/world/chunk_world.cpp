@@ -9,6 +9,7 @@
 #include "mesh/chunk_boundary_dirty.hpp"
 #include "core/crc32.hpp"
 #include "core/rle_codec.hpp"
+#include "core/chunk_persistence.hpp"
 
 namespace VoxelEngine {
 
@@ -533,7 +534,7 @@ bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t 
     } else {
         int32_t version = file->get_32();
         if (version == 3) {
-            // v3: RLE + CRC32 checksum
+            // v3: RLE + CRC32 checksum — read primary body
             uint32_t expected_crc = file->get_32();
             int64_t body_start = file->get_position();
             int64_t body_end = file->get_length();
@@ -543,55 +544,51 @@ bool ChunkWorld::load_chunk_from_disk(int32_t chunk_x, int32_t chunk_y, int32_t 
             file->get_buffer(body.data(), body_size);
             file->close();
 
-            uint32_t actual_crc = crc32(body.data(), body_size);
-            if (actual_crc != expected_crc) {
-                // CRC mismatch - file is corrupted
-                // Try to load from backup if it exists
-                String backup_filename = target + ".bak";
-                if (FileAccess::file_exists(backup_filename)) {
-                    Ref<FileAccess> backup_file = FileAccess::open(backup_filename, FileAccess::READ);
-                    if (backup_file.is_valid()) {
-                        int32_t backup_width = backup_file->get_32();
-                        int32_t backup_height = backup_file->get_32();
-                        int32_t backup_depth = backup_file->get_32();
-                        int32_t backup_version = backup_file->get_32();
-                        uint32_t backup_expected_crc = backup_file->get_32();
-                        int64_t backup_body_start = backup_file->get_position();
-                        int64_t backup_body_end = backup_file->get_length();
-                        size_t backup_body_size = static_cast<size_t>(backup_body_end - backup_body_start);
-
-                        if (backup_width == CHUNK_WIDTH && backup_height == CHUNK_HEIGHT && 
-                            backup_depth == CHUNK_DEPTH && backup_version == 3) {
-                            std::vector<uint8_t> backup_body(backup_body_size);
-                            backup_file->get_buffer(backup_body.data(), backup_body_size);
-                            backup_file->close();
-
-                            uint32_t backup_actual_crc = crc32(backup_body.data(), backup_body_size);
-                            if (backup_actual_crc == backup_expected_crc && 
-                                decode_chunk_rle(backup_body.data(), backup_body_size, out_chunk_data)) {
-                                out_chunk_data.compute_fully_solid();
-                                // Backup loaded successfully - restore it as the main file
-                                Ref<DirAccess> recovery_dir = DirAccess::open("user://");
-                                if (recovery_dir.is_valid()) {
-                                    recovery_dir->rename(backup_filename, target);
-                                }
-                                return true;
-                            }
-                        }
+            // Try to read backup body (may be empty if no backup exists)
+            std::vector<uint8_t> bk_body;
+            uint32_t bk_crc = 0;
+            String backup_filename = target + ".bak";
+            if (FileAccess::file_exists(backup_filename)) {
+                Ref<FileAccess> bk_file = FileAccess::open(backup_filename, FileAccess::READ);
+                if (bk_file.is_valid()) {
+                    int32_t bk_w = bk_file->get_32();
+                    int32_t bk_h = bk_file->get_32();
+                    int32_t bk_d = bk_file->get_32();
+                    int32_t bk_v = bk_file->get_32();
+                    bk_crc = bk_file->get_32();
+                    if (bk_w == CHUNK_WIDTH && bk_h == CHUNK_HEIGHT &&
+                        bk_d == CHUNK_DEPTH && bk_v == 3) {
+                        int64_t bk_body_start = bk_file->get_position();
+                        int64_t bk_body_end = bk_file->get_length();
+                        size_t bk_size = static_cast<size_t>(bk_body_end - bk_body_start);
+                        bk_body.resize(bk_size);
+                        bk_file->get_buffer(bk_body.data(), bk_size);
                     }
+                    bk_file->close();
                 }
-                // No valid backup - delete corrupted file to prevent future load attempts
+            }
+
+            ChunkLoadOutcome outcome = decode_v3_chunk(
+                body.data(), body.size(), expected_crc,
+                bk_body.empty() ? nullptr : bk_body.data(),
+                bk_body.size(), bk_crc,
+                out_chunk_data);
+
+            if (outcome == ChunkLoadOutcome::RECOVERED_FROM_BACKUP) {
+                // Backup loaded successfully — restore it as the main file
+                Ref<DirAccess> recovery_dir = DirAccess::open("user://");
+                if (recovery_dir.is_valid()) {
+                    recovery_dir->rename(backup_filename, target);
+                }
+                return true;
+            } else if (outcome == ChunkLoadOutcome::BOTH_CORRUPTED) {
+                // No valid backup — delete corrupted file to prevent future load attempts
                 Ref<DirAccess> cleanup_dir = DirAccess::open("user://");
                 if (cleanup_dir.is_valid()) {
                     cleanup_dir->remove(target);
                 }
                 return false;
             }
-
-            if (!decode_chunk_rle(body.data(), body_size, out_chunk_data)) {
-                return false;
-            }
-            out_chunk_data.compute_fully_solid();
             return true;
         } else if (version == 2) {
             // v2: RLE, no checksum (legacy)

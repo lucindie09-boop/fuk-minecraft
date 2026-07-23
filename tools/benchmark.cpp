@@ -11,7 +11,8 @@
 
 struct BenchResult {
     const char* name;
-    double avg_ms;
+    double value;
+    const char* unit;
 };
 
 static BenchResult bench_generation(int n) {
@@ -32,7 +33,7 @@ static BenchResult bench_generation(int n) {
     printf("  generate_chunk: avg=%.3f ms  min=%.3f ms  max=%.3f ms  (n=%d)\n",
            avg, perf.get_min(VoxelEngine::TimerID::GenerateChunk),
            perf.get_max(VoxelEngine::TimerID::GenerateChunk), n);
-    return {"generate_chunk_avg_ms", avg};
+    return {"generate_chunk_avg_ms", avg, "ms"};
 }
 
 static BenchResult bench_meshing(int n) {
@@ -60,7 +61,7 @@ static BenchResult bench_meshing(int n) {
     printf("  build_mesh:     avg=%.3f ms  min=%.3f ms  max=%.3f ms  (n=%d)\n",
            avg, perf.get_min(VoxelEngine::TimerID::BuildMesh),
            perf.get_max(VoxelEngine::TimerID::BuildMesh), n);
-    return {"build_mesh_avg_ms", avg};
+    return {"build_mesh_avg_ms", avg, "ms"};
 }
 
 static BenchResult bench_palette_ops(int n) {
@@ -88,7 +89,7 @@ static BenchResult bench_palette_ops(int n) {
     printf("  palette_write:  avg=%.3f ms  min=%.3f ms  max=%.3f ms  (n=%d full chunk fills)\n",
            avg, perf.get_min(VoxelEngine::TimerID::PaletteWrite),
            perf.get_max(VoxelEngine::TimerID::PaletteWrite), n);
-    return {"palette_write_avg_ms", avg};
+    return {"palette_write_avg_ms", avg, "ms"};
 }
 
 static BenchResult bench_light_propagation(int n) {
@@ -132,7 +133,7 @@ static BenchResult bench_light_propagation(int n) {
     printf("  light_prop:     avg=%.3f ms  min=%.3f ms  max=%.3f ms  (n=%d)\n",
            avg, perf.get_min(VoxelEngine::TimerID::LightPropagation),
            perf.get_max(VoxelEngine::TimerID::LightPropagation), n);
-    return {"light_propagation_avg_ms", avg};
+    return {"light_propagation_avg_ms", avg, "ms"};
 }
 
 static BenchResult bench_memory_usage() {
@@ -144,12 +145,12 @@ static BenchResult bench_memory_usage() {
 
     size_t bytes = chunk.memory_usage();
     printf("  memory_usage:  %zu bytes (%.1f KB)\n", bytes, bytes / 1024.0);
-    return {"chunk_memory_bytes", static_cast<double>(bytes)};
+    return {"chunk_memory_bytes", static_cast<double>(bytes), "bytes"};
 }
 
 struct BaselineEntry {
     std::string name;
-    double max_avg_ms;
+    double max_value;
 };
 
 static std::vector<BaselineEntry> load_baseline(const char* path) {
@@ -204,13 +205,13 @@ int main(int argc, char** argv) {
     for (auto& r : results) {
         for (auto& b : baseline) {
             if (r.name == b.name) {
-                if (r.avg_ms > b.max_avg_ms) {
-                    printf("  REGRESSION %s: %.3f ms > baseline %.3f ms\n",
-                           r.name, r.avg_ms, b.max_avg_ms);
+                if (r.value > b.max_value) {
+                    printf("  REGRESSION %s: %.3f %s > baseline %.3f %s\n",
+                           r.name, r.value, r.unit, b.max_value, r.unit);
                     regressions++;
                 } else {
-                    printf("  OK %s: %.3f ms <= baseline %.3f ms\n",
-                           r.name, r.avg_ms, b.max_avg_ms);
+                    printf("  OK %s: %.3f %s <= baseline %.3f %s\n",
+                           r.name, r.value, r.unit, b.max_value, r.unit);
                 }
             }
         }
