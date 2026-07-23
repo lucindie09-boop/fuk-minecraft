@@ -12,7 +12,7 @@ namespace VoxelEngine {
 
 // Result of decode_v3_chunk — tells the caller what filesystem
 // actions to take after a load attempt.
-enum class ChunkLoadOutcome {
+enum class ChunkLoadOutcome : uint8_t {
     LOADED_OK,            // Primary decoded successfully
     RECOVERED_FROM_BACKUP, // Primary corrupted, backup decoded — caller should rename backup -> primary
     BOTH_CORRUPTED,       // Both primary and backup failed — caller should delete the primary

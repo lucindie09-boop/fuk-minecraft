@@ -137,21 +137,16 @@ static void run_soak_test(int total_iterations, int render_distance, int unload_
                 double dist = std::sqrt(static_cast<double>(dx * dx + dz * dz));
                 if (dist > render_distance) continue;
 
-                // Generate on thread pool
+                // Generate on thread pool — transfer ownership into the lambda
                 auto chunk = std::make_unique<ChunkData>();
                 chunk->clear();
 
-                // Capture by reference — safe because pool is shut down before store
-                pool.fire_and_forget([&gen, &store, chunk_ptr = chunk.get(), cx, cy, cz, &chunks_generated, &errors]() {
+                pool.fire_and_forget([&gen, &store, chunk = std::move(chunk), cx, cy, cz, &chunks_generated]() mutable {
                     std::function<void(int32_t, int32_t, int32_t, BlockID)> no_cross_writes;
-                    gen.generate_chunk(*chunk_ptr, cx, cy, cz, no_cross_writes, false);
-                    uint64_t k = ChunkStore::key(cx, cy, cz);
-                    store.insert(cx, cy, cz, std::unique_ptr<ChunkData>(chunk_ptr));
-                    // Prevent unique_ptr from double-deleting — we moved ownership to store
+                    gen.generate_chunk(*chunk, cx, cy, cz, no_cross_writes, false);
+                    store.insert(cx, cy, cz, std::move(chunk));
                     chunks_generated.fetch_add(1, std::memory_order_relaxed);
                 });
-                // Detach ownership — the lambda now owns the chunk
-                (void)chunk.release();
             }
         }
 
