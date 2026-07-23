@@ -120,35 +120,34 @@ jobs:
         timeout-minutes: 2
         run: timeout 60s ./bin/fuzz_light_propagation -seed=12345 || [ $? -eq 124 ]
 
-  # static-analysis:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: recursive
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
 
-  #     - name: Install SCons
-  #       run: pip install scons
+      - name: Install SCons
+        run: pip install scons
 
-  #     - name: Install clang-tidy
-  #       run: sudo apt-get install -y clang-tidy
+      - name: Install clang-tidy
+        run: sudo apt-get install -y clang-tidy
 
-  #     - name: Run scons to generate godot-cpp headers and compile_commands.json
-  #       timeout-minutes: 10
-  #       run: scons -j$(nproc)
+      - name: Run scons to generate godot-cpp headers and compile_commands.json
+        timeout-minutes: 10
+        run: scons -j$(nproc)
 
-  #     - name: Run clang-tidy
-  #       run: |
-  #         # Extract source files from compile_commands.json to avoid duplicates
-  #         files=$(jq -r '.[].file' compile_commands.json | grep -E '^src/.*\.cpp$' | sort -u)
-  #         clang-tidy $files -p . --header-filter=src/ \
-  #           -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
-  #           2>&1 | tee clang-tidy-output.txt
-  #         if [ -s clang-tidy-output.txt ]; then
-  #           echo "Static analysis found issues"
-  #           exit 1
-  #         fi
+      - name: Run clang-tidy
+        run: |
+          # Normalize paths to catch format differences (src/x.cpp vs ./src/x.cpp vs absolute)
+          files=$(jq -r '.[].file' compile_commands.json | xargs -n1 realpath --relative-to=. 2>/dev/null | grep -E '^src/.*\.cpp$' | sort -u)
+          echo "Checking $(echo "$files" | wc -l) source files"
+          echo "$files"
+          set -o pipefail
+          clang-tidy $files -p . --header-filter=src/ \
+            -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
+            2>&1 | tee clang-tidy-output.txt
