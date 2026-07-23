@@ -111,9 +111,9 @@ void append_packed_mesh_data(PackedBuiltMeshData& dst, const PackedBuiltMeshData
     }
 
     if (src_vertex_count > 0) {
-        std::memcpy(dst.custom0.ptrw() + static_cast<size_t>(dst_vertex_offset) * 4, src.custom0.ptr(), src_vertex_count * 4);
-        std::memcpy(dst.custom1.ptrw() + static_cast<size_t>(dst_vertex_offset) * 4, src.custom1.ptr(), src_vertex_count * 4);
-        std::memcpy(dst.custom2.ptrw() + static_cast<size_t>(dst_vertex_offset) * 4, src.custom2.ptr(), src_vertex_count * 4);
+        std::memcpy(dst.custom0.ptrw() + static_cast<size_t>(dst_vertex_offset) * 4, src.custom0.ptr(), static_cast<size_t>(src_vertex_count) * 4);
+        std::memcpy(dst.custom1.ptrw() + static_cast<size_t>(dst_vertex_offset) * 4, src.custom1.ptr(), static_cast<size_t>(src_vertex_count) * 4);
+        std::memcpy(dst.custom2.ptrw() + static_cast<size_t>(dst_vertex_offset) * 4, src.custom2.ptr(), static_cast<size_t>(src_vertex_count) * 4);
     }
 
     const int32_t* src_indices = src.indices.ptr();

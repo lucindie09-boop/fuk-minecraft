@@ -9,18 +9,19 @@ namespace VoxelEngine {
 // -------------------------------------------------------------------------
 // Face-direction shading (directional brightness baked into AO)
 // -------------------------------------------------------------------------
+// NOLINTBEGIN(bugprone-branch-clone) — Left/Right and Front/Back intentionally share shades
 float AmbientOcclusion::get_face_shade(FaceDirection direction) {
     switch (direction) {
         case FaceDirection::Top:    return 1.00f;
         case FaceDirection::Bottom: return 0.50f;
         case FaceDirection::Right:  return 0.75f;
-        // NOLINTNEXTLINE(bugprone-branch-clone) — Left and Right intentionally share the same shade
         case FaceDirection::Left:   return 0.75f;
         case FaceDirection::Front:  return 0.60f;
         case FaceDirection::Back:   return 0.60f;
     }
     return 1.0f;
 }
+// NOLINTEND(bugprone-branch-clone)
 
 // -------------------------------------------------------------------------
 // Occlusion predicate — a block occludes ambient light if it is solid
