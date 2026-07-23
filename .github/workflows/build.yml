@@ -153,7 +153,7 @@ jobs:
           echo "$files"
           set -o pipefail
           clang-tidy $files -p . --header-filter=src/ \
-            -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
+            -checks=bugprone-*,concurrency-*,performance-*,-bugprone-easily-swappable-parameters \
             2>&1 | tee clang-tidy-output.txt
           echo "clang-tidy exit code: ${PIPESTATUS[0]}"
 

@@ -409,7 +409,7 @@ void ChunkWorld::mark_chunk_dirty(int32_t chunk_x, int32_t chunk_y, int32_t chun
 void ChunkWorld::flush_dirty_chunks() {
     std::lock_guard<std::mutex> lock(dirty_chunks_mutex);
     for (uint64_t key : dirty_chunks) {
-        int32_t cx, cy, cz;
+        int32_t cx = 0, cy = 0, cz = 0;
         ChunkMap::decode_chunk_key(key, cx, cy, cz);
         save_chunk_to_disk(cx, cy, cz);
     }
@@ -735,7 +735,7 @@ void ChunkWorld::free_loaded_chunks() {
 }
 
 bool ChunkWorld::try_unload_chunk(uint64_t key, MeshManager* mesh_mgr) {
-    int32_t cx, cy, cz;
+    int32_t cx = 0, cy = 0, cz = 0;
     ChunkMap::decode_chunk_key(key, cx, cy, cz);
 bool needs_save = false;
     auto render_data = chunk_map.find_and_erase_if(key, [this, key, &needs_save](const ChunkRenderData& rd) {

@@ -154,7 +154,7 @@ void VegetationGenerator::place_cactus(
     ChunkData& chunk, int32_t local_x, int32_t local_z,
     int32_t surface_y, int32_t world_y_start, int32_t world_y_end)
 {
-    int32_t height = 2 + (hash_pos(local_x * 7 + 13, local_z * 11 + 7) & 1u);
+    int32_t height = 2 + static_cast<int32_t>(hash_pos(local_x * 7 + 13, local_z * 11 + 7) & 1u);
     for (int32_t dy = 1; dy <= height; dy++) {
         int32_t y = surface_y + dy;
         if (y >= world_y_start && y < world_y_end) {

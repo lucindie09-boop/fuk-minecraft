@@ -194,7 +194,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_emissiv
 
     // Layer 0 = solid black (no emissive contribution)
     godot::PackedByteArray black_data;
-    black_data.resize(target_width * target_height * 4);
+    black_data.resize(static_cast<int64_t>(target_width) * target_height * 4);
     black_data.fill(0);
     // Alpha = 255 so emissive.rgb * emissive.a doesn't multiply by zero-alpha edge cases
     for (int i = 3; i < static_cast<int>(black_data.size()); i += 4) {
@@ -228,7 +228,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_emissiv
         if (!emissive_image.is_valid()) {
             // Missing emissive texture → fall back to black (no glow)
             godot::PackedByteArray fb_data;
-            fb_data.resize(target_width * target_height * 4);
+            fb_data.resize(static_cast<int64_t>(target_width) * target_height * 4);
             fb_data.fill(0);
             for (int i = 3; i < static_cast<int>(fb_data.size()); i += 4) {
                 fb_data[i] = 255;
@@ -245,7 +245,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_emissiv
         const int layer_index = static_cast<int>(images.size());
         images.append(emissive_image);
 
-        godot::String file_name = tex_name;
+        const godot::String& file_name = tex_name;
         s_global_emissive_name_to_index[file_name] = layer_index;
     }
 

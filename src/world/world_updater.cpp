@@ -29,7 +29,7 @@ void WorldUpdater::set_vegetation_enabled(bool enabled) {
 }
 
 void WorldUpdater::update(bool is_editor, uint64_t epoch, uint64_t& chunks_processed_total, double delta) {
-    int32_t player_chunk_x, player_chunk_y, player_chunk_z;
+    int32_t player_chunk_x = 0, player_chunk_y = 0, player_chunk_z = 0;
     chunk_world->get_chunk_map().get_chunk_coords(player_position, player_chunk_x, player_chunk_y, player_chunk_z);
 
     int32_t active_render_distance = is_editor ? editor_render_distance : render_distance;
@@ -130,8 +130,8 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
             float   surface_h    = get_column_surface_height(cx, cz);
             bool near_player = std::abs(offset.x) <= 1 && std::abs(offset.z) <= 1 && std::abs(offset.y) <= 1;
             if (!near_player) {
-                if (chunk_top   < surface_h - 32.0f) continue;
-                if (chunk_bottom > surface_h + 32.0f) continue;
+                if (static_cast<float>(chunk_top)   < surface_h - 32.0f) continue;
+                if (static_cast<float>(chunk_bottom) > surface_h + 32.0f) continue;
             }
 
             if (generate_chunk(cx, cy, cz, epoch)) {
@@ -179,8 +179,8 @@ void WorldUpdater::update_generation(bool is_editor, int32_t active_render_dista
             float   surface_h    = get_column_surface_height(cx, cz);
             bool near_player = std::abs(offset.x) <= 1 && std::abs(offset.z) <= 1 && std::abs(offset.y) <= 1;
             if (!near_player) {
-                if (chunk_top   < surface_h - 32.0f) continue;
-                if (chunk_bottom > surface_h + 32.0f) continue;
+                if (static_cast<float>(chunk_top)   < surface_h - 32.0f) continue;
+                if (static_cast<float>(chunk_bottom) > surface_h + 32.0f) continue;
             }
 
             if (generate_chunk(cx, cy, cz, epoch)) {
@@ -199,7 +199,7 @@ void WorldUpdater::update_unload(int32_t active_render_distance, int32_t pcx, in
 int32_t unload_vrd = active_render_distance + 2;
 
         chunk_world->get_chunk_map().for_each_limited_resumable([&](uint64_t key, const std::unique_ptr<ChunkRenderData>&) {
-            int32_t cx, cy, cz;
+            int32_t cx = 0, cy = 0, cz = 0;
             ChunkMap::decode_chunk_key(key, cx, cy, cz);
             int32_t dx = cx - pcx;
             int32_t dz = cz - pcz;
@@ -226,7 +226,7 @@ int32_t unload_vrd = active_render_distance + 2;
             uint64_t key = unload_queue.back();
             unload_queue.pop_back();
             if (chunk_world->get_chunk_map().contains(key)) {
-                int32_t cx, cy, cz;
+                int32_t cx = 0, cy = 0, cz = 0;
                 ChunkMap::decode_chunk_key(key, cx, cy, cz);
                 int32_t dx = cx - pcx;
                 int32_t dz = cz - pcz;
@@ -268,8 +268,8 @@ void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t
         chunk_world->get_scheduler().completed_chunk_count() > 0 ||
         (mesh_manager && mesh_manager->has_pending_mesh_work());
 
-    int32_t mesh_rebuild_budget;
-    int32_t upload_budget;
+    int32_t mesh_rebuild_budget = 0;
+    int32_t upload_budget = 0;
     if (is_initial_loading) {
         mesh_rebuild_budget = budgets.mesh_rebuilds_loading;
         upload_budget = budgets.mesh_uploads_loading;
@@ -284,8 +284,8 @@ void WorldUpdater::process_mesh_budgets(bool is_editor, uint64_t epoch, uint64_t
     // Many visible chunks → keep full budget for visible-area quality.
     if (!is_initial_loading) {
         const float visibility_scale = 0.5f + visible_chunk_ratio_ * 0.5f;
-        mesh_rebuild_budget = std::max(1, static_cast<int32_t>(mesh_rebuild_budget * visibility_scale));
-        upload_budget       = std::max(1, static_cast<int32_t>(upload_budget * visibility_scale));
+        mesh_rebuild_budget = std::max(1, static_cast<int32_t>(static_cast<float>(mesh_rebuild_budget) * visibility_scale));
+        upload_budget       = std::max(1, static_cast<int32_t>(static_cast<float>(upload_budget) * visibility_scale));
     }
 
     {

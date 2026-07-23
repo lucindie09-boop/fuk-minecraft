@@ -45,7 +45,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         biome = biome_from_climate(temperature, humidity, cont);
     }
 
-    height = std::max(params.bedrock_height + 1.0f, height);
+    height = std::max(static_cast<float>(params.bedrock_height) + 1.0f, height);
     if (water_level >= 0.0f) {
         water_level = std::max(params.sea_level, water_level);
     }
@@ -273,7 +273,7 @@ void ChunkGenerator::render_biome_pgm(const char* filename, int img_w, int img_h
             float wz = world_z_start + static_cast<float>(py) * step;
             ColumnSample col = sample_column(static_cast<int32_t>(wx),
                                                static_cast<int32_t>(wz));
-            uint8_t byte;
+            uint8_t byte = 0;
             switch (col.biome) {
                 case BiomeType::AbyssalTrench: byte = 10;  break;
                 case BiomeType::DeepOcean:     byte = 30;  break;

@@ -245,7 +245,7 @@ float max_water_h = -1.0f;
     }
 
     bool is_cave(int32_t x, int32_t y, int32_t z) {
-        if (y < params.bedrock_height + 3 || y > params.sea_level + 10) {
+        if (y < params.bedrock_height + 3 || static_cast<float>(y) > params.sea_level + 10.0f) {
             return false;
         }
         float nx = static_cast<float>(x) * params.cave_scale;
@@ -262,8 +262,8 @@ float max_water_h = -1.0f;
         BiomeType biome = BiomeType::Plains;
         int32_t water_level = -1;
         bool near_water = false;
-        float temperature;
-        float humidity;
+        float temperature = 0.0f;
+        float humidity = 0.0f;
     };
 
     // Cross-chunk block writer callback type

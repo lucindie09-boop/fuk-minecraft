@@ -19,7 +19,7 @@ void UnloadScheduler::update(int32_t active_render_distance, int32_t pcx, int32_
         int32_t unload_hrd2 = unload_hrd * unload_hrd;
 
         chunk_world->get_chunk_map().for_each_limited_resumable([&](uint64_t key, const std::unique_ptr<ChunkRenderData>&) {
-            int32_t cx, cy, cz;
+            int32_t cx = 0, cy = 0, cz = 0;
             ChunkMap::decode_chunk_key(key, cx, cy, cz);
             int32_t dx = cx - pcx;
             int32_t dz = cz - pcz;
@@ -40,7 +40,7 @@ void UnloadScheduler::update(int32_t active_render_distance, int32_t pcx, int32_
             uint64_t key = unload_queue.back();
             unload_queue.pop_back();
             if (chunk_world->get_chunk_map().contains(key)) {
-                int32_t cx, cy, cz;
+                int32_t cx = 0, cy = 0, cz = 0;
                 ChunkMap::decode_chunk_key(key, cx, cy, cz);
                 int32_t dx = cx - pcx;
                 int32_t dz = cz - pcz;
