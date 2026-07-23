@@ -154,11 +154,17 @@ jobs:
           files=$(find src/ -name '*.cpp' -type f | sort -u)
           echo "Checking $(echo "$files" | wc -l) source files"
           echo "$files"
-          set -o pipefail
+          # Run clang-tidy and capture output. Don't fail on godot-cpp header noise.
           clang-tidy $files -p . --header-filter='src/' -quiet \
             -checks=bugprone-*,concurrency-*,performance-*,-bugprone-easily-swappable-parameters \
-            2>&1 | tee clang-tidy-output.txt
-          echo "clang-tidy exit code: ${PIPESTATUS[0]}"
+            > clang-tidy-output.txt 2>&1 || true
+          # Only gate on actual findings in our source code (lines with check annotations).
+          # godot-cpp parse errors produce "warnings N and M errors generated" lines without check names.
+          if grep -E 'warning:.*\[' clang-tidy-output.txt | grep -v 'godot-cpp'; then
+            echo "::error::clang-tidy found issues in source files"
+            exit 1
+          fi
+          echo "No findings in project source files"
 
   coverage:
     runs-on: ubuntu-latest
