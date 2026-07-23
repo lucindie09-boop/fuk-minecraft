@@ -20,6 +20,9 @@ if asan == "1" and sys.platform != "win32":
     env.Append(CCFLAGS=["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     env.Append(LINKFLAGS=["-fsanitize=address,undefined"])
 
+# Optional coverage support (Linux/GCC/Clang only)
+coverage = ARGUMENTS.get("COVERAGE", "0")
+
 # Collect all .cpp files in src/ and subdirectories
 sources = Glob("src/*.cpp") + Glob("src/*/*.cpp")
 
