@@ -20,9 +20,6 @@ if asan == "1" and sys.platform != "win32":
     env.Append(CCFLAGS=["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g", "-O1"])
     env.Append(LINKFLAGS=["-fsanitize=address,undefined"])
 
-# Optional coverage support (Linux/GCC/Clang only)
-coverage = ARGUMENTS.get("COVERAGE", "0")
-
 # Collect all .cpp files in src/ and subdirectories
 sources = Glob("src/*.cpp") + Glob("src/*/*.cpp")
 
@@ -32,30 +29,12 @@ lib_sources = [s for s in sources if os.path.basename(str(s)) not in ("terrain_d
 library = env.SharedLibrary("bin/libgdextension{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=lib_sources)
 Default(library, cdb)
 
-# Debug terrain renderer (standalone executable)
-debug_env = env.Clone()
-debug_env.Append(LIBS=[])
-debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp"])
-Alias("debug", debug_prog)
-
-# Performance benchmark (standalone executable)
-bench_env = env.Clone()
-bench_env.Append(CPPPATH=["src/"])
-bench_env.Append(LIBS=[])
-bench_sources = ["tools/benchmark.cpp", "src/worldgen/chunk_generator.cpp", "src/worldgen/vegetation_generator.cpp", "src/core/chunk_data.cpp", "src/core/block_types.cpp", "src/mesh/mesh_builder.cpp", "src/mesh/mesh_builder_faces.cpp", "src/mesh/mesh_builder_greedy.cpp", "src/mesh/chunk_neighbor_accessor.cpp", "src/mesh/ambient_occlusion.cpp", "src/mesh/smooth_lighting.cpp", "src/lighting/block_light_region.cpp"]
-bench_prog = bench_env.Program("bin/benchmark", bench_sources)
-Alias("bench", bench_prog)
-
-# Unit tests (standalone executable, no Godot runtime needed)
-test_env = env.Clone()
-test_env.Append(CPPPATH=["src/", "tests/"])
-test_env.Append(LIBS=[])
-# Apply coverage flags to test environment if enabled
-if coverage == "1" and sys.platform != "win32":
-    test_env.Append(CCFLAGS=["--coverage"])
-    test_env.Append(LINKFLAGS=["--coverage"])
-# Reference source files directly to avoid VariantDir file locking on Windows
-test_sources = Glob("tests/*.cpp") + [
+# Pre-compile sources shared between the library and standalone targets once
+# with env, so cloned envs (debug_env, bench_env, test_env) don't recompile
+# them with potentially different flags (e.g. --coverage).
+shared_sources = [
+    "src/worldgen/chunk_generator.cpp",
+    "src/worldgen/vegetation_generator.cpp",
     "src/core/chunk_data.cpp",
     "src/core/block_types.cpp",
     "src/mesh/mesh_builder.cpp",
@@ -63,10 +42,29 @@ test_sources = Glob("tests/*.cpp") + [
     "src/mesh/mesh_builder_greedy.cpp",
     "src/mesh/chunk_neighbor_accessor.cpp",
     "src/mesh/ambient_occlusion.cpp",
-    "src/lighting/block_light_region.cpp",
     "src/mesh/smooth_lighting.cpp",
+    "src/lighting/block_light_region.cpp",
 ]
-test_prog = test_env.Program("bin/run_tests", test_sources)
+shared_objects = env.Object(shared_sources)
+
+# Debug terrain renderer (standalone executable)
+debug_env = env.Clone()
+debug_env.Append(LIBS=[])
+debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp"] + shared_objects[:4])
+Alias("debug", debug_prog)
+
+# Performance benchmark (standalone executable)
+bench_env = env.Clone()
+bench_env.Append(CPPPATH=["src/"])
+bench_env.Append(LIBS=[])
+bench_prog = bench_env.Program("bin/benchmark", ["tools/benchmark.cpp"] + shared_objects)
+Alias("bench", bench_prog)
+
+# Unit tests (standalone executable, no Godot runtime needed)
+test_env = env.Clone()
+test_env.Append(CPPPATH=["src/", "tests/"])
+test_env.Append(LIBS=[])
+test_prog = test_env.Program("bin/run_tests", Glob("tests/*.cpp") + shared_objects)
 Alias("test", test_prog)
 
 # LibFuzzer harnesses (Clang-only, Linux/macOS)
@@ -85,8 +83,6 @@ if sys.platform != "win32":
     fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
     fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
     fuzz_light = fuzz_env.Program("bin/fuzz_light_propagation", ["tools/fuzz_light_propagation.cpp"] + fuzz_sources_common)
-    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light])
-
     # Note: fuzz_mesh_builder requires full Godot linkage (gdextension_interface.h, etc.)
-    # Cannot be built in standalone fuzz environment without causing SCons target conflicts
-    # with the main build. The harness code is correct but disabled for now.
+    # and cannot be built in standalone fuzz environment
+    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light])

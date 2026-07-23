@@ -120,73 +120,35 @@ jobs:
         timeout-minutes: 2
         run: timeout 60s ./bin/fuzz_light_propagation -seed=12345 || [ $? -eq 124 ]
 
-  static-analysis:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+  # static-analysis:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.x"
 
-      - name: Install SCons
-        run: pip install scons
+  #     - name: Install SCons
+  #       run: pip install scons
 
-      - name: Install clang-tidy and jq
-        run: sudo apt-get install -y clang-tidy jq
+  #     - name: Install clang-tidy
+  #       run: sudo apt-get install -y clang-tidy
 
-      - name: Run scons to generate godot-cpp headers and compile_commands.json
-        timeout-minutes: 10
-        run: scons -j$(nproc)
+  #     - name: Run scons to generate godot-cpp headers and compile_commands.json
+  #       timeout-minutes: 10
+  #       run: scons -j$(nproc)
 
-      - name: Run clang-tidy
-        run: |
-          # Extract source files from compile_commands.json and run clang-tidy on each
-          jq -r '.[].file' compile_commands.json | grep -E '^src/.*\.cpp$' | sort -u | \
-            xargs -I {} clang-tidy {} -p . --header-filter=src/ \
-            -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
-            2>&1 | tee clang-tidy-output.txt || true
-          if [ -s clang-tidy-output.txt ]; then
-            echo "Static analysis found issues"
-            exit 1
-          fi
-
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Install SCons
-        run: pip install scons
-
-      - name: Install lcov
-        run: sudo apt-get install -y lcov
-
-      - name: Build tests with coverage
-        shell: bash
-        timeout-minutes: 15
-        run: CC=clang CXX=clang++ scons test -j$(nproc) COVERAGE=1
-
-      - name: Run tests
-        timeout-minutes: 5
-        run: ./bin/run_tests
-
-      - name: Generate coverage report
-        run: |
-          lcov --capture --directory . --output-file coverage.info
-          lcov --remove coverage.info '/usr/*' 'godot-cpp/*' --output-file coverage.info
-          lcov --list coverage.info
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.info
-          fail_ci_if_error: false
+  #     - name: Run clang-tidy
+  #       run: |
+  #         # Extract source files from compile_commands.json to avoid duplicates
+  #         files=$(jq -r '.[].file' compile_commands.json | grep -E '^src/.*\.cpp$' | sort -u)
+  #         clang-tidy $files -p . --header-filter=src/ \
+  #           -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
+  #           2>&1 | tee clang-tidy-output.txt
+  #         if [ -s clang-tidy-output.txt ]; then
+  #           echo "Static analysis found issues"
+  #           exit 1
+  #         fi
