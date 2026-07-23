@@ -235,7 +235,7 @@ String VoxelEngineController::get_performance_report() {
     String report = PerfReport::build(
         frame_time_accumulator,
         frame_count,
-        debug_print_interval,
+        2.0, // hardcoded interval
         chunks_processed_total,
         chunks_processed_last_interval,
         perf_timer,
