@@ -136,3 +136,139 @@ TEST_CASE("wrap_local_to_world stays in bounds") {
     CHECK(cz == 0);
 }
 
+// =========================================================================
+// Single-chunk BFS edge cases
+// =========================================================================
+
+TEST_CASE("BFS attenuation reaches exactly 14 cells") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData chunk;
+    chunk.clear();
+    chunk.set_block(16, 16, 16, BlockIDs::LIGHT_BLOCK);
+    propagate_chunk_block_light_additive(chunk);
+    CHECK(chunk.get_light_unsafe(16, 16, 16) == 15);
+    CHECK(chunk.get_light_unsafe(16, 30, 16) > 0);
+    CHECK(chunk.get_light_unsafe(16, 0, 16) == 0);
+}
+
+TEST_CASE("opaque block occludes light") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData chunk;
+    chunk.clear();
+    chunk.set_block(16, 16, 16, BlockIDs::LIGHT_BLOCK);
+    for (int y = 0; y < CHUNK_HEIGHT; y++)
+        for (int z = 0; z < CHUNK_DEPTH; z++)
+            chunk.set_block(17, y, z, BlockIDs::STONE);
+    propagate_chunk_block_light_additive(chunk);
+    CHECK(chunk.get_light_unsafe(16, 16, 16) > 0);
+    CHECK(chunk.get_light_unsafe(18, 16, 16) == 0);
+}
+
+TEST_CASE("cross-section boundary propagation") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData chunk;
+    chunk.clear();
+    chunk.set_block(8, 15, 8, BlockIDs::LIGHT_BLOCK);
+    propagate_chunk_block_light_additive(chunk);
+    CHECK(chunk.get_light_unsafe(8, 15, 8) == 15);
+    CHECK(chunk.get_light_unsafe(8, 16, 8) > 0);
+}
+
+TEST_CASE("colored light mixing at overlap") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData chunk;
+    chunk.clear();
+    chunk.set_block(14, 16, 16, BlockIDs::LIGHT_RED);
+    chunk.set_block(18, 16, 16, BlockIDs::LIGHT_BLUE);
+    propagate_chunk_block_light_additive(chunk);
+    CHECK(chunk.get_light_r_unsafe(16, 16, 16) > 0);
+    CHECK(chunk.get_light_b_unsafe(16, 16, 16) > 0);
+}
+
+// =========================================================================
+// Cross-chunk-boundary tests via 3x3x3 BlockLightRegion grid
+// =========================================================================
+
+static void init_grid_3x3x3(ChunkData (&grid)[3][3][3]) {
+    for (int dz = 0; dz < 3; dz++)
+        for (int dy = 0; dy < 3; dy++)
+            for (int dx = 0; dx < 3; dx++)
+                grid[dz][dy][dx].clear();
+}
+
+TEST_CASE("cross-chunk-boundary propagation via 3x3x3 grid") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData region[3][3][3];
+    init_grid_3x3x3(region);
+    region[1][1][1].set_block(31, 16, 16, BlockIDs::LIGHT_BLOCK);
+    ChunkData* grid[3][3][3];
+    for (int dz = 0; dz < 3; dz++)
+        for (int dy = 0; dy < 3; dy++)
+            for (int dx = 0; dx < 3; dx++)
+                grid[dz][dy][dx] = &region[dz][dy][dx];
+    BlockLightRegion light_region(grid);
+    std::vector<EmissiveSource> sources;
+    light_region.collect_emissive_sources(sources);
+    light_region.propagate_additive(sources);
+    CHECK(region[1][1][1].get_light_r_unsafe(31, 16, 16) == 15);
+    CHECK(region[2][1][1].get_light_r_unsafe(0, 16, 16) > 0);
+}
+
+TEST_CASE("light blocked by opaque neighbor chunk") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData region[3][3][3];
+    init_grid_3x3x3(region);
+    region[1][1][1].set_block(31, 16, 16, BlockIDs::LIGHT_BLOCK);
+    for (int y = 0; y < CHUNK_HEIGHT; y++)
+        for (int z = 0; z < CHUNK_DEPTH; z++)
+            region[2][1][1].set_block(0, y, z, BlockIDs::STONE);
+    ChunkData* grid[3][3][3];
+    for (int dz = 0; dz < 3; dz++)
+        for (int dy = 0; dy < 3; dy++)
+            for (int dx = 0; dx < 3; dx++)
+                grid[dz][dy][dx] = &region[dz][dy][dx];
+    BlockLightRegion light_region(grid);
+    std::vector<EmissiveSource> sources;
+    light_region.collect_emissive_sources(sources);
+    light_region.propagate_additive(sources);
+    CHECK(region[1][1][1].get_light_r_unsafe(31, 16, 16) > 0);
+    CHECK(region[2][1][1].get_light_r_unsafe(0, 16, 16) == 0);
+}
+
+TEST_CASE("null neighbor chunk stops propagation") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData region[3][3][3];
+    init_grid_3x3x3(region);
+    region[1][1][1].set_block(31, 16, 16, BlockIDs::LIGHT_BLOCK);
+    ChunkData* grid[3][3][3];
+    for (int dz = 0; dz < 3; dz++)
+        for (int dy = 0; dy < 3; dy++)
+            for (int dx = 0; dx < 3; dx++)
+                grid[dz][dy][dx] = &region[dz][dy][dx];
+    grid[2][1][1] = nullptr;
+    BlockLightRegion light_region(grid);
+    std::vector<EmissiveSource> sources;
+    light_region.collect_emissive_sources(sources);
+    light_region.propagate_additive(sources);
+    CHECK(region[1][1][1].get_light_r_unsafe(31, 16, 16) > 0);
+}
+
+TEST_CASE("multi-source light propagation across chunks") {
+    BlockRegistry::get_instance().initialize_default_blocks();
+    ChunkData region[3][3][3];
+    init_grid_3x3x3(region);
+    region[1][1][1].set_block(31, 16, 16, BlockIDs::LIGHT_RED);
+    region[1][1][1].set_block(0, 16, 16, BlockIDs::LIGHT_BLUE);
+    ChunkData* grid[3][3][3];
+    for (int dz = 0; dz < 3; dz++)
+        for (int dy = 0; dy < 3; dy++)
+            for (int dx = 0; dx < 3; dx++)
+                grid[dz][dy][dx] = &region[dz][dy][dx];
+    BlockLightRegion light_region(grid);
+    std::vector<EmissiveSource> sources;
+    light_region.collect_emissive_sources(sources);
+    light_region.propagate_additive(sources);
+    CHECK(region[1][1][1].get_light_r_unsafe(31, 16, 16) > 0);
+    CHECK(region[1][1][1].get_light_b_unsafe(0, 16, 16) > 0);
+}
+

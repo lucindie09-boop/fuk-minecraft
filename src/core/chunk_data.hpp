@@ -26,6 +26,7 @@ struct PalSection {
 
     [[nodiscard]] uint16_t uniform_val() const { return palette.empty() ? 0 : palette[0]; }
     [[nodiscard]] bool is_uniform() const { return palette.size() <= 1; }
+    [[nodiscard]] size_t memory_usage() const { return palette.capacity() * sizeof(uint16_t) + indices.capacity(); }
 };
 
 // -------------------------------------------------------------------------
@@ -270,6 +271,15 @@ public:
                 }
     }
 
+    [[nodiscard]] size_t memory_usage() const {
+        size_t total = 0;
+        for (int i = 0; i < NUM_SECTIONS; i++) {
+            total += block_secs[i].memory_usage();
+            total += light_secs[i].memory_usage();
+        }
+        return total;
+    }
+
 private:
     static bool is_emissive_fast(BlockID id) {
         return HasProperty(BlockRegistry::get_instance().get_block_fast(id).properties, BlockProperty::Emissive);
@@ -337,6 +347,12 @@ public:
     void clear_sky_light() noexcept;
     void clear_light() noexcept;
     void clear() noexcept;
+
+    // Memory footprint (bytes of palette + index storage)
+    [[nodiscard]] size_t memory_usage() const {
+        if (!storage) return 0;
+        return sizeof(ChunkData) + sizeof(PaletteStorage) + storage->memory_usage();
+    }
 
     // Block Access
     [[nodiscard]] BlockID get_block(int32_t x, int32_t y, int32_t z) const noexcept {

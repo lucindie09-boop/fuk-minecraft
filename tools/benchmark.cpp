@@ -135,6 +135,18 @@ static BenchResult bench_light_propagation(int n) {
     return {"light_propagation_avg_ms", avg};
 }
 
+static BenchResult bench_memory_usage() {
+    VoxelEngine::TerrainParams params;
+    VoxelEngine::ChunkGenerator gen(params);
+    VoxelEngine::ChunkData chunk;
+
+    gen.generate_chunk(chunk, 0, 0, 0);
+
+    size_t bytes = chunk.memory_usage();
+    printf("  memory_usage:  %zu bytes (%.1f KB)\n", bytes, bytes / 1024.0);
+    return {"chunk_memory_bytes", static_cast<double>(bytes)};
+}
+
 struct BaselineEntry {
     std::string name;
     double max_avg_ms;
@@ -176,6 +188,7 @@ int main(int argc, char** argv) {
     results.push_back(bench_meshing(1000));
     results.push_back(bench_palette_ops(100));
     results.push_back(bench_light_propagation(1000));
+    results.push_back(bench_memory_usage());
 
     if (!check_mode || !baseline_path) return 0;
 
