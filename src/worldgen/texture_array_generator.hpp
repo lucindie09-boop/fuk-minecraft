@@ -131,7 +131,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_texture
     godot::Array textures;
     s_global_texture_name_to_index.clear();
 
-    for (int i = 0; i < texture_paths.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(texture_paths.size()); ++i) {
         godot::Ref<godot::Texture2D> texture = loader->load(texture_paths[i]);
         if (!texture.is_valid()) {
             continue;
@@ -148,7 +148,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_texture
 
         image->generate_mipmaps();
 
-        const int layer_index = textures.size();
+        const int layer_index = static_cast<int>(textures.size());
         textures.append(image);
 
         godot::String file_name = texture_paths[i].get_file().get_basename();
@@ -197,7 +197,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_emissiv
     black_data.resize(target_width * target_height * 4);
     black_data.fill(0);
     // Alpha = 255 so emissive.rgb * emissive.a doesn't multiply by zero-alpha edge cases
-    for (int i = 3; i < black_data.size(); i += 4) {
+    for (int i = 3; i < static_cast<int>(black_data.size()); i += 4) {
         black_data[i] = 255;
     }
     godot::Ref<godot::Image> black_image = godot::Image::create_from_data(target_width, target_height, false, godot::Image::FORMAT_RGBA8, black_data);
@@ -230,7 +230,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_emissiv
             godot::PackedByteArray fb_data;
             fb_data.resize(target_width * target_height * 4);
             fb_data.fill(0);
-            for (int i = 3; i < fb_data.size(); i += 4) {
+            for (int i = 3; i < static_cast<int>(fb_data.size()); i += 4) {
                 fb_data[i] = 255;
             }
             emissive_image = godot::Image::create_from_data(target_width, target_height, false, godot::Image::FORMAT_RGBA8, fb_data);
@@ -242,7 +242,7 @@ inline godot::Ref<godot::Texture2DArray> TextureArrayGenerator::generate_emissiv
 
         emissive_image->generate_mipmaps();
 
-        const int layer_index = images.size();
+        const int layer_index = static_cast<int>(images.size());
         images.append(emissive_image);
 
         godot::String file_name = tex_name;

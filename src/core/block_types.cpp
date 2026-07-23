@@ -32,7 +32,7 @@ bool BlockRegistry::load_from_json(const godot::String& json_path) noexcept {
     }
 
     godot::Array blocks_arr = parsed;
-    for (int i = 0; i < blocks_arr.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(blocks_arr.size()); ++i) {
         godot::Dictionary d = blocks_arr[i];
 
         BlockType bt{};
@@ -45,7 +45,7 @@ bool BlockRegistry::load_from_json(const godot::String& json_path) noexcept {
 
         // properties
         godot::Array props = d["properties"];
-        for (int p = 0; p < props.size(); ++p) {
+        for (int p = 0; p < static_cast<int>(props.size()); ++p) {
             godot::String flag = props[p];
             if (flag == "Solid")          bt.properties = bt.properties | BlockProperty::Solid;
             else if (flag == "Transparent") bt.properties = bt.properties | BlockProperty::Transparent;
