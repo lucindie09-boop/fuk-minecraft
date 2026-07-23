@@ -148,11 +148,12 @@ jobs:
       - name: Run clang-tidy
         run: |
           # Normalize paths to catch format differences (src/x.cpp vs ./src/x.cpp vs absolute)
-          files=$(jq -r '.[].file' compile_commands.json | xargs -n1 realpath --relative-to=. 2>/dev/null | grep -E '^src/.*\.cpp$' | sort -u)
+          # Use while-read loop so failed realpath calls produce no output (unlike xargs which always echoes)
+          files=$(jq -r '.[].file' compile_commands.json | while IFS= read -r f; do realpath --relative-to=. "$f" 2>/dev/null; done | grep -E '^src/.*\.cpp$' | sort -u)
           echo "Checking $(echo "$files" | wc -l) source files"
           echo "$files"
           set -o pipefail
-          clang-tidy $files -p . --header-filter=src/ \
+          clang-tidy $files -p . --header-filter='src/' -quiet \
             -checks=bugprone-*,concurrency-*,performance-*,-bugprone-easily-swappable-parameters \
             2>&1 | tee clang-tidy-output.txt
           echo "clang-tidy exit code: ${PIPESTATUS[0]}"
