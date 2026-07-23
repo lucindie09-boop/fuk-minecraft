@@ -89,6 +89,13 @@ if sys.platform != "win32":
     fuzz_palette = fuzz_env.Program("bin/fuzz_palette", ["tools/fuzz_palette.cpp"] + fuzz_sources_common)
     fuzz_chunk = fuzz_env.Program("bin/fuzz_chunk_load", ["tools/fuzz_chunk_load.cpp"] + fuzz_sources_common)
     fuzz_light = fuzz_env.Program("bin/fuzz_light_propagation", ["tools/fuzz_light_propagation.cpp"] + fuzz_sources_common)
-    # Note: fuzz_mesh_builder requires full Godot linkage (gdextension_interface.h, etc.)
-    # and cannot be built in standalone fuzz environment
-    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light])
+    fuzz_mesh_sources = fuzz_sources_common + [
+        "src/mesh/mesh_builder.cpp",
+        "src/mesh/mesh_builder_faces.cpp",
+        "src/mesh/mesh_builder_greedy.cpp",
+        "src/mesh/chunk_neighbor_accessor.cpp",
+        "src/mesh/ambient_occlusion.cpp",
+        "src/mesh/smooth_lighting.cpp",
+    ]
+    fuzz_mesh = fuzz_env.Program("bin/fuzz_mesh_builder", ["tools/fuzz_mesh_builder.cpp"] + fuzz_mesh_sources)
+    Alias("fuzz", [fuzz_palette, fuzz_chunk, fuzz_light, fuzz_mesh])

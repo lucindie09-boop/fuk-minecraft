@@ -2,10 +2,12 @@
 #define FUK_MINECRAFT_MESH_TYPES_HPP
 #include <cstdint>
 #include <vector>
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
+#endif
 
 namespace VoxelEngine {
 
@@ -43,6 +45,7 @@ struct BuiltMeshData {
     bool empty = true;
 };
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 struct PackedBuiltMeshData {
     godot::PackedVector3Array vertices;
     godot::PackedByteArray custom0;  // RGBA8_UNORM: light_r, light_g, light_b, sky_light
@@ -51,6 +54,7 @@ struct PackedBuiltMeshData {
     godot::PackedInt32Array indices;
     bool empty = true;
 };
+#endif
 
 struct WorldRenderStats {
     int32_t visible_instances = 0;
