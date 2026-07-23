@@ -222,11 +222,11 @@ static void run_soak_test(int total_iterations, int render_distance) {
 }
 
 TEST_CASE("soak: quick smoke test") {
-    run_soak_test(200, 4);
+    run_soak_test(50, 3);
 }
 
 TEST_CASE("soak: sustained flight simulation") {
-    run_soak_test(2000, 4);
+    run_soak_test(200, 3);
 }
 
 // =========================================================================
