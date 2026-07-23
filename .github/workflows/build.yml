@@ -153,3 +153,41 @@ jobs:
             -checks=bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,-bugprone-easily-swappable-parameters,-cppcoreguidelines-avoid-magic-numbers \
             2>&1 | tee clang-tidy-output.txt
           echo "clang-tidy exit code: ${PIPESTATUS[0]}"
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install SCons
+        run: pip install scons
+
+      - name: Install lcov
+        run: sudo apt-get install -y lcov
+
+      - name: Build tests with coverage
+        shell: bash
+        timeout-minutes: 15
+        run: scons test -j$(nproc) COVERAGE=1
+
+      - name: Run tests
+        timeout-minutes: 5
+        run: ./bin/run_tests
+
+      - name: Generate coverage report
+        run: |
+          lcov --capture --directory . --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' 'godot-cpp/*' --output-file coverage.info
+          lcov --list coverage.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.info
+          fail_ci_if_error: false
