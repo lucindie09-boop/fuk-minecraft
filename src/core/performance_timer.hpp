@@ -1,5 +1,6 @@
 #ifndef FUK_MINECRAFT_PERFORMANCE_TIMER_HPP
 #define FUK_MINECRAFT_PERFORMANCE_TIMER_HPP
+#include <cstdint>
 #include <chrono>
 #include <array>
 #include <cmath>
@@ -39,7 +40,7 @@ X(GroupMeshUpload) \
 X(PaletteWrite) \
 X(LightPropagation)
 
-enum class TimerID : size_t {
+enum class TimerID : uint8_t {
 #define X(name) name,
     TIMER_LIST(X)
 #undef X

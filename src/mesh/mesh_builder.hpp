@@ -199,7 +199,7 @@ private:
     static constexpr float kWaterSurfaceDrop = 0.12f;
     static constexpr float kLoweredBlockOffset = 0.0625f;  // 1/16
     static constexpr int   kMaxGreedyMergeDistance = 32;
-    static constexpr size_t kVertexReserve = CHUNK_VOLUME * 6 * 4;
+    static constexpr size_t kVertexReserve = static_cast<size_t>(CHUNK_VOLUME) * 6 * 4;
     static constexpr size_t kIndexReserve  = kVertexReserve * 3 / 2;
 
     // -------------------------------------------------------------------------
@@ -332,6 +332,7 @@ GreedyVerticalStatsSnapshot greedy_v_stats_local{};
             case 1: u = 0.5f - vc; v = 0.5f + uc; break; //  90°
             case 2: u = 0.5f - uc; v = 0.5f - vc; break; // 180°
             case 3: u = 0.5f + vc; v = 0.5f - uc; break; // 270°
+            default: break;
         }
     }
 

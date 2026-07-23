@@ -62,7 +62,7 @@ void LightPropagator::light_propagate_add(int32_t origin_cx, int32_t origin_cy, 
         // chunk size 32). Collect all seed chunks' 3×3×3 neighborhoods and
         // lock only those shards.
         std::vector<uint64_t> keys;
-        keys.reserve(27 * 4);
+        keys.reserve(static_cast<size_t>(27) * 4);
         bool seen[ChunkMap::kNumShards] = {};
         auto add_key = [&](uint64_t k) {
             size_t s = k % ChunkMap::kNumShards;
@@ -92,7 +92,7 @@ void LightPropagator::light_propagate_remove(int32_t origin_cx, int32_t origin_c
     {
         // Same bounded-reach reasoning as light_propagate_add.
         std::vector<uint64_t> keys;
-        keys.reserve(27 * 4);
+        keys.reserve(static_cast<size_t>(27) * 4);
         bool seen[ChunkMap::kNumShards] = {};
         auto add_key = [&](uint64_t k) {
             size_t s = k % ChunkMap::kNumShards;

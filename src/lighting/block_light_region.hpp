@@ -173,7 +173,7 @@ private:
     ChunkData* region_[3][3][3]{};
 
     [[nodiscard]] static std::size_t grid_index(int32_t dx, int32_t dy, int32_t dz) noexcept {
-        return static_cast<std::size_t>(dz * 9 + dy * 3 + dx);
+        return static_cast<std::size_t>(dz) * 9 + static_cast<std::size_t>(dy) * 3 + static_cast<std::size_t>(dx);
     }
 
     [[nodiscard]] ChunkData* at(int8_t rdx, int8_t rdy, int8_t rdz) const noexcept {
@@ -184,7 +184,7 @@ private:
     }
 
     [[nodiscard]] static std::size_t cell_index(int32_t x, int32_t y, int32_t z) noexcept {
-        return static_cast<std::size_t>(x + y * CHUNK_WIDTH + z * CHUNK_WIDTH * CHUNK_HEIGHT);
+        return static_cast<std::size_t>(x) + static_cast<std::size_t>(y) * CHUNK_WIDTH + static_cast<std::size_t>(z) * CHUNK_WIDTH * CHUNK_HEIGHT;
     }
 };
 

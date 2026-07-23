@@ -61,7 +61,7 @@ inline void encode_rle_column(const ChunkData& chunk, int32_t x, int32_t z,
 // Encode the full chunk into an RLE body buffer.
 inline void encode_chunk_rle(const ChunkData& chunk, std::vector<uint8_t>& out) {
     out.clear();
-    out.reserve(CHUNK_WIDTH * CHUNK_DEPTH * 6);
+    out.reserve(static_cast<size_t>(CHUNK_WIDTH) * CHUNK_DEPTH * 6);
     for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
         for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
             encode_rle_column(chunk, x, z, out);

@@ -31,7 +31,9 @@ namespace VoxelEngine {
 // for Godot lifecycle, property binding, and player node resolution.
 // -------------------------------------------------------------------------
 class ChunkManager : public godot::Node3D {
+    // NOLINTBEGIN(bugprone-unhandled-self-assignment) — GDCLASS macro generates operator=
     GDCLASS(ChunkManager, godot::Node3D)
+    // NOLINTEND(bugprone-unhandled-self-assignment)
 
 public:
     ChunkManager();

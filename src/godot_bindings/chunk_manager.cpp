@@ -36,8 +36,6 @@ void ChunkManager::_ready() {
             controller->set_player_position(cached_player->get_global_position());
         }
     }
-    Engine* engine = Engine::get_singleton();
-    bool is_editor = engine && engine->is_editor_hint();
     controller->get_environment_controller().update_environment(get_parent());
 
     // Load world metadata if it exists, otherwise save initial metadata

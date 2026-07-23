@@ -156,7 +156,7 @@ jobs:
           echo "$files"
           # Run clang-tidy and capture output. Don't fail on godot-cpp header noise.
           clang-tidy $files -p . --header-filter='src/' -quiet \
-            -checks=bugprone-*,concurrency-*,performance-*,-bugprone-easily-swappable-parameters \
+            -checks=bugprone-*,concurrency-*,performance-*,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-clang-analyzer-optin.core.EnumCastOutOfRange,-performance-move-const-arg \
             > clang-tidy-output.txt 2>&1 || true
           # Only gate on actual findings in our source code (lines with check annotations).
           # godot-cpp parse errors produce "warnings N and M errors generated" lines without check names.

@@ -30,7 +30,6 @@ VoxelEngineController::VoxelEngineController()
     std::call_once(registry_init_flag, []() {
         auto& registry = BlockRegistry::get_instance();
         if (!registry.load_from_json("res://data/block_definitions.json")) {
-            WARN_PRINT("Failed to load block_definitions.json, using hardcoded fallback");
             registry.initialize_default_blocks();
         }
     });

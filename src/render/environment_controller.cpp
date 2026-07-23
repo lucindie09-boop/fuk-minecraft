@@ -38,7 +38,6 @@ void EnvironmentController::update_environment(godot::Node* parent) {
 
     const float blend = day_night.get_blend();
     const float elevation = day_night.get_sun_elevation();
-    const godot::Color sky_color = day_night.get_sky_color();
     const godot::Color horizon_color = day_night.get_horizon_color();
     const godot::Color sun_color = day_night.get_sun_color();
     const godot::Vector3 sun_dir = day_night.get_sun_direction();
@@ -81,7 +80,6 @@ void EnvironmentController::update_shader_parameters() {
     const float blend = day_night.get_blend();
     const float sky_intensity = day_night.get_sky_intensity();
     const godot::Color sky_color = day_night.get_sky_color();
-    const godot::Color horizon_color = day_night.get_horizon_color();
     const godot::Vector3 sun_dir = day_night.get_sun_direction();
 
     const float elevation = day_night.get_sun_elevation();

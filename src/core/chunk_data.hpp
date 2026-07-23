@@ -279,7 +279,7 @@ private:
         switch (bpi) {
             case 4:  { int b = local / 2, n = local & 1; return (data[b] >> (n * 4)) & 0xF; }
             case 8:  return data[local];
-            case 16: return data[local * 2] | (data[local * 2 + 1] << 8);
+            case 16: return data[static_cast<size_t>(local) * 2] | (data[static_cast<size_t>(local) * 2 + 1] << 8);
             default: return 0;
         }
     }
@@ -293,7 +293,8 @@ private:
                 break;
             }
             case 8:  data[local] = static_cast<uint8_t>(val); break;
-            case 16: data[local * 2] = static_cast<uint8_t>(val & 0xFF); data[local * 2 + 1] = static_cast<uint8_t>((val >> 8) & 0xFF); break;
+            case 16: data[static_cast<size_t>(local) * 2] = static_cast<uint8_t>(val & 0xFF); data[static_cast<size_t>(local) * 2 + 1] = static_cast<uint8_t>((val >> 8) & 0xFF); break;
+            default: break;
         }
     }
 

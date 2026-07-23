@@ -14,6 +14,7 @@ float AmbientOcclusion::get_face_shade(FaceDirection direction) {
         case FaceDirection::Top:    return 1.00f;
         case FaceDirection::Bottom: return 0.50f;
         case FaceDirection::Right:  return 0.75f;
+        // NOLINTNEXTLINE(bugprone-branch-clone) — Left and Right intentionally share the same shade
         case FaceDirection::Left:   return 0.75f;
         case FaceDirection::Front:  return 0.60f;
         case FaceDirection::Back:   return 0.60f;
@@ -181,7 +182,7 @@ void AmbientOcclusion::compute_greedy_face(const ChunkNeighborAccessor& accessor
 // -------------------------------------------------------------------------
 uint8_t AmbientOcclusion::pack_vertex_ao(float ao, FaceDirection direction) {
     float value = ao * get_face_shade(direction);
-    int iv = static_cast<int>(value * 255.0f + 0.5f);
+    int iv = static_cast<int>(std::lround(value * 255.0f));
     if (iv < 0) iv = 0;
     if (iv > 255) iv = 255;
     return static_cast<uint8_t>(iv);
