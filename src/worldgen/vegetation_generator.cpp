@@ -13,12 +13,30 @@ void VegetationGenerator::generate_vegetation(
     // Track placed tree positions within this chunk to enforce minimum spacing
     bool tree_placed[CHUNK_WIDTH][CHUNK_DEPTH] = {};
 
-    // Per-chunk randomness: only 60% of forest chunks get any trees at all
+    // Per-chunk randomness: 80% of forest chunks have trees, 15-25 per chunk
     uint32_t chunk_seed = hash_pos(chunk_x * CHUNK_WIDTH, chunk_z * CHUNK_DEPTH);
-    bool forest_has_trees = (chunk_seed % 100u) < 60u;
+    bool forest_has_trees = (chunk_seed % 100u) < 80u;
+    uint32_t target_trees = 15 + (chunk_seed % 11);
+    uint32_t trees_placed_count = 0;
 
-    for (int32_t x = 0; x < CHUNK_WIDTH; x++) {
-        for (int32_t z = 0; z < CHUNK_DEPTH; z++) {
+    // Shuffle column positions so trees are placed randomly, not in scan order
+    struct Cell { int32_t x; int32_t z; };
+    Cell cells[CHUNK_WIDTH * CHUNK_DEPTH];
+    for (int32_t i = 0; i < CHUNK_WIDTH * CHUNK_DEPTH; i++)
+        cells[i] = { i / CHUNK_DEPTH, i % CHUNK_DEPTH };
+    // Fisher-Yates shuffle with chunk seed
+    uint32_t rng = chunk_seed;
+    for (int32_t i = CHUNK_WIDTH * CHUNK_DEPTH - 1; i > 0; i--) {
+        rng = rng * 1664525u + 1013904223u;
+        int32_t j = static_cast<int32_t>(rng % static_cast<uint32_t>(i + 1));
+        Cell tmp = cells[i];
+        cells[i] = cells[j];
+        cells[j] = tmp;
+    }
+
+    for (int32_t idx = 0; idx < CHUNK_WIDTH * CHUNK_DEPTH; idx++) {
+        int32_t x = cells[idx].x;
+        int32_t z = cells[idx].z;
             int32_t surface_y = columns[x][z].height;
             BiomeType biome = columns[x][z].biome;
 
@@ -33,9 +51,9 @@ void VegetationGenerator::generate_vegetation(
             BlockID surface_block = chunk.get_block(x, surface_y - world_y_start, z);
 
             if (biome == BiomeType::Forest) {
-                if (forest_has_trees) {
-                    // ~5 trees per chunk avg when trees are present (0.5% column density)
-                    if ((h % 1000u) < 5u) {
+                if (forest_has_trees && trees_placed_count < target_trees) {
+                    // ~50% column candidate rate; spacing filter + target cap control final count
+                    if ((h % 10u) < 5u) {
                         // Enforce minimum spacing: reject if any tree within Chebyshev radius 3
                         constexpr int32_t MIN_TREE_RADIUS = 3;
                         bool too_close = false;
@@ -51,6 +69,7 @@ void VegetationGenerator::generate_vegetation(
                         if (!too_close) {
                             place_tree(chunk, x, z, surface_y, world_y_start, world_y_end, h, chunk_x, chunk_z, cross_writer);
                             tree_placed[x][z] = true;
+                            trees_placed_count++;
                         }
                     }
                 }
@@ -93,7 +112,6 @@ void VegetationGenerator::generate_vegetation(
                     place_cactus(chunk, x, z, surface_y, world_y_start, world_y_end);
                 }
             }
-        }
     }
 }
 
