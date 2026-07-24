@@ -12,7 +12,7 @@ background_mode = 2
 background_color = Color(0.67800003, 0.60800004, 0.56949997, 1)
 sky = ExtResource("3_sky")
 ambient_light_source = 3
-ambient_light_color = Color(0.08056197, 0.12, 0.24803309, 1)
+ambient_light_color = Color(0.08, 0.12, 0.25, 1)
 ambient_light_energy = 0.027000003
 reflected_light_source = 1
 glow_levels/2 = 1.0
@@ -62,7 +62,6 @@ environment = SubResource("Environment_uu6xs")
 [node name="ChunkManager" type="ChunkManager" parent="." unique_id=318602554]
 render_distance = 32
 player_position = Vector3(0, 280, 0)
-sea_level = 400.0
 smooth_lighting = true
 lod_distance = 6
 day_sky_color = Color(0.9999997, 0.8811681, 0.7633133, 1)
