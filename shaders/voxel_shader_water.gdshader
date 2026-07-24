@@ -205,7 +205,8 @@ void fragment(){
     fog_amount = clamp(fog_amount, 0.0, 1.0);
 
     // ========= TURBIDITY (Rayleigh/Mie haze) =========
-	float haze = clamp(sky_turbidity * 1.8 - 0.3, 0.0, 1.0);
+	float haze = clamp(sky_turbidity * 1.4 - 0.2, 0.0, 1.0);
+	haze *= smoothstep(0.0, 0.35, sky_light_intensity);
 
     // ========= SUN SCATTERING =========
     vec3 view_norm = normalize(view_direction);

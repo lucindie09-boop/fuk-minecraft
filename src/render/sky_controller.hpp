@@ -117,7 +117,8 @@ void sky() {
     float gradient = 1.0 - (1.0 - up) * sqrt(1.0 - up);
 
     // Turbidity: Mie haze washes horizon, desaturates zenith
-    float haze = clamp(sky_turbidity * 1.8 - 0.3, 0.0, 1.0);
+    float haze = clamp(sky_turbidity * 1.4 - 0.2, 0.0, 1.0);
+    haze *= smoothstep(0.0, 0.35, blend);
     vec3 haze_color = mix(vec3(0.95, 0.92, 0.88), sun_color, 0.25);
     vec3 turb_horizon = mix(horizon_color, haze_color, haze * 0.55);
     float z_luma = dot(zenith_color, vec3(0.299, 0.587, 0.114));
