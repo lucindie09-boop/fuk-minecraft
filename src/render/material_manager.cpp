@@ -7,7 +7,7 @@
 using namespace godot;
 using namespace VoxelEngine;
 
-void MaterialManager::update_shader_parameters(float sky_intensity, const Color& sky_color, const Vector3& sun_direction, const Color& sky_light_warmth, const Vector3& horizon_color, const Vector3& zenith_color) {
+void MaterialManager::update_shader_parameters(float sky_intensity, const Color& sky_color, const Vector3& sun_direction, const Color& sky_light_warmth, const Vector3& horizon_color, const Vector3& zenith_color, float sky_turbidity) {
     Ref<ShaderMaterial> material = get_material();
     if (material.is_valid()) {
         material->set_shader_parameter("sky_light_intensity", sky_intensity);
@@ -16,6 +16,17 @@ void MaterialManager::update_shader_parameters(float sky_intensity, const Color&
         material->set_shader_parameter("sky_light_warmth", sky_light_warmth);
         material->set_shader_parameter("horizon_color", horizon_color);
         material->set_shader_parameter("zenith_color", zenith_color);
+        material->set_shader_parameter("sky_turbidity", sky_turbidity);
+    }
+    Ref<ShaderMaterial> water_mat = get_water_material();
+    if (water_mat.is_valid()) {
+        water_mat->set_shader_parameter("sky_light_intensity", sky_intensity);
+        water_mat->set_shader_parameter("sky_light_color", sky_color);
+        water_mat->set_shader_parameter("sun_direction", sun_direction);
+        water_mat->set_shader_parameter("sky_light_warmth", sky_light_warmth);
+        water_mat->set_shader_parameter("horizon_color", horizon_color);
+        water_mat->set_shader_parameter("zenith_color", zenith_color);
+        water_mat->set_shader_parameter("sky_turbidity", sky_turbidity);
     }
 }
 

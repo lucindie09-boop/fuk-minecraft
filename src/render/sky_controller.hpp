@@ -22,6 +22,7 @@ uniform vec3 sun_color = vec3(1.0, 0.95, 0.7);
 uniform float exposure = 1.0;
 uniform vec3 horizon_color = vec3(0.30, 0.52, 0.85);
 uniform vec3 zenith_color = vec3(0.06, 0.20, 0.85);
+uniform float sky_turbidity = 0.35;
 uniform float moon_phase = 0.5;
 uniform sampler2D sun_texture;
 uniform sampler2D star_texture;
@@ -114,9 +115,19 @@ void sky() {
     float sun_dot = max(dot(dir, sun_fwd), 0.0);
 
     float gradient = 1.0 - (1.0 - up) * sqrt(1.0 - up);
-    vec3 base_sky = mix(horizon_color, zenith_color, gradient);
 
-    float sun_glow = (pow(sun_dot, 20.0) * 0.04 + pow(sun_dot, 60.0) * 0.08);
+    // Turbidity: Mie haze washes horizon, desaturates zenith
+    float haze = clamp(sky_turbidity * 1.8 - 0.3, 0.0, 1.0);
+    vec3 haze_color = mix(vec3(0.95, 0.92, 0.88), sun_color, 0.25);
+    vec3 turb_horizon = mix(horizon_color, haze_color, haze * 0.55);
+    float z_luma = dot(zenith_color, vec3(0.299, 0.587, 0.114));
+    vec3 pale_zenith = mix(zenith_color, vec3(z_luma) * vec3(0.75, 0.80, 0.92), haze * 0.60);
+
+    vec3 base_sky = mix(turb_horizon, pale_zenith, gradient);
+
+    // Sun glow widens with turbidity
+    float sun_glow_w = mix(1.0, 2.2, haze);
+    float sun_glow = (pow(sun_dot, 20.0) * 0.04 + pow(sun_dot, 60.0 / sun_glow_w) * 0.08);
     base_sky += sun_color * sun_glow * smoothstep(-0.08, 0.08, sun_elevation);
     // Sun using texture
     vec3 sun_right = normalize(cross(vec3(0.0, 1.0, 0.0), sun_fwd + vec3(0.001, 0.0, 0.0)));
@@ -292,6 +303,7 @@ public:
         godot::Vector3 zenith_color = compute_zenith_color(blend);
         cached_mat->set_shader_parameter(p_horizon_color, horizon_color);
         cached_mat->set_shader_parameter(p_zenith_color, zenith_color);
+        cached_mat->set_shader_parameter("sky_turbidity", sky_turbidity);
     }
 
 private:

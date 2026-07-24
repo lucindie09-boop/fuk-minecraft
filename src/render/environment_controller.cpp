@@ -88,8 +88,9 @@ void EnvironmentController::update_shader_parameters() {
 
     const godot::Vector3 sky_horizon_color = sky_controller.get_horizon_color(blend, elevation);
     const godot::Vector3 sky_zenith_color = sky_controller.get_zenith_color(blend);
+    const float sky_turbidity = day_night.get_sky_turbidity();
 
-    material_manager.update_shader_parameters(sky_intensity, sky_color, sun_dir, sky_warmth, sky_horizon_color, sky_zenith_color);
+    material_manager.update_shader_parameters(sky_intensity, sky_color, sun_dir, sky_warmth, sky_horizon_color, sky_zenith_color, sky_turbidity);
 
     const float fog_begin = fog_controller.get_fog_begin();
     const float fog_end = fog_controller.get_fog_end();
