@@ -6,6 +6,7 @@
 #include "core/block_types.hpp"
 #include "core/chunk_data.hpp"
 #include "core/performance_timer.hpp"
+#include "worldgen/climate_sampler.hpp"
 #include <utility>
 #include <cstdio>
 #include <algorithm>
@@ -33,9 +34,7 @@ class ChunkGenerator {
 private:
     FastNoise terrain_noise;
     FastNoise cave_noise;
-    FastNoise continental_noise;
-    FastNoise temp_noise;
-    FastNoise humidity_noise;
+    ClimateSampler climate;
 
     TerrainParams params;
     std::mt19937 rng;
@@ -53,6 +52,8 @@ public:
         float cont;              // continentalness value (0-1)
         float temperature;
         float humidity;
+        float erosion;
+        float weirdness;
     };
 
 private:
@@ -76,19 +77,28 @@ private:
     // Noise sampling
     // -------------------------------------------------------------------------
     float sample_continentalness(float x, float z) const {
-        float raw = continental_noise.noise_2d(x * params.continentalness_scale,
-                                                z * params.continentalness_scale);
-        return clamp01((raw + 1.0f) * 0.5f);
+        double raw = climate.sample_continentalness(static_cast<double>(x), static_cast<double>(z));
+        return clamp01(static_cast<float>((raw + 1.0) * 0.5));
     }
 
     float sample_temperature(float x, float z) const {
-        return clamp01((temp_noise.noise_2d(x * params.climate_temp_scale,
-                                             z * params.climate_temp_scale) + 1.0f) * 0.5f);
+        double raw = climate.sample_temperature(static_cast<double>(x), static_cast<double>(z));
+        return clamp01(static_cast<float>((raw + 1.0) * 0.5));
     }
 
     float sample_humidity(float x, float z) const {
-        return clamp01((humidity_noise.noise_2d(x * params.climate_humidity_scale,
-                                                 z * params.climate_humidity_scale) + 1.0f) * 0.5f);
+        double raw = climate.sample_humidity(static_cast<double>(x), static_cast<double>(z));
+        return clamp01(static_cast<float>((raw + 1.0) * 0.5));
+    }
+
+    float sample_erosion(float x, float z) const {
+        double raw = climate.sample_erosion(static_cast<double>(x), static_cast<double>(z));
+        return clamp01(static_cast<float>((raw + 1.0) * 0.5));
+    }
+
+    float sample_weirdness(float x, float z) const {
+        double raw = climate.sample_weirdness(static_cast<double>(x), static_cast<double>(z));
+        return clamp01(static_cast<float>((raw + 1.0) * 0.5));
     }
 
     // Grid-based land biome lookup from temperature/humidity.
@@ -150,8 +160,10 @@ private:
         };
         static constexpr int NUM_BIOMES = 3;
         // Sample climate at the base frequency for smooth height blending
-        float blend_temp = clamp01((temp_noise.noise_2d(x * BASE_TEMP_SCALE, z * BASE_TEMP_SCALE) + 1.0f) * 0.5f);
-        float blend_hum  = clamp01((humidity_noise.noise_2d(x * BASE_HUM_SCALE,  z * BASE_HUM_SCALE)  + 1.0f) * 0.5f);
+        float blend_temp = clamp01(static_cast<float>((climate.sample_temperature(
+            static_cast<double>(x * BASE_TEMP_SCALE), static_cast<double>(z * BASE_TEMP_SCALE)) + 1.0) * 0.5));
+        float blend_hum  = clamp01(static_cast<float>((climate.sample_humidity(
+            static_cast<double>(x * BASE_HUM_SCALE), static_cast<double>(z * BASE_HUM_SCALE)) + 1.0) * 0.5));
 
         float w_total = 0.0f, w_base = 0.0f;
         float weights[NUM_BIOMES];
@@ -214,9 +226,7 @@ float max_water_h = -1.0f;
     ChunkGenerator(const TerrainParams& p = TerrainParams())
         : terrain_noise(p.seed)
         , cave_noise(p.seed + 2000)
-        , continental_noise(p.seed + 6000)
-        , temp_noise(p.seed + 4000)
-        , humidity_noise(p.seed + 5000)
+        , climate(static_cast<uint64_t>(p.seed))
         , params(p)
         , rng(p.seed)
     {
@@ -288,11 +298,9 @@ float max_water_h = -1.0f;
         bool seed_changed = (p.seed != params.seed);
         params = p;
         if (seed_changed) {
-            terrain_noise     = FastNoise(p.seed);
-            cave_noise        = FastNoise(p.seed + 2000);
-            continental_noise = FastNoise(p.seed + 6000);
-            temp_noise        = FastNoise(p.seed + 4000);
-            humidity_noise    = FastNoise(p.seed + 5000);
+            terrain_noise = FastNoise(p.seed);
+            cave_noise    = FastNoise(p.seed + 2000);
+            climate       = ClimateSampler(static_cast<uint64_t>(p.seed));
 
             rng.seed(p.seed);
         }

@@ -13,6 +13,8 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
     float cont = sample_continentalness(x, z);
     float temperature = sample_temperature(x, z);
     float humidity = sample_humidity(x, z);
+    float erosion_val = sample_erosion(x, z);
+    float weirdness_val = sample_weirdness(x, z);
     bool is_land = cont >= params.land_threshold;
     float coast_width = std::max(0.0001f, params.shelf_width * 0.4f);
 
@@ -50,7 +52,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         water_level = std::max(params.sea_level, water_level);
     }
 
-    return ColumnSample{biome, height, water_level, false, saved_land_height, cont, temperature, humidity};
+    return ColumnSample{biome, height, water_level, false, saved_land_height, cont, temperature, humidity, erosion_val, weirdness_val};
 }
 
 BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_surface_water, bool near_water) const {
