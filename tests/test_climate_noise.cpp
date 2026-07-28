@@ -113,6 +113,30 @@ TEST_CASE("OctaveNoise deterministic per seed") {
     CHECK(a.sample(1.5, 2.3, -0.5) == b.sample(1.5, 2.3, -0.5));
 }
 
+TEST_CASE("OctaveNoise persistence_0 matches vanilla formula") {
+    // persistence_0 = 2^(len-1) / (2^len - 1)
+    // Cross-checked against Cubiomes' persist_ini[] lookup table.
+    SUBCASE("len=2: 2/3") {
+        CHECK(std::ldexp(1.0, 1) / (std::ldexp(1.0, 2) - 1.0) == doctest::Approx(2.0 / 3.0));
+    }
+    SUBCASE("len=3: 4/7") {
+        CHECK(std::ldexp(1.0, 2) / (std::ldexp(1.0, 3) - 1.0) == doctest::Approx(4.0 / 7.0));
+    }
+    SUBCASE("len=4: 8/15 (shift)") {
+        CHECK(std::ldexp(1.0, 3) / (std::ldexp(1.0, 4) - 1.0) == doctest::Approx(8.0 / 15.0));
+    }
+    SUBCASE("len=7: 64/127") {
+        CHECK(std::ldexp(1.0, 6) / (std::ldexp(1.0, 7) - 1.0) == doctest::Approx(64.0 / 127.0));
+    }
+    SUBCASE("len=9: 256/511 (continentalness)") {
+        CHECK(std::ldexp(1.0, 8) / (std::ldexp(1.0, 9) - 1.0) == doctest::Approx(256.0 / 511.0));
+    }
+    SUBCASE("len=256: converges toward 0.5") {
+        double p = std::ldexp(1.0, 255) / (std::ldexp(1.0, 256) - 1.0);
+        CHECK(p == doctest::Approx(0.5).epsilon(1e-15));
+    }
+}
+
 TEST_CASE("OctaveNoise skips zero-amplitude octaves") {
     double amps[] = {0.0, 0.0, 0.0};
     OctaveNoise noise(42, -3, amps, 3);

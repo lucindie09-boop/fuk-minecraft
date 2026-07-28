@@ -91,8 +91,7 @@ static uint64_t mix_seed(uint64_t base, uint64_t index) {
 
 OctaveNoise::OctaveNoise(uint64_t base_seed, int first_octave, const double* amplitudes, int len) {
     count_ = 0;
-    double two_pow_len = std::ldexp(1.0, len);
-    double persistence = (two_pow_len - 2.0) / (two_pow_len - 1.0);
+    double persistence = std::ldexp(1.0, len - 1) / (std::ldexp(1.0, len) - 1.0);
 
     uint64_t octave_idx = 0;
     for (int i = 0; i < len && count_ < MAX_OCTAVES; ++i) {
