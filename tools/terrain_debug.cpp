@@ -1,4 +1,5 @@
 #include "worldgen/chunk_generator.hpp"
+#include "worldgen/climate_sampler.hpp"
 #include <cstdlib>
 #include <cstdio>
 #include <cstdint>
@@ -303,5 +304,54 @@ int main() {
     }
 
     printf("Done. Wrote .bmp files to bin/\n");
+
+    // Climate field visualization via ClimateSampler
+    VoxelEngine::ClimateSampler climate(params.seed);
+    const int CW = 1000, CH = 1000;
+    const float CSTEP = 16.0f;
+    const float CRANGE = 8000.0f;
+
+    auto render_field = [&](const char* filename, const char* label, auto sample_fn) {
+        std::vector<uint8_t> pixels(static_cast<size_t>(CW) * CH);
+        double vmin = 1e10, vmax = -1e10;
+        for (int py = 0; py < CH; py++) {
+            for (int px = 0; px < CW; px++) {
+                float wx = -CRANGE + static_cast<float>(px) * CSTEP;
+                float wz = -CRANGE + static_cast<float>(py) * CSTEP;
+                double v = sample_fn(climate, wx, wz);
+                if (v < vmin) vmin = v;
+                if (v > vmax) vmax = v;
+            }
+        }
+        double range = vmax - vmin;
+        if (range < 1e-10) range = 1.0;
+        for (int py = 0; py < CH; py++) {
+            for (int px = 0; px < CW; px++) {
+                float wx = -CRANGE + static_cast<float>(px) * CSTEP;
+                float wz = -CRANGE + static_cast<float>(py) * CSTEP;
+                double v = sample_fn(climate, wx, wz);
+                double norm = (v - vmin) / range;
+                pixels[static_cast<size_t>(py) * CW + px] = static_cast<uint8_t>(std::round(norm * 255.0));
+            }
+        }
+        write_bmp(filename, CW, CH, pixels.data());
+        printf("  %s: range [%.4f, %.4f] -> %s\n", label, vmin, vmax, filename);
+    };
+
+    printf("Climate field maps (ClimateSampler, seed=%d):\n", params.seed);
+    render_field("bin/climate_continentalness.bmp", "Continentalness",
+        [](const VoxelEngine::ClimateSampler& c, double x, double z) { return c.sample_continentalness(x, z); });
+    render_field("bin/climate_erosion.bmp", "Erosion",
+        [](const VoxelEngine::ClimateSampler& c, double x, double z) { return c.sample_erosion(x, z); });
+    render_field("bin/climate_weirdness.bmp", "Weirdness",
+        [](const VoxelEngine::ClimateSampler& c, double x, double z) { return c.sample_weirdness(x, z); });
+    render_field("bin/climate_temperature.bmp", "Temperature",
+        [](const VoxelEngine::ClimateSampler& c, double x, double z) { return c.sample_temperature(x, z); });
+    render_field("bin/climate_humidity.bmp", "Humidity",
+        [](const VoxelEngine::ClimateSampler& c, double x, double z) { return c.sample_humidity(x, z); });
+    render_field("bin/climate_shift_x.bmp", "Shift X",
+        [](const VoxelEngine::ClimateSampler& c, double x, double z) { return c.sample_shift_x(x, z); });
+
+    printf("Done.\n");
     return 0;
 }

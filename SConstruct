@@ -41,6 +41,8 @@ Default(library, cdb)
 shared_sources = [
     "src/worldgen/chunk_generator.cpp",
     "src/worldgen/vegetation_generator.cpp",
+    "src/worldgen/climate_sampler.cpp",
+    "src/core/perlin_noise.cpp",
     "src/core/chunk_data.cpp",
     "src/core/block_types.cpp",
     "src/mesh/mesh_builder.cpp",
