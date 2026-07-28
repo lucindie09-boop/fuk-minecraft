@@ -10,11 +10,20 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
     float x = static_cast<float>(world_x);
     float z = static_cast<float>(world_z);
 
-    float cont = sample_continentalness(x, z);
-    float temperature = sample_temperature(x, z);
-    float humidity = sample_humidity(x, z);
-    float erosion_val = sample_erosion(x, z);
-    float weirdness_val = sample_weirdness(x, z);
+    // Raw climate values (native DoublePerlinNoise range, roughly [-1, 1])
+    double raw_c = climate.sample_continentalness(x, z);
+    double raw_t = climate.sample_temperature(x, z);
+    double raw_h = climate.sample_humidity(x, z);
+    double raw_e = climate.sample_erosion(x, z);
+    double raw_w = climate.sample_weirdness(x, z);
+
+    // Normalized [0,1] for biome selection thresholds
+    float cont = clamp01(static_cast<float>((raw_c + 1.0) * 0.5));
+    float temperature = clamp01(static_cast<float>((raw_t + 1.0) * 0.5));
+    float humidity = clamp01(static_cast<float>((raw_h + 1.0) * 0.5));
+    float erosion_val = clamp01(static_cast<float>((raw_e + 1.0) * 0.5));
+    float weirdness_val = clamp01(static_cast<float>((raw_w + 1.0) * 0.5));
+
     bool is_land = cont >= params.land_threshold;
     float coast_width = std::max(0.0001f, params.shelf_width * 0.4f);
 
@@ -24,7 +33,9 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
     float saved_land_height = 0.0f;
 
     if (is_land) {
-        float land_height = sample_land_shape(x, z, temperature, humidity);
+        float land_height = sample_land_shape(
+            static_cast<float>(raw_c), static_cast<float>(raw_e),
+            static_cast<float>(raw_w), x, z);
         float coast_t = smoothstep(params.ocean_threshold, params.ocean_threshold + coast_width, cont);
         land_height = lerp(params.sea_level, land_height, coast_t);
         saved_land_height = land_height;

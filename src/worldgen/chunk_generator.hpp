@@ -7,6 +7,7 @@
 #include "core/chunk_data.hpp"
 #include "core/performance_timer.hpp"
 #include "worldgen/climate_sampler.hpp"
+#include "worldgen/terrain_spline.hpp"
 #include <utility>
 #include <cstdio>
 #include <algorithm>
@@ -35,6 +36,8 @@ private:
     FastNoise terrain_noise;
     FastNoise cave_noise;
     ClimateSampler climate;
+    SplineStack spline_stack_;
+    TerrainSpline* spline_root_ = nullptr;
 
     TerrainParams params;
     std::mt19937 rng;
@@ -142,54 +145,24 @@ private:
         return land_biome_from_grid(temperature, humidity);
     }
 
-    // Continuous Voronoi-weighted blend of all land-biome height parameters.
-    // All biomes share the same noise recipe; differentiation comes from
-    // base_off and scale_m per biome center.
-    // Uses fixed base-frequency climate for Voronoi weights so biome boundaries
-    // in the height field remain smooth regardless of biome_size.
-    float sample_land_shape(float x, float z, float /*temperature*/, float /*humidity*/) const {
-        static constexpr float BASE_TEMP_SCALE = 0.00015f;
-        static constexpr float BASE_HUM_SCALE  = 0.00020f;
-        // One entry per land biome. base_off/scale_m shape the *height*;
-        // all biomes now use the same noise recipe, so the only difference
-        // between them is base height offset and amplitude scaling.
-        static constexpr struct { float t, h, base_off, scale_m; } centers[] = {
- {0.50f, 0.35f,   6.0f, 0.12f},   // 0 Plains — gentle rolling
-            {0.50f, 0.78f,   4.0f, 1.00f},   // 1 Forest     — temperate, humid: hilly
-            {0.78f, 0.22f, -12.0f, 0.37f},   // 2 Desert     — hot, dry
-        };
-        static constexpr int NUM_BIOMES = 3;
-        // Sample climate at the base frequency for smooth height blending
-        float blend_temp = clamp01(static_cast<float>((climate.sample_temperature(
-            static_cast<double>(x * BASE_TEMP_SCALE), static_cast<double>(z * BASE_TEMP_SCALE)) + 1.0) * 0.5));
-        float blend_hum  = clamp01(static_cast<float>((climate.sample_humidity(
-            static_cast<double>(x * BASE_HUM_SCALE), static_cast<double>(z * BASE_HUM_SCALE)) + 1.0) * 0.5));
+    // Spline-based terrain height.  Maps raw continentalness/erosion/weirdness
+    // through the vanilla offset/factor/jaggedness spline DAG, then adds a
+    // light fbm detail layer for surface roughness.
+    //
+    // The spline output (roughly [-0.22, +0.15]) is scaled to block units via
+    // TERRAIN_HEIGHT_SCALE so that deep-ocean floors sit well below sea level
+    // and mountain peaks rise comfortably above it.
+    float sample_land_shape(float raw_c, float raw_e, float raw_w, float x, float z) const {
+        static constexpr float TERRAIN_HEIGHT_SCALE = 350.0f;
 
-        float w_total = 0.0f, w_base = 0.0f;
-        float weights[NUM_BIOMES];
-        for (int i = 0; i < NUM_BIOMES; i++) {
-            float dsq = (blend_temp - centers[i].t) * (blend_temp - centers[i].t)
-                      + (blend_hum  - centers[i].h) * (blend_hum  - centers[i].h);
-            float w = 1.0f / (dsq + 0.0001f);
-            weights[i] = w;
-            w_base  += w * centers[i].base_off;
-            w_total += w;
-        }
-        float base  = 208.0f + w_base / w_total;
+        float offset = compute_terrain_offset(raw_c, raw_e, raw_w);
+        float base = params.sea_level + offset * TERRAIN_HEIGHT_SCALE;
 
-        // Terrain amplitude control — distinct flat, hilly, and mountainous regions
-        float terrain_control = terrain_noise.fbm(x + 7000.0f, z + 7000.0f, 3, 0.50f, 0.0015f);
-        float terrain_amplitude = lerp(8.0f, 32.0f, smoothstep(-0.3f, 0.5f, terrain_control));
+        // Light fbm detail on top of the spline — adds roughness without
+        // fighting the large-scale climate-driven shape.
+        float detail = terrain_noise.fbm(x, z, 3, 0.50f, 0.008f) * 6.0f;
 
-        // Anisotropic domain warp — subtle directional flow so contours aren't perfectly isotropic
-        float warp_x = terrain_noise.noise_2d(x * 0.002f, z * 0.002f) * 18.0f;
-        float warp_z = terrain_noise.noise_2d((x + 5000.0f) * 0.002f, (z + 5000.0f) * 0.002f) * 30.0f;
-
-        // Broad low-frequency terrain with light ridged detail
-        float per_noise_val = terrain_noise.fbm(x + warp_x, z + warp_z, 4, 0.52f, 0.0064f) * 0.85f
-                            + terrain_noise.ridged_noise(x + 4000.0f + warp_x, z + 4000.0f + warp_z, 3, 0.55f, 0.016f) * 0.15f;
-
-        return base + per_noise_val * terrain_amplitude;
+        return base + detail;
     }
 
     // -------------------------------------------------------------------------
@@ -230,6 +203,7 @@ float max_water_h = -1.0f;
         , params(p)
         , rng(p.seed)
     {
+        spline_root_ = init_terrain_spline(spline_stack_);
     }
 
     BiomeType get_biome(int32_t world_x, int32_t world_z) const {
@@ -244,9 +218,12 @@ float max_water_h = -1.0f;
     float quick_height_estimate(int32_t world_x, int32_t world_z) const {
         float x = static_cast<float>(world_x);
         float z = static_cast<float>(world_z);
-        float t = sample_temperature(x, z);
-        float h = sample_humidity(x, z);
-        return sample_land_shape(x, z, t, h);
+        double raw_c = climate.sample_continentalness(x, z);
+        double raw_e = climate.sample_erosion(x, z);
+        double raw_w = climate.sample_weirdness(x, z);
+        return sample_land_shape(static_cast<float>(raw_c),
+                                 static_cast<float>(raw_e),
+                                 static_cast<float>(raw_w), x, z);
     }
 
     bool is_cave(int32_t x, int32_t y, int32_t z) {
@@ -301,6 +278,7 @@ float max_water_h = -1.0f;
             terrain_noise = FastNoise(p.seed);
             cave_noise    = FastNoise(p.seed + 2000);
             climate       = ClimateSampler(static_cast<uint64_t>(p.seed));
+            spline_root_  = init_terrain_spline(spline_stack_);
 
             rng.seed(p.seed);
         }
