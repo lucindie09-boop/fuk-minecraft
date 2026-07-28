@@ -39,9 +39,8 @@ static constexpr double WEIRDNESS_AMPS[]       = {1.0, 2.0, 1.0, 0.0, 0.0, 0.0};
 static constexpr int    WEIRDNESS_FIRST_OCTAVE = -7;
 static constexpr int    WEIRDNESS_LEN          = 6;
 
-// Domain warp strength in world-space units. Vanilla applies shift at a
-// specific scale; this value produces visible but not excessive warping.
-static constexpr double DEFAULT_WARP_STRENGTH  = 256.0;
+// Domain warp strength: vanilla's exact multiplier (cubiomes: sampleDoublePerlin * 4.0).
+static constexpr double DEFAULT_WARP_STRENGTH  = 4.0;
 
 // Per-parameter seed offsets. Each parameter gets a distinct RNG stream
 // derived from the world seed. These are arbitrary distinct values.
@@ -74,12 +73,14 @@ double ClimateSampler::sample_raw(const DoublePerlinNoise& field, double x, doub
 }
 
 double ClimateSampler::sample_shift_x(double x, double z) const {
+    // Vanilla: shift.sample(x, 0, z) * 4.0
     return sample_raw(shift_, x, z) * warp_strength_;
 }
 
 double ClimateSampler::sample_shift_z(double x, double z) const {
-    // Offset z-input by a large constant so shift_x and shift_z are decorrelated
-    return sample_raw(shift_, x + 10000.0, z + 10000.0) * warp_strength_;
+    // Vanilla decorrelates Z from X by resampling with swapped inputs:
+    // shift.sample(z, x, 0) instead of shift.sample(x, 0, z)
+    return sample_raw(shift_, z, x) * warp_strength_;
 }
 
 double ClimateSampler::sample_continentalness(double x, double z) const {

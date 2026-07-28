@@ -248,10 +248,17 @@ TEST_CASE("ClimateSampler shift warps coordinates continuously") {
     double shift_x0 = sampler.sample_shift_x(1000.0, 2000.0);
     double shift_x1 = sampler.sample_shift_x(1001.0, 2000.0);
     double shift_x2 = sampler.sample_shift_x(1000.0, 2001.0);
-    // Shift noise at warp_strength=256 can differ by ~60-80 between adjacent blocks
-    // due to the lacunarity/amplitude stack; just verify it's not wildly discontinuous
-    CHECK(std::abs(shift_x1 - shift_x0) < 120.0);
-    CHECK(std::abs(shift_x2 - shift_x0) < 120.0);
+    // At warp_strength=4.0, shift values are small; adjacent samples should be close
+    CHECK(std::abs(shift_x1 - shift_x0) < 2.0);
+    CHECK(std::abs(shift_x2 - shift_x0) < 2.0);
+}
+
+TEST_CASE("ClimateSampler shift X and Z are decorrelated") {
+    ClimateSampler sampler(42);
+    // Vanilla decorrelates by resampling with swapped inputs (z,x,0) vs (x,0,z)
+    double sx = sampler.sample_shift_x(500.0, 800.0);
+    double sz = sampler.sample_shift_z(500.0, 800.0);
+    CHECK(sx != sz);
 }
 
 TEST_CASE("ClimateSampler fields produce expected value range over grid") {
