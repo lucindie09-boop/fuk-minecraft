@@ -228,9 +228,10 @@ float max_water_h = -1.0f;
     float quick_height_estimate(int32_t world_x, int32_t world_z) const {
         float x = static_cast<float>(world_x);
         float z = static_cast<float>(world_z);
-        double raw_c = climate.sample_continentalness(x, z);
-        double raw_e = climate.sample_erosion(x, z);
-        double raw_w = climate.sample_weirdness(x, z);
+        auto wc = climate.warp(x, z);
+        double raw_c = climate.sample_continentalness(wc);
+        double raw_e = climate.sample_erosion(wc);
+        double raw_w = climate.sample_weirdness(wc);
         return sample_land_shape(static_cast<float>(raw_c),
                                  static_cast<float>(raw_e),
                                  static_cast<float>(raw_w), x, z);

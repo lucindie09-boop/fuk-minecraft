@@ -73,44 +73,40 @@ double ClimateSampler::sample_raw(const DoublePerlinNoise& field, double x, doub
 }
 
 double ClimateSampler::sample_shift_x(double x, double z) const {
-    // Vanilla: shift.sample(x, 0, z) * 4.0
     return sample_raw(shift_, x, z) * warp_strength_;
 }
 
 double ClimateSampler::sample_shift_z(double x, double z) const {
-    // Vanilla decorrelates Z from X by resampling with swapped inputs:
-    // shift.sample(z, x, 0) instead of shift.sample(x, 0, z)
     return sample_raw(shift_, z, x) * warp_strength_;
 }
 
+ClimateSampler::WarpedCoord ClimateSampler::warp(double x, double z) const {
+    return { x + sample_shift_x(x, z), z + sample_shift_z(x, z) };
+}
+
 double ClimateSampler::sample_continentalness(double x, double z) const {
-    double wx = x + sample_shift_x(x, z);
-    double wz = z + sample_shift_z(x, z);
-    return sample_raw(continentalness_, wx, wz);
+    WarpedCoord wc = warp(x, z);
+    return sample_raw(continentalness_, wc.wx, wc.wz);
 }
 
 double ClimateSampler::sample_erosion(double x, double z) const {
-    double wx = x + sample_shift_x(x, z);
-    double wz = z + sample_shift_z(x, z);
-    return sample_raw(erosion_, wx, wz);
+    WarpedCoord wc = warp(x, z);
+    return sample_raw(erosion_, wc.wx, wc.wz);
 }
 
 double ClimateSampler::sample_weirdness(double x, double z) const {
-    double wx = x + sample_shift_x(x, z);
-    double wz = z + sample_shift_z(x, z);
-    return sample_raw(weirdness_, wx, wz);
+    WarpedCoord wc = warp(x, z);
+    return sample_raw(weirdness_, wc.wx, wc.wz);
 }
 
 double ClimateSampler::sample_temperature(double x, double z) const {
-    double wx = x + sample_shift_x(x, z);
-    double wz = z + sample_shift_z(x, z);
-    return sample_raw(temperature_, wx, wz);
+    WarpedCoord wc = warp(x, z);
+    return sample_raw(temperature_, wc.wx, wc.wz);
 }
 
 double ClimateSampler::sample_humidity(double x, double z) const {
-    double wx = x + sample_shift_x(x, z);
-    double wz = z + sample_shift_z(x, z);
-    return sample_raw(humidity_, wx, wz);
+    WarpedCoord wc = warp(x, z);
+    return sample_raw(humidity_, wc.wx, wc.wz);
 }
 
 } // namespace VoxelEngine

@@ -10,12 +10,15 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
     float x = static_cast<float>(world_x);
     float z = static_cast<float>(world_z);
 
+    // Warped coordinates (same domain warp reused for all 5 climate fields)
+    auto wc = climate.warp(x, z);
+
     // Raw climate values (native DoublePerlinNoise range, roughly [-1, 1])
-    double raw_c = climate.sample_continentalness(x, z);
-    double raw_t = climate.sample_temperature(x, z);
-    double raw_h = climate.sample_humidity(x, z);
-    double raw_e = climate.sample_erosion(x, z);
-    double raw_w = climate.sample_weirdness(x, z);
+    double raw_c = climate.sample_continentalness(wc);
+    double raw_t = climate.sample_temperature(wc);
+    double raw_h = climate.sample_humidity(wc);
+    double raw_e = climate.sample_erosion(wc);
+    double raw_w = climate.sample_weirdness(wc);
 
     // Normalized [0,1] for biome selection thresholds
     float cont = clamp01(static_cast<float>((raw_c + 1.0) * 0.5));

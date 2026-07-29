@@ -28,6 +28,10 @@ private:
 public:
     explicit ClimateSampler(uint64_t world_seed);
 
+    // Warped coordinate — compute once and reuse
+    struct WarpedCoord { double wx, wz; };
+    WarpedCoord warp(double x, double z) const;
+
     // Domain warp: shifts (x, z) using the shift noise field, then samples
     // the requested climate parameter at the warped coordinates.
     double sample_continentalness(double x, double z) const;
@@ -35,6 +39,13 @@ public:
     double sample_weirdness(double x, double z) const;
     double sample_temperature(double x, double z) const;
     double sample_humidity(double x, double z) const;
+
+    // Already-warped overloads — skip the domain warp, sample directly
+    double sample_continentalness(WarpedCoord wc) const { return sample_raw(continentalness_, wc.wx, wc.wz); }
+    double sample_erosion(WarpedCoord wc) const          { return sample_raw(erosion_, wc.wx, wc.wz); }
+    double sample_weirdness(WarpedCoord wc) const        { return sample_raw(weirdness_, wc.wx, wc.wz); }
+    double sample_temperature(WarpedCoord wc) const      { return sample_raw(temperature_, wc.wx, wc.wz); }
+    double sample_humidity(WarpedCoord wc) const         { return sample_raw(humidity_, wc.wx, wc.wz); }
 
     // Raw shift values (for debugging / domain-warp inspection)
     double sample_shift_x(double x, double z) const;
