@@ -227,10 +227,10 @@ float compute_terrain_offset(float c, float e, float w) {
 }
 
 float compute_terrain_offset(float c, float e, float w, const TerrainSpline* root) {
-    // Transform weirdness into the ridges axis, matching vanilla's
     float wr = -3.0f * (std::fabs(std::fabs(w) - 0.6666667f) - 0.33333334f);
     float vals[4] = { c, e, wr, w };
-    return get_spline(root, vals) + 0.015f;
+    float result = get_spline(root, vals) + 0.015f;
+    return std::clamp(result, -0.22f, 0.15f);
 }
 
 } // namespace VoxelEngine

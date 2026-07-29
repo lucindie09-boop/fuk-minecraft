@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <vector>
+#include <algorithm>
 
 // Write a 24-bit RGB buffer as a BMP file
 static void write_bmp_rgb24(const char* filename, int w, int h, const uint8_t* pixels_rgb) {
@@ -218,8 +219,6 @@ int main() {
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
 
-                    case VoxelEngine::BiomeType::StonePlateau:     r=140; g=130; b=120;  break;
-
                     default:                                    r=255; g=0;   b=255;  break;
                 }
                 pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
@@ -263,8 +262,6 @@ int main() {
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
 
-                    case VoxelEngine::BiomeType::StonePlateau:     r=140; g=130; b=120;  break;
-
                     default:                                    r=255; g=0;   b=255;  break;
                 }
                 pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
@@ -295,8 +292,6 @@ int main() {
                     case VoxelEngine::BiomeType::Plains:        r=60;  g=160; b=60;   break;
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
-
-                    case VoxelEngine::BiomeType::StonePlateau:     r=140; g=130; b=120;  break;
 
                     default:                                    r=255; g=0;   b=255;  break;
                 }
@@ -380,35 +375,38 @@ int main() {
 
     // Height map (colored: low=blue, mid=green, high=brown/white)
     {
-        std::vector<uint8_t> pixels(static_cast<size_t>(HW) * HH * 3);
-        float hmin = 1e10f, hmax = -1e10f;
+        std::vector<float> all_heights(static_cast<size_t>(HW) * HH);
         for (int py = 0; py < HH; py++) {
             for (int px = 0; px < HW; px++) {
                 float wx = -HRANGE + static_cast<float>(px) * HSTEP;
                 float wz = -HRANGE + static_cast<float>(py) * HSTEP;
-                float h = gen.get_terrain_height(static_cast<int32_t>(wx), static_cast<int32_t>(wz));
-                if (h < hmin) hmin = h;
-                if (h > hmax) hmax = h;
+                all_heights[static_cast<size_t>(py) * HW + px] = gen.get_terrain_height(
+                    static_cast<int32_t>(wx), static_cast<int32_t>(wz));
             }
         }
+
+        // Percentile-based normalization (p1/p99) to avoid outlier-driven scaling
+        std::vector<float> sorted = all_heights;
+        std::sort(sorted.begin(), sorted.end());
+        size_t n = sorted.size();
+        float hmin = sorted[n * 1 / 100];
+        float hmax = sorted[n * 99 / 100];
         float hrange = hmax - hmin;
         if (hrange < 1.0f) hrange = 1.0f;
-        for (int py = 0; py < HH; py++) {
-            for (int px = 0; px < HW; px++) {
-                float wx = -HRANGE + static_cast<float>(px) * HSTEP;
-                float wz = -HRANGE + static_cast<float>(py) * HSTEP;
-                float h = gen.get_terrain_height(static_cast<int32_t>(wx), static_cast<int32_t>(wz));
-                float norm = (h - hmin) / hrange;
-                size_t idx = (static_cast<size_t>(py) * HW + px) * 3;
-                // Blue-green-brown ramp
-                uint8_t r = static_cast<uint8_t>(std::round(norm * 200.0f));
-                uint8_t g = static_cast<uint8_t>(std::round(norm < 0.5f ? norm * 2.0f * 180.0f : (1.0f - norm) * 2.0f * 100.0f + 80.0f));
-                uint8_t b = static_cast<uint8_t>(std::round((1.0f - norm) * 255.0f));
-                pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
-            }
+
+        std::vector<uint8_t> pixels(static_cast<size_t>(HW) * HH * 3);
+        for (size_t i = 0; i < n; i++) {
+            float h = all_heights[i];
+            float norm = std::clamp((h - hmin) / hrange, 0.0f, 1.0f);
+            size_t idx = i * 3;
+            uint8_t r = static_cast<uint8_t>(std::round(norm * 200.0f));
+            uint8_t g = static_cast<uint8_t>(std::round(norm < 0.5f ? norm * 2.0f * 180.0f : (1.0f - norm) * 2.0f * 100.0f + 80.0f));
+            uint8_t b = static_cast<uint8_t>(std::round((1.0f - norm) * 255.0f));
+            pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
         }
         write_bmp_rgb24("bin/terrain_height.bmp", HW, HH, pixels.data());
-        printf("  Height: range [%.1f, %.1f] -> bin/terrain_height.bmp\n", hmin, hmax);
+        printf("  Height: p1=%.1f p99=%.1f range=[%.1f, %.1f] -> bin/terrain_height.bmp\n",
+               hmin, hmax, sorted[0], sorted[n-1]);
     }
 
     printf("All done.\n");

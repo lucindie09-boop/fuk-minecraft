@@ -28,7 +28,6 @@ enum class BiomeType : uint8_t {
     Plains,
     Forest,
     Desert,
-    StonePlateau,
 };
 
 // -------------------------------------------------------------------------
@@ -152,9 +151,6 @@ private:
             else
                 return BiomeType::AbyssalTrench;
         }
-        // StonePlateau: high continentalness + high weirdness → rocky terrain
-        if (cont > 0.7f && weirdness_val > 0.6f)
-            return BiomeType::StonePlateau;
         return land_biome_from_grid(temperature, humidity);
     }
 
@@ -175,7 +171,8 @@ private:
         // fighting the large-scale climate-driven shape.
         float detail = terrain_noise.fbm(x, z, 3, 0.50f, 0.008f) * 3.0f;
 
-        return base + detail;
+        float height = base + detail;
+        return std::clamp(height, params.sea_level - 40.0f, params.sea_level + 180.0f);
     }
 
     // -------------------------------------------------------------------------
