@@ -36,7 +36,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         float land_height = sample_land_shape(
             static_cast<float>(raw_c), static_cast<float>(raw_e),
             static_cast<float>(raw_w), x, z);
-        float coast_t = smoothstep(params.ocean_threshold, params.ocean_threshold + coast_width, cont);
+        float coast_t = smoothstep(params.land_threshold - coast_width, params.land_threshold + coast_width, cont);
         land_height = lerp(params.sea_level, land_height, coast_t);
         saved_land_height = land_height;
         height = land_height;
