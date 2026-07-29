@@ -28,6 +28,9 @@ enum class BiomeType : uint8_t {
     Plains,
     Forest,
     Desert,
+    PlainsMountain,   // erosion < 0.25 — stone surface, no topsoil
+    ForestMountain,   // erosion < 0.25 — stone surface, no topsoil
+    DesertMountain,   // erosion < 0.25 — stone/rocky surface
 };
 
 // -------------------------------------------------------------------------
@@ -129,15 +132,18 @@ private:
     static constexpr float HUM_DRY_MAX    = 0.43f;
     static constexpr float HUM_HUMID_MIN  = 0.57f;
 
-    static BiomeType land_biome_from_grid(float temperature, float humidity) {
+    static BiomeType land_biome_from_grid(float temperature, float humidity, float erosion_val) {
         bool hot  = temperature >= TEMP_HOT_MIN;
         bool dry  = humidity < HUM_DRY_MAX;
+        bool mountain = erosion_val < 0.25f;
 
         if (hot) {
-            return dry ? BiomeType::Desert : BiomeType::Forest;
+            if (dry) return mountain ? BiomeType::DesertMountain : BiomeType::Desert;
+            return mountain ? BiomeType::ForestMountain : BiomeType::Forest;
         }
         // cold or temperate
-        return dry ? BiomeType::Plains : BiomeType::Forest;
+        if (dry) return mountain ? BiomeType::PlainsMountain : BiomeType::Plains;
+        return mountain ? BiomeType::ForestMountain : BiomeType::Forest;
     }
 
     BiomeType biome_from_climate(float temperature, float humidity, float cont, float erosion_val, float weirdness_val) const {
@@ -155,7 +161,7 @@ private:
             else
                 return BiomeType::AbyssalTrench;
         }
-        return land_biome_from_grid(temperature, humidity);
+        return land_biome_from_grid(temperature, humidity, erosion_val);
     }
 
     // Spline-based terrain height.  Maps raw continentalness/erosion/weirdness
@@ -224,7 +230,10 @@ float max_water_h = -1.0f;
     ChunkGenerator(const TerrainParams& p = TerrainParams())
         : terrain_noise(p.seed)
         , cave_noise(p.seed + 2000)
-        , climate(static_cast<uint64_t>(p.seed))
+        , climate(static_cast<uint64_t>(p.seed),
+                  static_cast<double>(p.continentalness_scale),
+                  static_cast<double>(p.climate_temp_scale),
+                  static_cast<double>(p.climate_humidity_scale))
         , params(p)
         , rng(p.seed)
     {
@@ -301,16 +310,25 @@ float max_water_h = -1.0f;
     // -------------------------------------------------------------------------
     void set_params(const TerrainParams& p) {
         bool seed_changed = (p.seed != params.seed);
+        bool scale_changed = (p.continentalness_scale != params.continentalness_scale ||
+                              p.climate_temp_scale != params.climate_temp_scale ||
+                              p.climate_humidity_scale != params.climate_humidity_scale);
         params = p;
         if (seed_changed) {
             terrain_noise = FastNoise(p.seed);
             cave_noise    = FastNoise(p.seed + 2000);
-            climate       = ClimateSampler(static_cast<uint64_t>(p.seed));
+            rng.seed(p.seed);
+        }
+        if (seed_changed || scale_changed) {
+            climate = ClimateSampler(static_cast<uint64_t>(p.seed),
+                                     static_cast<double>(p.continentalness_scale),
+                                     static_cast<double>(p.climate_temp_scale),
+                                     static_cast<double>(p.climate_humidity_scale));
+        }
+        if (seed_changed) {
             spline_root_  = init_terrain_spline(spline_stack_);
             spline_root_factor_ = init_factor_spline(spline_stack_factor_);
             spline_root_jaggedness_ = init_jaggedness_spline(spline_stack_jaggedness_);
-
-            rng.seed(p.seed);
         }
     }
 

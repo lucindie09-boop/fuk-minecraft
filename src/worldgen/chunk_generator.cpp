@@ -79,6 +79,9 @@ BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_s
         case BiomeType::ShallowOcean:  return BlockIDs::SAND;
         case BiomeType::Beach:          return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
         case BiomeType::Desert:        return BlockIDs::SAND;
+        case BiomeType::PlainsMountain:
+        case BiomeType::ForestMountain:
+        case BiomeType::DesertMountain: return BlockIDs::STONE;
         default:                       return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
     }
 }
@@ -90,6 +93,9 @@ BlockID ChunkGenerator::get_subsurface_block(BiomeType biome, bool near_water) c
         case BiomeType::ShallowOcean:  return BlockIDs::SAND;
         case BiomeType::Beach:          return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
         case BiomeType::Desert:         return BlockIDs::SAND;
+        case BiomeType::PlainsMountain:
+        case BiomeType::ForestMountain:
+        case BiomeType::DesertMountain: return BlockIDs::STONE;
         default:                       return BlockIDs::DIRT;
     }
 }
@@ -298,6 +304,9 @@ void ChunkGenerator::render_biome_pgm(const char* filename, int img_w, int img_h
                 case BiomeType::Plains:        byte = 150; break;
                 case BiomeType::Forest:        byte = 100; break;
                 case BiomeType::Desert:        byte = 200; break;
+                case BiomeType::PlainsMountain:   byte = 180; break;
+                case BiomeType::ForestMountain:   byte = 90;  break;
+                case BiomeType::DesertMountain:   byte = 210; break;
                 default:                       byte = 128; break;
             }
             fwrite(&byte, 1, 1, f);

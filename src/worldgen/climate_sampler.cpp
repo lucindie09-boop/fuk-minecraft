@@ -51,7 +51,10 @@ static constexpr uint64_t WEIRDNESS_SEED_OFFSET      = 3000;
 static constexpr uint64_t TEMPERATURE_SEED_OFFSET    = 4000;
 static constexpr uint64_t HUMIDITY_SEED_OFFSET       = 5000;
 
-ClimateSampler::ClimateSampler(uint64_t world_seed)
+ClimateSampler::ClimateSampler(uint64_t world_seed,
+                                double cont_scale,
+                                double temp_scale,
+                                double humid_scale)
     : shift_           (world_seed + SHIFT_SEED_OFFSET,
                         SHIFT_FIRST_OCTAVE, SHIFT_AMPS, SHIFT_LEN)
     , continentalness_ (world_seed + CONTINENTALNESS_SEED_OFFSET,
@@ -65,19 +68,23 @@ ClimateSampler::ClimateSampler(uint64_t world_seed)
     , humidity_        (world_seed + HUMIDITY_SEED_OFFSET,
                         HUMIDITY_FIRST_OCTAVE, HUMIDITY_AMPS, HUMIDITY_LEN)
     , warp_strength_(DEFAULT_WARP_STRENGTH)
+    , cont_scale_(cont_scale)
+    , temp_scale_(temp_scale)
+    , humid_scale_(humid_scale)
 {
 }
 
-double ClimateSampler::sample_raw(const DoublePerlinNoise& field, double x, double z) const {
-    return field.sample(x, 0.0, z);
+double ClimateSampler::sample_raw(const DoublePerlinNoise& field, double x, double z,
+                                  double coord_scale) const {
+    return field.sample(x * coord_scale, 0.0, z * coord_scale);
 }
 
 double ClimateSampler::sample_shift_x(double x, double z) const {
-    return sample_raw(shift_, x, z) * warp_strength_;
+    return sample_raw(shift_, x, z, 1.0) * warp_strength_;
 }
 
 double ClimateSampler::sample_shift_z(double x, double z) const {
-    return sample_raw(shift_, z, x) * warp_strength_;
+    return sample_raw(shift_, z, x, 1.0) * warp_strength_;
 }
 
 ClimateSampler::WarpedCoord ClimateSampler::warp(double x, double z) const {
@@ -86,27 +93,27 @@ ClimateSampler::WarpedCoord ClimateSampler::warp(double x, double z) const {
 
 double ClimateSampler::sample_continentalness(double x, double z) const {
     WarpedCoord wc = warp(x, z);
-    return sample_raw(continentalness_, wc.wx, wc.wz);
+    return sample_raw(continentalness_, wc.wx, wc.wz, cont_scale_);
 }
 
 double ClimateSampler::sample_erosion(double x, double z) const {
     WarpedCoord wc = warp(x, z);
-    return sample_raw(erosion_, wc.wx, wc.wz);
+    return sample_raw(erosion_, wc.wx, wc.wz, cont_scale_);
 }
 
 double ClimateSampler::sample_weirdness(double x, double z) const {
     WarpedCoord wc = warp(x, z);
-    return sample_raw(weirdness_, wc.wx, wc.wz);
+    return sample_raw(weirdness_, wc.wx, wc.wz, cont_scale_);
 }
 
 double ClimateSampler::sample_temperature(double x, double z) const {
     WarpedCoord wc = warp(x, z);
-    return sample_raw(temperature_, wc.wx, wc.wz);
+    return sample_raw(temperature_, wc.wx, wc.wz, temp_scale_);
 }
 
 double ClimateSampler::sample_humidity(double x, double z) const {
     WarpedCoord wc = warp(x, z);
-    return sample_raw(humidity_, wc.wx, wc.wz);
+    return sample_raw(humidity_, wc.wx, wc.wz, humid_scale_);
 }
 
 } // namespace VoxelEngine

@@ -218,6 +218,9 @@ int main() {
                     case VoxelEngine::BiomeType::Plains:        r=60;  g=160; b=60;   break;
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
+                    case VoxelEngine::BiomeType::PlainsMountain:   r=100; g=100; b=100;   break;
+                    case VoxelEngine::BiomeType::ForestMountain:   r=80;  g=100;  b=80;   break;
+                    case VoxelEngine::BiomeType::DesertMountain:   r=160; g=140;  b=100;  break;
 
                     default:                                    r=255; g=0;   b=255;  break;
                 }
@@ -261,6 +264,9 @@ int main() {
                     case VoxelEngine::BiomeType::Plains:        r=60;  g=160; b=60;   break;
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
+                    case VoxelEngine::BiomeType::PlainsMountain:   r=100; g=100; b=100;   break;
+                    case VoxelEngine::BiomeType::ForestMountain:   r=80;  g=100;  b=80;   break;
+                    case VoxelEngine::BiomeType::DesertMountain:   r=160; g=140;  b=100;  break;
 
                     default:                                    r=255; g=0;   b=255;  break;
                 }
@@ -292,6 +298,9 @@ int main() {
                     case VoxelEngine::BiomeType::Plains:        r=60;  g=160; b=60;   break;
                     case VoxelEngine::BiomeType::Forest:        r=30;  g=120; b=40;   break;
                     case VoxelEngine::BiomeType::Desert:        r=200; g=180; b=100;  break;
+                    case VoxelEngine::BiomeType::PlainsMountain:   r=100; g=100; b=100;   break;
+                    case VoxelEngine::BiomeType::ForestMountain:   r=80;  g=100;  b=80;   break;
+                    case VoxelEngine::BiomeType::DesertMountain:   r=160; g=140;  b=100;  break;
 
                     default:                                    r=255; g=0;   b=255;  break;
                 }
@@ -304,7 +313,10 @@ int main() {
     printf("Done. Wrote .bmp files to bin/\n");
 
     // Climate field visualization via ClimateSampler
-    VoxelEngine::ClimateSampler climate(params.seed);
+    VoxelEngine::ClimateSampler climate(params.seed,
+                                          static_cast<double>(params.continentalness_scale),
+                                          static_cast<double>(params.climate_temp_scale),
+                                          static_cast<double>(params.climate_humidity_scale));
     const int CW = 1000, CH = 1000;
     const float CSTEP = 16.0f;
     const float CRANGE = 8000.0f;
