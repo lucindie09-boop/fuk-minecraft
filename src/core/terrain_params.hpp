@@ -17,7 +17,7 @@ struct TerrainParams {
     float cave_threshold = 0.4f;
     float cave_scale = 0.05f;
 
-    float continentalness_scale = 0.00010f;
+    float continentalness_scale = 1.0f;
     float ocean_threshold = 0.45f;
     float land_threshold = 0.55f;
     float shelf_width = 0.025f;
@@ -26,9 +26,12 @@ struct TerrainParams {
     float beach_width = 0.002f;
     int32_t subsurface_cover_depth = 4;
 
-    // Climate noise scales (lower = broader regions)
-    float climate_temp_scale = 0.00015f;
-    float climate_humidity_scale = 0.00020f;
+    // Climate noise scales — multiplied against block coords before the
+    // noise's own octave-based frequency (first_octave).  Default 1.0 means
+    // "no extra scaling"; biome_size adjusts all three proportionally so the
+    // editor slider actually works.
+    float climate_temp_scale = 1.0f;
+    float climate_humidity_scale = 1.0f;
 
     // Biome size multiplier (1.0 = default, >1 = larger biomes)
     float biome_size = 1.0f;
