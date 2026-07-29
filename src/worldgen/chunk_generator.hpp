@@ -174,11 +174,19 @@ private:
         float effective_offset = offset * (factor_val / FACTOR_NORM);
         float base = params.sea_level + effective_offset * TERRAIN_HEIGHT_SCALE;
 
-        // Light fbm detail on top of the spline — adds roughness without
-        // fighting the large-scale climate-driven shape.
-        float detail = terrain_noise.fbm(x, z, 3, 0.50f, 0.008f) * 3.0f;
+        // Surface roughness — higher-frequency fbm on top of the spline shape.
+        // This stands in for the 3D density noise that provides surface detail in vanilla.
+        float detail = terrain_noise.fbm(x, z, 3, 0.50f, 0.008f) * 5.0f;
 
-        float height = base + detail;
+        // Jaggedness term — modulated by the jaggedness spline, which is near 0 for
+        // flat biomes (high erosion) and up to ~0.63 for jagged mountain biomes
+        // (low erosion, specific weirdness).  The noise frequency here is higher
+        // than the base detail to create actual visible crags, not smooth swells.
+        float jagged_val = compute_jaggedness(raw_c, raw_e, raw_w, spline_root_jaggedness_);
+        float jagged_noise = terrain_noise.fbm(x, z, 3, 0.50f, 0.025f);
+        float jagged_term = jagged_val * jagged_noise * 12.0f;
+
+        float height = base + detail + jagged_term;
         return std::clamp(height, params.sea_level - 40.0f, params.sea_level + 180.0f);
     }
 
