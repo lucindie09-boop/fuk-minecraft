@@ -21,6 +21,8 @@ enum SplineAxis {
     SP_EROSION         = 1,
     SP_RIDGES          = 2,   // weirdness-transformed value
     SP_WEIRDNESS       = 3,
+    SP_RIDGES_FOLDED   = 4,   // 1 - 2*|weirdness|  (vanilla's ridges_folded)
+    SP_SPLINE_AXIS_COUNT = 5,
 };
 
 // A single node in the spline DAG.  When len == 1 this acts as a FixSpline
@@ -39,7 +41,7 @@ struct TerrainSpline {
 // no heap allocation during construction or evaluation.
 struct SplineStack {
     static constexpr int MAX_SPLINES  = 512;
-    static constexpr int MAX_FIX      = 256;
+    static constexpr int MAX_FIX      = 512;
 
     TerrainSpline pool[MAX_SPLINES];
     int pool_len = 0;
@@ -59,14 +61,26 @@ struct SplineStack {
     }
 };
 
-// Evaluate a spline node.  vals[] contains the four climate parameters:
+// Evaluate a spline node.  vals[] contains the five climate parameters:
 //   vals[0] = continentalness, vals[1] = erosion,
-//   vals[2] = weirdness-transformed (ridges), vals[3] = weirdness.
-float get_spline(const TerrainSpline* sp, const float vals[4]);
+//   vals[2] = cubiomes ridges transform (-3*(||w|-0.6667|-0.3333)),
+//   vals[3] = raw weirdness,
+//   vals[4] = ridges_folded (1 - 2*|weirdness|).
+float get_spline(const TerrainSpline* sp, const float vals[5]);
 
 // Build the complete terrain spline DAG into `ss`.  The returned pointer is
 // the root node (a continentalness-axis spline).
 TerrainSpline* init_terrain_spline(SplineStack& ss);
+
+// Build the factor spline DAG (from vanilla 1.20-pre2 factor.json, inner spline
+// without the blend_alpha wrapper).  Used to amplify terrain amplitude based
+// on continentalness/erosion/ridges/ridges_folded.
+TerrainSpline* init_factor_spline(SplineStack& ss);
+
+// Build the jaggedness spline DAG (from vanilla 26.1.1 jaggedness.json, inner
+// spline without the blend_alpha wrapper).  Controls weirdness-based terrain
+// jaggedness for mountain vs. flat biomes.
+TerrainSpline* init_jaggedness_spline(SplineStack& ss);
 
 // Convenience: compute the terrain depth offset from raw climate parameters.
 // c, e, w are in their native DoublePerlinNoise range (roughly [-1, 1]).
@@ -75,6 +89,16 @@ TerrainSpline* init_terrain_spline(SplineStack& ss);
 // Pass an explicit root to share a pre-built spline DAG (avoids duplication).
 float compute_terrain_offset(float c, float e, float w);
 float compute_terrain_offset(float c, float e, float w, const TerrainSpline* root);
+
+// Compute the terrain factor (amplitude multiplier) from raw climate params.
+// Returns a dimensionless value (vanilla range ~0.625–6.3).
+float compute_factor(float c, float e, float w);
+float compute_factor(float c, float e, float w, const TerrainSpline* root);
+
+// Compute the terrain jaggedness from raw climate params.
+// Returns a dimensionless value (vanilla range 0–~0.63).
+float compute_jaggedness(float c, float e, float w);
+float compute_jaggedness(float c, float e, float w, const TerrainSpline* root);
 
 } // namespace VoxelEngine
 

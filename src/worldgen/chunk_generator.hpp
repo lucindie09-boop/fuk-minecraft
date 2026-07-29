@@ -39,7 +39,11 @@ private:
     FastNoise cave_noise;
     ClimateSampler climate;
     SplineStack spline_stack_;
+    SplineStack spline_stack_factor_;
+    SplineStack spline_stack_jaggedness_;
     TerrainSpline* spline_root_ = nullptr;
+    TerrainSpline* spline_root_factor_ = nullptr;
+    TerrainSpline* spline_root_jaggedness_ = nullptr;
 
     TerrainParams params;
     std::mt19937 rng;
@@ -163,9 +167,12 @@ private:
     // and mountain peaks rise comfortably above it.
     float sample_land_shape(float raw_c, float raw_e, float raw_w, float x, float z) const {
         static constexpr float TERRAIN_HEIGHT_SCALE = 150.0f;
+        static constexpr float FACTOR_NORM = 3.5f;
 
         float offset = compute_terrain_offset(raw_c, raw_e, raw_w, spline_root_);
-        float base = params.sea_level + offset * TERRAIN_HEIGHT_SCALE;
+        float factor_val = compute_factor(raw_c, raw_e, raw_w, spline_root_factor_);
+        float effective_offset = offset * (factor_val / FACTOR_NORM);
+        float base = params.sea_level + effective_offset * TERRAIN_HEIGHT_SCALE;
 
         // Light fbm detail on top of the spline — adds roughness without
         // fighting the large-scale climate-driven shape.
@@ -214,6 +221,8 @@ float max_water_h = -1.0f;
         , rng(p.seed)
     {
         spline_root_ = init_terrain_spline(spline_stack_);
+        spline_root_factor_ = init_factor_spline(spline_stack_factor_);
+        spline_root_jaggedness_ = init_jaggedness_spline(spline_stack_jaggedness_);
     }
 
     BiomeType get_biome(int32_t world_x, int32_t world_z) const {
@@ -290,6 +299,8 @@ float max_water_h = -1.0f;
             cave_noise    = FastNoise(p.seed + 2000);
             climate       = ClimateSampler(static_cast<uint64_t>(p.seed));
             spline_root_  = init_terrain_spline(spline_stack_);
+            spline_root_factor_ = init_factor_spline(spline_stack_factor_);
+            spline_root_jaggedness_ = init_jaggedness_spline(spline_stack_jaggedness_);
 
             rng.seed(p.seed);
         }

@@ -4,28 +4,18 @@
 
 namespace VoxelEngine {
 
-// ---------------------------------------------------------------------------
-// Cubiomes lerp convention: lerp(t, a, b) = a + t * (b - a)
-// ---------------------------------------------------------------------------
 static float spline_lerp(float t, float a, float b) {
     return a + t * (b - a);
 }
 
-// ---------------------------------------------------------------------------
-// addSplineVal — append a control point to a spline node
-// ---------------------------------------------------------------------------
 static void add_spline_val(TerrainSpline* sp, float loc,
-                           TerrainSpline* val, float der) {
+                            TerrainSpline* val, float der) {
     sp->loc[sp->len]  = loc;
     sp->val[sp->len]  = val;
     sp->der[sp->len]  = der;
     sp->len++;
 }
 
-// ---------------------------------------------------------------------------
-// getOffsetValue — compute the weirdness-to-ridge offset for a given
-// continentalness value.  Matches cubiomes' getOffsetValue().
-// ---------------------------------------------------------------------------
 static float get_offset_value(float weirdness, float continentalness) {
     float f0 = 1.0f - (1.0f - continentalness) * 0.5f;
     float f1 = 0.5f * (1.0f - continentalness);
@@ -37,10 +27,6 @@ static float get_offset_value(float weirdness, float continentalness) {
         return off > 0 ? off : 0;
 }
 
-// ---------------------------------------------------------------------------
-// createSpline_38219 — weirdness (ridges) sub-spline for a given
-// continentalness value.  Name matches the obfuscated Yarn/MCP mapping.
-// ---------------------------------------------------------------------------
 static TerrainSpline* create_spline_38219(SplineStack& ss, float f, int bl) {
     TerrainSpline* sp = ss.alloc();
     sp->typ = SP_RIDGES;
@@ -78,10 +64,6 @@ static TerrainSpline* create_spline_38219(SplineStack& ss, float f, int bl) {
     return sp;
 }
 
-// ---------------------------------------------------------------------------
-// createFlatOffsetSpline — erosion-indexed sub-spline with fixed control
-// points along the ridges axis.
-// ---------------------------------------------------------------------------
 static TerrainSpline* create_flat_offset_spline(
     SplineStack& ss, float f, float g, float h, float i, float j, float k)
 {
@@ -101,11 +83,6 @@ static TerrainSpline* create_flat_offset_spline(
     return sp;
 }
 
-// ---------------------------------------------------------------------------
-// createLandSpline — erosion-axis sub-spline for one continentalness band.
-// `bl` controls whether the "jaggedness" spike is included (1 for higher
-// continentalness bands, 0 for ocean-adjacent bands).
-// ---------------------------------------------------------------------------
 static TerrainSpline* create_land_spline(
     SplineStack& ss, float f, float g, float h, float i, float j, float k, int bl)
 {
@@ -144,12 +121,6 @@ static TerrainSpline* create_land_spline(
     return sp;
 }
 
-// ---------------------------------------------------------------------------
-// init_terrain_spline — build the full spline DAG.  The root node is indexed
-// by continentalness.
-//
-// This is the exact construction from cubiomes' initBiomeNoise().
-// ---------------------------------------------------------------------------
 TerrainSpline* init_terrain_spline(SplineStack& ss) {
     ss.reset();
 
@@ -175,15 +146,165 @@ TerrainSpline* init_terrain_spline(SplineStack& ss) {
     return sp;
 }
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Factor and Jaggedness spline builders
+// (ported from vanilla 1.20-pre2 factor.json and 26.1.1 jaggedness.json)
+//
+// These splines use SP_WEIRDNESS (vals[3] = raw weirdness) for the "ridges"
+// coordinate and SP_RIDGES_FOLDED (vals[4] = 1 - 2*|w|) for folded ridges.
+// ===========================================================================
+
+// Helper: ridges2 — 2-point spline on SP_WEIRDNESS (raw weirdness = 1.20 "ridges")
+static TerrainSpline* r2(SplineStack& ss, float l1, float v1, float l2, float v2) {
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_WEIRDNESS;
+    add_spline_val(sp, l1, ss.alloc_fix(v1), 0);
+    add_spline_val(sp, l2, ss.alloc_fix(v2), 0);
+    return sp;
+}
+
+// ---- Factor spline ----
+
+// Build RF sub-spline used at factor erosion 0.45/0.55 for cont=-0.15,-0.10,0.03:
+//   RF(-0.9: band_max, -0.69: ridges2(0.0->band_max, 0.1->0.625))
+static TerrainSpline* factor_rf_v1(SplineStack& ss, float band_max) {
+    TerrainSpline* inner = r2(ss, 0.0f, band_max, 0.1f, 0.625f);
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_RIDGES_FOLDED;
+    add_spline_val(sp, -0.9f, ss.alloc_fix(band_max), 0);
+    add_spline_val(sp, -0.69f, inner, 0);
+    return sp;
+}
+
+// Erosion sub-spline for cont=-0.15, -0.10, 0.03 (10 erosion CPs)
+static TerrainSpline* factor_erosion_10(SplineStack& ss, float band_max) {
+    TerrainSpline* r_mtn = r2(ss, -0.2f, 6.3f, 0.2f, band_max);
+    TerrainSpline* r_clf = r2(ss, -0.05f, 6.3f, 0.05f, 2.67f);
+    TerrainSpline* r_rev = r2(ss, -0.05f, 2.67f, 0.05f, 6.3f);
+    TerrainSpline* rf_outer = factor_rf_v1(ss, band_max);
+
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_EROSION;
+    add_spline_val(sp, -0.6f,  r_mtn, 0);
+    add_spline_val(sp, -0.5f,  r_clf, 0);
+    add_spline_val(sp, -0.35f, r_mtn, 0);
+    add_spline_val(sp, -0.25f, r_mtn, 0);
+    add_spline_val(sp, -0.1f,  r_rev, 0);
+    add_spline_val(sp, 0.03f,  r_mtn, 0);
+    add_spline_val(sp, 0.35f,  ss.alloc_fix(band_max), 0);
+    add_spline_val(sp, 0.45f,  rf_outer, 0);
+    add_spline_val(sp, 0.55f,  rf_outer, 0);
+    add_spline_val(sp, 0.62f,  ss.alloc_fix(band_max), 0);
+    return sp;
+}
+
+// Erosion sub-spline for cont=0.06 (11 erosion CPs, different RF patterns)
+static TerrainSpline* factor_erosion_11(SplineStack& ss, float band_max) {
+    TerrainSpline* r_mtn = r2(ss, -0.2f, 6.3f, 0.2f, band_max);
+    TerrainSpline* r_clf = r2(ss, -0.05f, 6.3f, 0.05f, 2.67f);
+    TerrainSpline* r_rev = r2(ss, -0.05f, 2.67f, 0.05f, 6.3f);
+
+    // RF at erosion 0.05/0.4: RF(0.45->r_mtn, 0.7->1.56)
+    TerrainSpline* rf0 = ss.alloc();
+    rf0->typ = SP_RIDGES_FOLDED;
+    add_spline_val(rf0, 0.45f, r_mtn, 0);
+    add_spline_val(rf0, 0.7f,  ss.alloc_fix(1.56f), 0);
+
+    // RF at erosion 0.45/0.55: RF(-0.7->r_mtn, -0.15->1.37)
+    TerrainSpline* rf1 = ss.alloc();
+    rf1->typ = SP_RIDGES_FOLDED;
+    add_spline_val(rf1, -0.7f,  r_mtn, 0);
+    add_spline_val(rf1, -0.15f, ss.alloc_fix(1.37f), 0);
+
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_EROSION;
+    add_spline_val(sp, -0.6f,  r_mtn, 0);
+    add_spline_val(sp, -0.5f,  r_clf, 0);
+    add_spline_val(sp, -0.35f, r_mtn, 0);
+    add_spline_val(sp, -0.25f, r_mtn, 0);
+    add_spline_val(sp, -0.1f,  r_rev, 0);
+    add_spline_val(sp, 0.03f,  r_mtn, 0);
+    add_spline_val(sp, 0.05f,  rf0, 0);
+    add_spline_val(sp, 0.4f,   rf0, 0);
+    add_spline_val(sp, 0.45f,  rf1, 0);
+    add_spline_val(sp, 0.55f,  rf1, 0);
+    add_spline_val(sp, 0.58f,  ss.alloc_fix(band_max), 0);
+    return sp;
+}
+
+TerrainSpline* init_factor_spline(SplineStack& ss) {
+    ss.reset();
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_CONTINENTALNESS;
+
+    add_spline_val(sp, -0.19f, ss.alloc_fix(3.95f), 0);
+    add_spline_val(sp, -0.15f, factor_erosion_10(ss, 6.25f), 0);
+    add_spline_val(sp, -0.10f, factor_erosion_10(ss, 5.47f), 0);
+    add_spline_val(sp, 0.03f,  factor_erosion_10(ss, 5.08f), 0);
+    add_spline_val(sp, 0.06f,  factor_erosion_11(ss, 4.69f), 0);
+    return sp;
+}
+
+// ---- Jaggedness spline ----
+
+// 3-point ridges_folded sub-spline for jaggedness.
+// Structure: RF(0.2: 0, 0.45: [fix_or_ridges], 1.0: ridges(-0.01->v1, 0.01->v2))
+static TerrainSpline* j_rf(SplineStack& ss, float v1, float v2, bool sub_at_45) {
+    TerrainSpline* inner = r2(ss, -0.01f, v1, 0.01f, v2);
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_RIDGES_FOLDED;
+    add_spline_val(sp, 0.19999999f, ss.alloc_fix(0.0f), 0);
+    add_spline_val(sp, 0.44999996f, sub_at_45 ? (TerrainSpline*)inner : ss.alloc_fix(0.0f), 0);
+    add_spline_val(sp, 1.0f, inner, 0);
+    return sp;
+}
+
+// Erosion sub-spline for jaggedness (4 erosion CPs)
+static TerrainSpline* jaggedness_erosion_03(SplineStack& ss) {
+    TerrainSpline* rf_a = j_rf(ss, 0.63f, 0.3f, false);   // erosion -1.0
+    TerrainSpline* rf_b = j_rf(ss, 0.315f, 0.15f, false);  // erosion -0.78, -0.5775
+
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_EROSION;
+    add_spline_val(sp, -1.0f,    rf_a, 0);
+    add_spline_val(sp, -0.78f,   rf_b, 0);
+    add_spline_val(sp, -0.5775f, rf_b, 0);
+    add_spline_val(sp, -0.375f,  ss.alloc_fix(0.0f), 0);
+    return sp;
+}
+
+static TerrainSpline* jaggedness_erosion_65(SplineStack& ss) {
+    TerrainSpline* rf_a = j_rf(ss, 0.63f, 0.3f, true);   // erosion -1.0
+    TerrainSpline* rf_b = j_rf(ss, 0.63f, 0.3f, false);  // erosion -0.78, -0.5775
+
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_EROSION;
+    add_spline_val(sp, -1.0f,    rf_a, 0);
+    add_spline_val(sp, -0.78f,   rf_b, 0);
+    add_spline_val(sp, -0.5775f, rf_b, 0);
+    add_spline_val(sp, -0.375f,  ss.alloc_fix(0.0f), 0);
+    return sp;
+}
+
+TerrainSpline* init_jaggedness_spline(SplineStack& ss) {
+    ss.reset();
+    TerrainSpline* sp = ss.alloc();
+    sp->typ = SP_CONTINENTALNESS;
+
+    add_spline_val(sp, -0.11f, ss.alloc_fix(0.0f), 0);
+    add_spline_val(sp, 0.03f,  jaggedness_erosion_03(ss), 0);
+    add_spline_val(sp, 0.65f,  jaggedness_erosion_65(ss), 0);
+    return sp;
+}
+
+// ===========================================================================
 // get_spline — recursive Hermite interpolation evaluator.
 // Matches cubiomes' getSpline().
-// ---------------------------------------------------------------------------
-float get_spline(const TerrainSpline* sp, const float vals[4]) {
+// ===========================================================================
+float get_spline(const TerrainSpline* sp, const float vals[5]) {
     if (!sp || sp->len <= 0 || sp->len >= 12)
         return 0.0f;
 
-    // FixSpline: single constant value
     if (sp->len == 1)
         return sp->fixed_val;
 
@@ -214,10 +335,6 @@ float get_spline(const TerrainSpline* sp, const float vals[4]) {
     return spline_lerp(t, n, o) + t * (1.0f - t) * spline_lerp(t, p, q);
 }
 
-// ---------------------------------------------------------------------------
-// compute_terrain_offset — public convenience wrapper.
-// Samples the spline from raw climate values in their native range.
-// ---------------------------------------------------------------------------
 float compute_terrain_offset(float c, float e, float w) {
     static SplineStack stack;
     static TerrainSpline* root = nullptr;
@@ -228,9 +345,40 @@ float compute_terrain_offset(float c, float e, float w) {
 
 float compute_terrain_offset(float c, float e, float w, const TerrainSpline* root) {
     float wr = -3.0f * (std::fabs(std::fabs(w) - 0.6666667f) - 0.33333334f);
-    float vals[4] = { c, e, wr, w };
+    float rf = 1.0f - 2.0f * std::fabs(w);
+    float vals[5] = { c, e, wr, w, rf };
     float result = get_spline(root, vals) + 0.015f;
     return std::clamp(result, -0.22f, 0.15f);
+}
+
+float compute_factor(float c, float e, float w) {
+    static SplineStack stack;
+    static TerrainSpline* root = nullptr;
+    if (!root)
+        root = init_factor_spline(stack);
+    return compute_factor(c, e, w, root);
+}
+
+float compute_factor(float c, float e, float w, const TerrainSpline* root) {
+    float wr = -3.0f * (std::fabs(std::fabs(w) - 0.6666667f) - 0.33333334f);
+    float rf = 1.0f - 2.0f * std::fabs(w);
+    float vals[5] = { c, e, wr, w, rf };
+    return get_spline(root, vals);
+}
+
+float compute_jaggedness(float c, float e, float w) {
+    static SplineStack stack;
+    static TerrainSpline* root = nullptr;
+    if (!root)
+        root = init_jaggedness_spline(stack);
+    return compute_jaggedness(c, e, w, root);
+}
+
+float compute_jaggedness(float c, float e, float w, const TerrainSpline* root) {
+    float wr = -3.0f * (std::fabs(std::fabs(w) - 0.6666667f) - 0.33333334f);
+    float rf = 1.0f - 2.0f * std::fabs(w);
+    float vals[5] = { c, e, wr, w, rf };
+    return get_spline(root, vals);
 }
 
 } // namespace VoxelEngine
