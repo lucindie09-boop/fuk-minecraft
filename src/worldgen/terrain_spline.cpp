@@ -223,11 +223,12 @@ float compute_terrain_offset(float c, float e, float w) {
     static TerrainSpline* root = nullptr;
     if (!root)
         root = init_terrain_spline(stack);
+    return compute_terrain_offset(c, e, w, root);
+}
 
+float compute_terrain_offset(float c, float e, float w, const TerrainSpline* root) {
     // Transform weirdness into the ridges axis, matching vanilla's
-    // sampleBiomeNoise: -3 * (|abs(w) - 0.6666667| - 0.33333334)
     float wr = -3.0f * (std::fabs(std::fabs(w) - 0.6666667f) - 0.33333334f);
-
     float vals[4] = { c, e, wr, w };
     return get_spline(root, vals) + 0.015f;
 }

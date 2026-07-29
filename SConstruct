@@ -61,7 +61,7 @@ shared_objects = env.Object(shared_sources)
 # Debug terrain renderer (standalone executable)
 debug_env = env.Clone()
 debug_env.Append(LIBS=[])
-debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp"] + shared_objects[:4])
+debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp"] + shared_objects[:7])
 Alias("debug", debug_prog)
 
 # Performance benchmark (standalone executable)

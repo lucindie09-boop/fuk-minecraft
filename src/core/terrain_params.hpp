@@ -11,18 +11,18 @@ namespace VoxelEngine {
 // -------------------------------------------------------------------------
 struct TerrainParams {
     int32_t seed = 12345;
-    float sea_level = 200.0f;
+    float sea_level = 64.0f;
     int32_t bedrock_height = 5;
 
     float cave_threshold = 0.4f;
     float cave_scale = 0.05f;
 
     float continentalness_scale = 0.00010f;
-    float ocean_threshold = 0.48f;
-    float land_threshold = 0.48f;
+    float ocean_threshold = 0.45f;
+    float land_threshold = 0.55f;
     float shelf_width = 0.025f;
-    float shelf_depth = 18.0f;
-    float deep_ocean_depth = 48.0f;
+    float shelf_depth = 8.0f;
+    float deep_ocean_depth = 30.0f;
     float beach_width = 0.002f;
     int32_t subsurface_cover_depth = 4;
 

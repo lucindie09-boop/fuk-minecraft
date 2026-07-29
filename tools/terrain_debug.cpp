@@ -172,6 +172,9 @@ static void write_bmp(const char* filename, int w, int h, const uint8_t* pixels)
 
 int main() {
     VoxelEngine::TerrainParams params;
+    printf("TerrainParams: sea_level=%.1f ocean_thresh=%.2f land_thresh=%.2f shelf_depth=%.1f deep_depth=%.1f\n",
+           params.sea_level, params.ocean_threshold, params.land_threshold,
+           params.shelf_depth, params.deep_ocean_depth);
     VoxelEngine::ChunkGenerator gen(params);
 
     // Simple noise-based continentalness, no plates to print
@@ -353,5 +356,61 @@ int main() {
         [](const VoxelEngine::ClimateSampler& c, double x, double z) { return c.sample_shift_x(x, z); });
 
     printf("Done.\n");
+
+    // Debug: print sample points with spline offset detail
+    printf("\nSample point debug:\n");
+    for (int px = -2; px <= 2; px++) {
+        for (int pz = -2; pz <= 2; pz++) {
+            float wx = static_cast<float>(px) * 500.0f;
+            float wz = static_cast<float>(pz) * 500.0f;
+            auto col = gen.sample_column_debug(
+                static_cast<int32_t>(wx), static_cast<int32_t>(wz));
+            printf("  (%3.0f,%3.0f): h=%7.1f bio=%d\n",
+                   wx, wz, col.height, static_cast<int>(col.biome));
+        }
+    }
+
+    // Spline offset and height fields (via ChunkGenerator)
+
+    // Spline offset and height fields (via ChunkGenerator)
+    printf("Terrain height maps:\n");
+    const int HW = 1000, HH = 1000;
+    const float HSTEP = 8.0f;
+    const float HRANGE = 4000.0f;
+
+    // Height map (colored: low=blue, mid=green, high=brown/white)
+    {
+        std::vector<uint8_t> pixels(static_cast<size_t>(HW) * HH * 3);
+        float hmin = 1e10f, hmax = -1e10f;
+        for (int py = 0; py < HH; py++) {
+            for (int px = 0; px < HW; px++) {
+                float wx = -HRANGE + static_cast<float>(px) * HSTEP;
+                float wz = -HRANGE + static_cast<float>(py) * HSTEP;
+                float h = gen.get_terrain_height(static_cast<int32_t>(wx), static_cast<int32_t>(wz));
+                if (h < hmin) hmin = h;
+                if (h > hmax) hmax = h;
+            }
+        }
+        float hrange = hmax - hmin;
+        if (hrange < 1.0f) hrange = 1.0f;
+        for (int py = 0; py < HH; py++) {
+            for (int px = 0; px < HW; px++) {
+                float wx = -HRANGE + static_cast<float>(px) * HSTEP;
+                float wz = -HRANGE + static_cast<float>(py) * HSTEP;
+                float h = gen.get_terrain_height(static_cast<int32_t>(wx), static_cast<int32_t>(wz));
+                float norm = (h - hmin) / hrange;
+                size_t idx = (static_cast<size_t>(py) * HW + px) * 3;
+                // Blue-green-brown ramp
+                uint8_t r = static_cast<uint8_t>(std::round(norm * 200.0f));
+                uint8_t g = static_cast<uint8_t>(std::round(norm < 0.5f ? norm * 2.0f * 180.0f : (1.0f - norm) * 2.0f * 100.0f + 80.0f));
+                uint8_t b = static_cast<uint8_t>(std::round((1.0f - norm) * 255.0f));
+                pixels[idx] = r; pixels[idx+1] = g; pixels[idx+2] = b;
+            }
+        }
+        write_bmp_rgb24("bin/terrain_height.bmp", HW, HH, pixels.data());
+        printf("  Height: range [%.1f, %.1f] -> bin/terrain_height.bmp\n", hmin, hmax);
+    }
+
+    printf("All done.\n");
     return 0;
 }

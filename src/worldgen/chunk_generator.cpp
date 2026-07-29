@@ -41,7 +41,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         saved_land_height = land_height;
         height = land_height;
 
-        biome = biome_from_climate(temperature, humidity, cont);
+        biome = biome_from_climate(temperature, humidity, cont, erosion_val, weirdness_val);
     } else {
         float cont_from_coast = params.land_threshold - cont;
         float depth = cont_from_coast <= 0.05f
@@ -55,7 +55,7 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         height = std::min(height, params.sea_level - 1.0f);
         water_level = params.sea_level;
 
-        biome = biome_from_climate(temperature, humidity, cont);
+        biome = biome_from_climate(temperature, humidity, cont, erosion_val, weirdness_val);
     }
 
     height = std::max(static_cast<float>(params.bedrock_height) + 1.0f, height);
@@ -71,19 +71,25 @@ BlockID ChunkGenerator::get_surface_block(BiomeType biome, int32_t y, bool has_s
         return BlockIDs::SAND;
     }
     switch (biome) {
-        case BiomeType::Ocean:       return BlockIDs::SAND;
-        case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
-        case BiomeType::Desert:      return BlockIDs::SAND;
-        default:                     return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
+        case BiomeType::AbyssalTrench:
+        case BiomeType::DeepOcean:
+        case BiomeType::ShallowOcean:  return BlockIDs::SAND;
+        case BiomeType::Beach:          return near_water ? BlockIDs::WET_SAND : BlockIDs::SAND;
+        case BiomeType::Desert:        return BlockIDs::SAND;
+        case BiomeType::StonePlateau:  return BlockIDs::STONE;
+        default:                       return near_water ? BlockIDs::MUD : BlockIDs::GRASS;
     }
 }
 
 BlockID ChunkGenerator::get_subsurface_block(BiomeType biome, bool near_water) const {
     switch (biome) {
-        case BiomeType::Ocean:       return BlockIDs::SAND;
-        case BiomeType::Beach:        return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
-        case BiomeType::Desert:       return BlockIDs::SAND;
-        default:                      return BlockIDs::DIRT;
+        case BiomeType::AbyssalTrench:
+        case BiomeType::DeepOcean:
+        case BiomeType::ShallowOcean:  return BlockIDs::SAND;
+        case BiomeType::Beach:          return near_water ? BlockIDs::WET_SAND_FULL : BlockIDs::SAND;
+        case BiomeType::Desert:         return BlockIDs::SAND;
+        case BiomeType::StonePlateau:  return BlockIDs::STONE;
+        default:                       return BlockIDs::DIRT;
     }
 }
 
@@ -284,11 +290,14 @@ void ChunkGenerator::render_biome_pgm(const char* filename, int img_w, int img_h
                                                static_cast<int32_t>(wz));
             uint8_t byte = 0;
             switch (col.biome) {
-                case BiomeType::Ocean:         byte = 30;  break;
+                case BiomeType::AbyssalTrench: byte = 10;  break;
+                case BiomeType::DeepOcean:     byte = 30;  break;
+                case BiomeType::ShallowOcean:  byte = 50;  break;
                 case BiomeType::Beach:         byte = 220; break;
                 case BiomeType::Plains:        byte = 150; break;
                 case BiomeType::Forest:        byte = 100; break;
                 case BiomeType::Desert:        byte = 200; break;
+                case BiomeType::StonePlateau:  byte = 180; break;
                 default:                       byte = 128; break;
             }
             fwrite(&byte, 1, 1, f);

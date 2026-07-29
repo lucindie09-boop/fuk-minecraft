@@ -70,8 +70,11 @@ TerrainSpline* init_terrain_spline(SplineStack& ss);
 
 // Convenience: compute the terrain depth offset from raw climate parameters.
 // c, e, w are in their native DoublePerlinNoise range (roughly [-1, 1]).
-// Returns the spline offset value (typically roughly [-0.22, 0.15]).
+// Returns the spline offset value.
+// The single-argument overload uses an internal static stack (for standalone use).
+// Pass an explicit root to share a pre-built spline DAG (avoids duplication).
 float compute_terrain_offset(float c, float e, float w);
+float compute_terrain_offset(float c, float e, float w, const TerrainSpline* root);
 
 } // namespace VoxelEngine
 

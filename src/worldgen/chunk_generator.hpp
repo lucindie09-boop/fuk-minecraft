@@ -21,11 +21,14 @@ namespace VoxelEngine {
 // Biome types
 // -------------------------------------------------------------------------
 enum class BiomeType : uint8_t {
-    Ocean,
+    AbyssalTrench,
+    DeepOcean,
+    ShallowOcean,
     Beach,
     Plains,
     Forest,
     Desert,
+    StonePlateau,
 };
 
 // -------------------------------------------------------------------------
@@ -134,14 +137,24 @@ private:
         return dry ? BiomeType::Plains : BiomeType::Forest;
     }
 
-    BiomeType biome_from_climate(float temperature, float humidity, float cont) const {
+    BiomeType biome_from_climate(float temperature, float humidity, float cont, float erosion_val, float weirdness_val) const {
         float beach_t = smoothstep(params.land_threshold, params.land_threshold + params.beach_width, cont);
         if (beach_t < 0.9f && cont >= params.land_threshold - params.beach_width) {
             return BiomeType::Beach;
         }
-        if (cont < params.ocean_threshold) {
-            return BiomeType::Ocean;
+        if (cont < params.land_threshold) {
+            // Split ocean by depth based on how far cont is below threshold
+            float cont_from_coast = params.land_threshold - cont;
+            if (cont_from_coast <= 0.05f)
+                return BiomeType::ShallowOcean;
+            else if (cont_from_coast <= 0.17f)
+                return BiomeType::DeepOcean;
+            else
+                return BiomeType::AbyssalTrench;
         }
+        // StonePlateau: high continentalness + high weirdness → rocky terrain
+        if (cont > 0.7f && weirdness_val > 0.6f)
+            return BiomeType::StonePlateau;
         return land_biome_from_grid(temperature, humidity);
     }
 
@@ -153,14 +166,14 @@ private:
     // TERRAIN_HEIGHT_SCALE so that deep-ocean floors sit well below sea level
     // and mountain peaks rise comfortably above it.
     float sample_land_shape(float raw_c, float raw_e, float raw_w, float x, float z) const {
-        static constexpr float TERRAIN_HEIGHT_SCALE = 350.0f;
+        static constexpr float TERRAIN_HEIGHT_SCALE = 150.0f;
 
-        float offset = compute_terrain_offset(raw_c, raw_e, raw_w);
+        float offset = compute_terrain_offset(raw_c, raw_e, raw_w, spline_root_);
         float base = params.sea_level + offset * TERRAIN_HEIGHT_SCALE;
 
         // Light fbm detail on top of the spline — adds roughness without
         // fighting the large-scale climate-driven shape.
-        float detail = terrain_noise.fbm(x, z, 3, 0.50f, 0.008f) * 6.0f;
+        float detail = terrain_noise.fbm(x, z, 3, 0.50f, 0.008f) * 3.0f;
 
         return base + detail;
     }
