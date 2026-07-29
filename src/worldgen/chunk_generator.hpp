@@ -132,10 +132,10 @@ private:
     static constexpr float HUM_DRY_MAX    = 0.43f;
     static constexpr float HUM_HUMID_MIN  = 0.57f;
 
-    static BiomeType land_biome_from_grid(float temperature, float humidity, float erosion_val) {
+    static BiomeType land_biome_from_grid(float temperature, float humidity, float jaggedness) {
         bool hot  = temperature >= TEMP_HOT_MIN;
         bool dry  = humidity < HUM_DRY_MAX;
-        bool mountain = erosion_val < 0.25f;
+        bool mountain = jaggedness > 0.001f;
 
         if (hot) {
             if (dry) return mountain ? BiomeType::DesertMountain : BiomeType::Desert;
@@ -146,7 +146,8 @@ private:
         return mountain ? BiomeType::ForestMountain : BiomeType::Forest;
     }
 
-    BiomeType biome_from_climate(float temperature, float humidity, float cont, float erosion_val, float weirdness_val) const {
+    BiomeType biome_from_climate(float temperature, float humidity, float cont,
+                                  float raw_c, float raw_e, float raw_w) const {
         float beach_t = smoothstep(params.land_threshold, params.land_threshold + params.beach_width, cont);
         if (beach_t < 0.9f && cont >= params.land_threshold - params.beach_width) {
             return BiomeType::Beach;
@@ -161,7 +162,8 @@ private:
             else
                 return BiomeType::AbyssalTrench;
         }
-        return land_biome_from_grid(temperature, humidity, erosion_val);
+        float jaggedness = compute_jaggedness(raw_c, raw_e, raw_w, spline_root_jaggedness_);
+        return land_biome_from_grid(temperature, humidity, jaggedness);
     }
 
     // Spline-based terrain height.  Maps raw continentalness/erosion/weirdness

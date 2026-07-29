@@ -44,7 +44,10 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         saved_land_height = land_height;
         height = land_height;
 
-        biome = biome_from_climate(temperature, humidity, cont, erosion_val, weirdness_val);
+        biome = biome_from_climate(temperature, humidity, cont,
+                                    static_cast<float>(raw_c),
+                                    static_cast<float>(raw_e),
+                                    static_cast<float>(raw_w));
     } else {
         float cont_from_coast = params.land_threshold - cont;
         float depth = cont_from_coast <= 0.05f
@@ -58,7 +61,10 @@ ChunkGenerator::ColumnSample ChunkGenerator::sample_column(int32_t world_x, int3
         height = std::min(height, params.sea_level - 1.0f);
         water_level = params.sea_level;
 
-        biome = biome_from_climate(temperature, humidity, cont, erosion_val, weirdness_val);
+        biome = biome_from_climate(temperature, humidity, cont,
+                                    static_cast<float>(raw_c),
+                                    static_cast<float>(raw_e),
+                                    static_cast<float>(raw_w));
     }
 
     height = std::max(static_cast<float>(params.bedrock_height) + 1.0f, height);
