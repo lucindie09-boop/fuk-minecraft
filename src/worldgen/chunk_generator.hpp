@@ -132,14 +132,13 @@ private:
         return land_biome_from_grid(temperature, humidity);
     }
 
-    // Additive multi-band terrain height.
-    // Each band is an independent additive term with its own frequency and
-    // amplitude ceiling. No normalized blending, so adding a band can only
-    // increase potential relief, never dilute existing terms.
-    //   regional_swell   (0.001) × 60 — where mountain ranges vs plains regions are
-    //   primary_relief   (0.010) × 30 — the hill you're actually standing on
-    //   ridged_detail    (0.020) × 15 — ridge lines and valleys
-    //   fine_roughness   (0.060) ×  4 — block-scale surface texture
+    // Additive multi-band terrain height, regionally gated.
+    // A low-frequency ruggedness field gates the detail bands so flat
+    // regions stay calm and only rugged regions get the full relief.
+    //   regional_swell   (0.001) × 60   — always full, decides where ranges/basins are
+    //   primary_relief   (0.010) × 6-30  — gates from gentle to hilly
+    //   ridged_detail    (0.020) × 2-15  — gates from smooth to ridged
+    //   fine_roughness   (0.060) × 1-4   — gates from subtle to textured
     float sample_land_shape(float x, float z, float /*temperature*/, float /*humidity*/) const {
         static constexpr float BASE_TEMP_SCALE = 0.00015f;
         static constexpr float BASE_HUM_SCALE  = 0.00020f;
@@ -166,6 +165,10 @@ private:
         }
         float base = 208.0f + w_base / w_total;
 
+        // Regional ruggedness gate — 0 = calm plains, 1 = full relief
+        float ruggedness_n = terrain_noise.fbm(x + 7000.0f, z + 7000.0f, 3, 0.50f, 0.0015f);
+        float ruggedness   = smoothstep(-0.3f, 0.5f, ruggedness_n);
+
         // Anisotropic domain warp — subtle directional flow so contours aren't perfectly isotropic
         float warp_x = terrain_noise.noise_2d(x * 0.002f, z * 0.002f) * 18.0f;
         float warp_z = terrain_noise.noise_2d((x + 5000.0f) * 0.002f, (z + 5000.0f) * 0.002f) * 30.0f;
@@ -173,11 +176,11 @@ private:
         float wx = x + warp_x;
         float wz = z + warp_z;
 
-        // Additive bands — each adds independent relief with its own amplitude ceiling
+        // Additive bands — each gated independently, no shared normalization
         float regional_swell = terrain_noise.fbm(wx, wz, 3, 0.50f, 0.0010f) * 60.0f;
-        float primary_relief = terrain_noise.fbm(wx + 2000.0f, wz + 2000.0f, 4, 0.52f, 0.010f) * 30.0f;
-        float ridged_detail  = terrain_noise.ridged_noise(wx + 4000.0f, wz + 4000.0f, 3, 0.55f, 0.020f) * 15.0f;
-        float fine_roughness = terrain_noise.noise_2d(wx * 0.06f, wz * 0.06f) * 4.0f;
+        float primary_relief = terrain_noise.fbm(wx + 2000.0f, wz + 2000.0f, 4, 0.52f, 0.010f) * lerp(6.0f, 30.0f, ruggedness);
+        float ridged_detail  = terrain_noise.ridged_noise(wx + 4000.0f, wz + 4000.0f, 3, 0.55f, 0.020f) * lerp(2.0f, 15.0f, ruggedness);
+        float fine_roughness = terrain_noise.noise_2d(wx * 0.06f, wz * 0.06f) * lerp(1.0f, 4.0f, ruggedness);
 
         return base + regional_swell + primary_relief + ridged_detail + fine_roughness;
     }
