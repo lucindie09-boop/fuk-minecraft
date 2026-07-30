@@ -194,15 +194,16 @@ void ChunkGenerator::generate_chunk(ChunkData& chunk, int32_t chunk_x, int32_t c
         // Vanilla signature: generateNoiseOctaves(buf, xOff, yOff, zOff, xSz, ySz, zSz, xScale, yScale, zScale)
         // where xOff = chunk_x*4, yOff = 0, zOff = chunk_z*4, xSz=5, ySz=33, zSz=5, xScale=4, yScale=8, zScale=4
         // For our 32-block chunks, we use:
-        // xOff = chunk_x*8, yOff = world_y_start/8, zOff = chunk_z*8, xSz=5, ySz=5, zSz=5, xScale=8, yScale=8, zScale=8
+        // xOff = world_x_start/8, yOff = world_y_start/8, zOff = world_z_start/8, xSz=5, ySz=5, zSz=5, xScale=8, yScale=8, zScale=8
+        // Note: world_x_start/8 = chunk_x*32/8 = chunk_x*4, which advances by 4 nodes per chunk (correct for 8-block spacing)
         minLimitNoise.generate_noise_3d(min_buf,
-            chunk_x * 8, world_y_start / 8, chunk_z * 8,
+            world_x_start / 8, world_y_start / 8, world_z_start / 8,
             5, Y_NODES, 5, 8.0, 8.0, 8.0);
         maxLimitNoise.generate_noise_3d(max_buf,
-            chunk_x * 8, world_y_start / 8, chunk_z * 8,
+            world_x_start / 8, world_y_start / 8, world_z_start / 8,
             5, Y_NODES, 5, 8.0, 8.0, 8.0);
         mainNoise.generate_noise_3d(main_buf,
-            chunk_x * 8, world_y_start / 8, chunk_z * 8,
+            world_x_start / 8, world_y_start / 8, world_z_start / 8,
             5, Y_NODES, 5, 8.0, 8.0, 8.0);
     }
 
