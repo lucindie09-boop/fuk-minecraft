@@ -1,6 +1,5 @@
 #include "doctest.h"
 #include "core/perlin_noise.hpp"
-#include "worldgen/climate_sampler.hpp"
 #include <cmath>
 #include <limits>
 
@@ -216,102 +215,4 @@ TEST_CASE("DoublePerlinNoise non-zero sample") {
     CHECK(std::isfinite(v));
 }
 
-// ===========================================================================
-// ClimateSampler
-// ===========================================================================
 
-TEST_CASE("ClimateSampler determinism") {
-    ClimateSampler a(42), b(42);
-    CHECK(a.sample_continentalness(100.0, 200.0) == b.sample_continentalness(100.0, 200.0));
-    CHECK(a.sample_erosion(100.0, 200.0) == b.sample_erosion(100.0, 200.0));
-    CHECK(a.sample_weirdness(100.0, 200.0) == b.sample_weirdness(100.0, 200.0));
-    CHECK(a.sample_temperature(100.0, 200.0) == b.sample_temperature(100.0, 200.0));
-    CHECK(a.sample_humidity(100.0, 200.0) == b.sample_humidity(100.0, 200.0));
-}
-
-TEST_CASE("ClimateSampler different seeds produce different values") {
-    ClimateSampler a(42), b(999);
-    CHECK(a.sample_continentalness(100.0, 200.0) != b.sample_continentalness(100.0, 200.0));
-}
-
-TEST_CASE("ClimateSampler fields produce finite values") {
-    ClimateSampler sampler(42);
-    CHECK(std::isfinite(sampler.sample_continentalness(0.0, 0.0)));
-    CHECK(std::isfinite(sampler.sample_erosion(0.0, 0.0)));
-    CHECK(std::isfinite(sampler.sample_weirdness(0.0, 0.0)));
-    CHECK(std::isfinite(sampler.sample_temperature(0.0, 0.0)));
-    CHECK(std::isfinite(sampler.sample_humidity(0.0, 0.0)));
-}
-
-TEST_CASE("ClimateSampler shift warps coordinates continuously") {
-    ClimateSampler sampler(42);
-    double shift_x0 = sampler.sample_shift_x(1000.0, 2000.0);
-    double shift_x1 = sampler.sample_shift_x(1001.0, 2000.0);
-    double shift_x2 = sampler.sample_shift_x(1000.0, 2001.0);
-    // At warp_strength=4.0, shift values are small; adjacent samples should be close
-    CHECK(std::abs(shift_x1 - shift_x0) < 2.0);
-    CHECK(std::abs(shift_x2 - shift_x0) < 2.0);
-}
-
-TEST_CASE("ClimateSampler shift X and Z are decorrelated") {
-    ClimateSampler sampler(42);
-    // Vanilla decorrelates by resampling with swapped inputs (z,x,0) vs (x,0,z)
-    double sx = sampler.sample_shift_x(500.0, 800.0);
-    double sz = sampler.sample_shift_z(500.0, 800.0);
-    CHECK(sx != sz);
-}
-
-TEST_CASE("ClimateSampler fields produce expected value range over grid") {
-    ClimateSampler sampler(42);
-    double min_cont = 1e10, max_cont = -1e10;
-    double min_eros = 1e10, max_eros = -1e10;
-    double min_weir = 1e10, max_weir = -1e10;
-    double min_temp = 1e10, max_temp = -1e10;
-    double min_hum  = 1e10, max_hum  = -1e10;
-
-    for (double x = -5000.0; x <= 5000.0; x += 200.0) {
-        for (double z = -5000.0; z <= 5000.0; z += 200.0) {
-            double c = sampler.sample_continentalness(x, z);
-            double e = sampler.sample_erosion(x, z);
-            double w = sampler.sample_weirdness(x, z);
-            double t = sampler.sample_temperature(x, z);
-            double h = sampler.sample_humidity(x, z);
-
-            if (c < min_cont) min_cont = c;
-            if (c > max_cont) max_cont = c;
-            if (e < min_eros) min_eros = e;
-            if (e > max_eros) max_eros = e;
-            if (w < min_weir) min_weir = w;
-            if (w > max_weir) max_weir = w;
-            if (t < min_temp) min_temp = t;
-            if (t > max_temp) max_temp = t;
-            if (h < min_hum)  min_hum  = h;
-            if (h > max_hum)  max_hum  = h;
-        }
-    }
-
-    INFO("Continentalness range: [" << min_cont << ", " << max_cont << "]");
-    INFO("Erosion range: [" << min_eros << ", " << max_eros << "]");
-    INFO("Weirdness range: [" << min_weir << ", " << max_weir << "]");
-    INFO("Temperature range: [" << min_temp << ", " << max_temp << "]");
-    INFO("Humidity range: [" << min_hum << ", " << max_hum << "]");
-
-    CHECK(std::isfinite(min_cont));
-    CHECK(std::isfinite(max_cont));
-    CHECK(max_cont - min_cont > 0.0);
-    CHECK(max_eros - min_eros > 0.0);
-    CHECK(max_weir - min_weir > 0.0);
-    CHECK(max_temp - min_temp > 0.0);
-    CHECK(max_hum  - min_hum  > 0.0);
-
-    CHECK(min_cont > -100.0);
-    CHECK(max_cont < 100.0);
-    CHECK(min_eros > -100.0);
-    CHECK(max_eros < 100.0);
-    CHECK(min_weir > -100.0);
-    CHECK(max_weir < 100.0);
-    CHECK(min_temp > -100.0);
-    CHECK(max_temp < 100.0);
-    CHECK(min_hum > -100.0);
-    CHECK(max_hum < 100.0);
-}

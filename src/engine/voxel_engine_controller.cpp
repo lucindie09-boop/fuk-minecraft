@@ -279,8 +279,6 @@ godot::Vector3 VoxelEngineController::get_player_position() const { return playe
 
 void VoxelEngineController::set_sea_level(float level) { sea_level = level; world_updater.set_sea_level(sea_level); }
 float VoxelEngineController::get_sea_level() const { return sea_level; }
-void VoxelEngineController::set_biome_size(float size) { biome_size = size; world_updater.set_biome_size(biome_size); }
-float VoxelEngineController::get_biome_size() const { return biome_size; }
 
 void VoxelEngineController::set_vegetation_enabled(bool enabled) { vegetation_enabled = enabled; world_updater.set_vegetation_enabled(enabled); }
 bool VoxelEngineController::is_vegetation_enabled() const { return vegetation_enabled; }
@@ -303,11 +301,8 @@ bool VoxelEngineController::load_world_metadata() {
     // Apply loaded params to controller state
     seed = params.seed;
     sea_level = params.sea_level;
-    biome_size = params.biome_size;
-    // Update world_updater with loaded params
     world_updater.set_seed(seed);
     world_updater.set_sea_level(sea_level);
-    world_updater.set_biome_size(biome_size);
     return true;
 }
 

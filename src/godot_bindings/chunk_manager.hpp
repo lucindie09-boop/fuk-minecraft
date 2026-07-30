@@ -69,10 +69,6 @@ public:
     void set_sea_level(float level);
     float get_sea_level() const;
 
-
-    void set_biome_size(float size);
-    float get_biome_size() const;
-
     godot::String get_performance_report();
 
     void set_chunk_scenario(int32_t chunk_x, int32_t chunk_y, int32_t chunk_z);

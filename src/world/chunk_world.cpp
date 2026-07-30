@@ -656,23 +656,13 @@ void ChunkWorld::save_world_metadata(const TerrainParams& params) {
     file->store_32(0x574F524C); // "WORL" magic
     file->store_32(2);           // metadata version
 
-    // Terrain params
+    // Terrain params (simplified for 1.7-style generation)
     file->store_32(params.seed);
     file->store_float(params.sea_level);
     file->store_32(params.bedrock_height);
     file->store_float(params.cave_threshold);
     file->store_float(params.cave_scale);
-    file->store_float(params.continentalness_scale);
-    file->store_float(params.ocean_threshold);
-    file->store_float(params.land_threshold);
-    file->store_float(params.shelf_width);
-    file->store_float(params.shelf_depth);
-    file->store_float(params.deep_ocean_depth);
-    file->store_float(params.beach_width);
     file->store_32(params.subsurface_cover_depth);
-    file->store_float(params.climate_temp_scale);
-    file->store_float(params.climate_humidity_scale);
-    file->store_float(params.biome_size);
 
     // Chunk save format version (for future compatibility)
     file->store_32(3); // current chunk format version
@@ -703,29 +693,25 @@ bool ChunkWorld::load_world_metadata(TerrainParams& out_params, int32_t& out_ver
         return false;
     }
 
-    // Terrain params
+    // Terrain params (simplified 1.7-style)
     out_params.seed = file->get_32();
     out_params.sea_level = file->get_float();
-    if (meta_version == 1) {
-        // Skip old fields for backward compatibility
-        file->get_float(); // base_height
-        file->get_float(); // height_scale
-        file->get_float(); // mountain_scale
+    if (meta_version <= 1) {
+        // Skip old 1.18 fields for backward compatibility
+        file->get_float(); file->get_float(); file->get_float(); // base_height, height_scale, mountain_scale
     }
     out_params.bedrock_height = file->get_32();
     out_params.cave_threshold = file->get_float();
     out_params.cave_scale = file->get_float();
-    out_params.continentalness_scale = file->get_float();
-    out_params.ocean_threshold = file->get_float();
-    out_params.land_threshold = file->get_float();
-    out_params.shelf_width = file->get_float();
-    out_params.shelf_depth = file->get_float();
-    out_params.deep_ocean_depth = file->get_float();
-    out_params.beach_width = file->get_float();
-    out_params.subsurface_cover_depth = file->get_32();
-    out_params.climate_temp_scale = file->get_float();
-    out_params.climate_humidity_scale = file->get_float();
-    out_params.biome_size = file->get_float();
+    if (meta_version <= 1) {
+        // Skip old 1.18 climate/terrain fields
+        for (int i = 0; i < 9; ++i) file->get_float();
+        file->get_32(); // subsurface_cover_depth
+        file->get_float(); file->get_float(); // climate_temp_scale, climate_humidity_scale
+        file->get_float(); // biome_size
+    } else {
+        out_params.subsurface_cover_depth = file->get_32();
+    }
 
     // Chunk save format version
     out_version = file->get_32();

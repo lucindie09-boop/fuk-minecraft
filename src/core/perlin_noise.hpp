@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 #include <array>
+#include <vector>
 
 namespace VoxelEngine {
 
@@ -137,6 +138,57 @@ public:
     double sample(double x, double y, double z) const;
 
     static double compute_amplitude(const double* amplitudes, int len);
+};
+
+// -----------------------------------------------------------------------------
+// JavaOctaveNoise — octave noise seeded via Java LCG chain.
+//
+// Used in the 1.7-style terrain generator. The constructor advances a
+// uint64_t Java LCG state to seed each octave, matching the vanilla
+// NoiseGeneratorOctaves::__init__ seed chain convention.
+// -----------------------------------------------------------------------------
+class JavaOctaveNoise {
+    std::vector<ImprovedNoise> octaves_;
+
+public:
+    JavaOctaveNoise() = default;
+
+    // Advances seed_state once per octave via java_next_long.
+    // first_octave controls lacunarity = 2^{first_octave + i}.
+    // num_octaves = number of ImprovedNoise instances to create.
+    JavaOctaveNoise(uint64_t& seed_state, int first_octave, int num_octaves);
+
+    // Fills a flat double array matching vanilla generateNoiseOctaves.
+    // Layout: out[dz * xSz * ySz + dy * xSz + dx]
+    void generate_noise_3d(double* out, int xOff, int yOff, int zOff,
+                           int xSz, int ySz, int zSz,
+                           double xScale, double yScale, double zScale) const;
+
+    int count() const { return static_cast<int>(octaves_.size()); }
+    bool empty() const { return octaves_.empty(); }
+};
+
+// -----------------------------------------------------------------------------
+// JavaPerlinNoise — single-noise chain for surface/world-gen detail.
+//
+// Used for surfaceNoise in the 1.7-style generator: stores a single
+// ImprovedNoise and samples it at multiple octaves scaled by persistence.
+// -----------------------------------------------------------------------------
+class JavaPerlinNoise {
+    ImprovedNoise noise_;
+    int octaves_ = 0;
+    double persistence_ = 0.5;
+
+public:
+    JavaPerlinNoise() = default;
+
+    // Advances seed_state once via java_next_long, then uses that seed for
+    // the underlying ImprovedNoise. octaves controls the number of octaves
+    // in sample().
+    JavaPerlinNoise(uint64_t& seed_state, int octaves);
+
+    double sample(double x, double y, double z) const;
+    double sample(double x, double z) const;
 };
 
 } // namespace VoxelEngine

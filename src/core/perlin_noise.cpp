@@ -1,4 +1,5 @@
 #include "core/perlin_noise.hpp"
+#include "core/java_rng.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -148,6 +149,66 @@ double DoublePerlinNoise::sample(double x, double y, double z) const {
     double v = octave_a_.sample(x, y, z)
              + octave_b_.sample(x * FREQ_RATIO, y * FREQ_RATIO, z * FREQ_RATIO);
     return v * amplitude_;
+}
+
+// -----------------------------------------------------------------------------
+// JavaOctaveNoise
+// -----------------------------------------------------------------------------
+
+JavaOctaveNoise::JavaOctaveNoise(uint64_t& seed_state, int first_octave, int num_octaves) {
+    octaves_.reserve(num_octaves);
+    for (int i = 0; i < num_octaves; ++i) {
+        uint64_t octave_seed = static_cast<uint64_t>(java_next_long(seed_state));
+        octaves_.emplace_back(octave_seed);
+    }
+}
+
+void JavaOctaveNoise::generate_noise_3d(double* out, int xOff, int yOff, int zOff,
+                                         int xSz, int ySz, int zSz,
+                                         double xScale, double yScale, double zScale) const {
+    for (int dz = 0; dz < zSz; ++dz) {
+        for (int dy = 0; dy < ySz; ++dy) {
+            for (int dx = 0; dx < xSz; ++dx) {
+                double x = static_cast<double>(xOff + dx) * xScale;
+                double y = static_cast<double>(yOff + dy) * yScale;
+                double z = static_cast<double>(zOff + dz) * zScale;
+                double sum = 0.0;
+                double amp = 1.0;
+                double lacunarity = 1.0;
+                for (int o = 0; o < static_cast<int>(octaves_.size()); ++o) {
+                    sum += octaves_[o].sample(x * lacunarity, y * lacunarity, z * lacunarity) * amp;
+                    amp *= 0.5;
+                    lacunarity *= 2.0;
+                }
+                int idx = dz * xSz * ySz + dy * xSz + dx;
+                out[idx] = sum;
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// JavaPerlinNoise
+// -----------------------------------------------------------------------------
+
+JavaPerlinNoise::JavaPerlinNoise(uint64_t& seed_state, int octaves)
+    : octaves_(octaves), noise_(static_cast<uint64_t>(java_next_long(seed_state))) {
+}
+
+double JavaPerlinNoise::sample(double x, double y, double z) const {
+    double sum = 0.0;
+    double amp = 1.0;
+    double freq = 1.0;
+    for (int i = 0; i < octaves_; ++i) {
+        sum += noise_.sample(x * freq, y * freq, z * freq) * amp;
+        amp *= persistence_;
+        freq *= 2.0;
+    }
+    return sum;
+}
+
+double JavaPerlinNoise::sample(double x, double z) const {
+    return sample(x, 0.0, z);
 }
 
 } // namespace VoxelEngine

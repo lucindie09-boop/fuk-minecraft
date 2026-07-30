@@ -2,7 +2,7 @@
 import os, sys
 
 env = SConscript("godot-cpp/SConstruct")
-env.Append(CPPPATH=["src/"])
+env.Append(CPPPATH=["src/", "third_party/cubiomes"])
 
 # Generate compile_commands.json for clang-tidy static analysis
 env.Tool('compilation_db')
@@ -26,11 +26,19 @@ if coverage == "1" and sys.platform != "win32":
     env.Append(CCFLAGS=["--coverage"])
     env.Append(LINKFLAGS=["--coverage"])
 
-# Collect all .cpp files in src/ and subdirectories
-sources = Glob("src/*.cpp") + Glob("src/*/*.cpp")
+# Cubiomes C sources
+cubiomes_sources = Glob("third_party/cubiomes/*.c")
+# Exclude the tests file
+cubiomes_sources = [s for s in cubiomes_sources if os.path.basename(str(s)) not in ("tests.c", "finders.c")]
 
-# Exclude standalone tools from the main library
-lib_sources = [s for s in sources if os.path.basename(str(s)) not in ("terrain_debug.cpp", "benchmark.cpp")]
+# Collect all .cpp files in src/ and subdirectories
+sources = Glob("src/*.cpp") + Glob("src/*/*.cpp") + cubiomes_sources
+
+# Exclude standalone tools and removed 1.18 infrastructure from the main library
+lib_sources = [s for s in sources if os.path.basename(str(s)) not in (
+    "terrain_debug.cpp", "benchmark.cpp",
+    "climate_sampler.cpp", "terrain_spline.cpp",
+)]
 
 library = env.SharedLibrary("bin/libgdextension{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=lib_sources)
 Default(library, cdb)
@@ -41,8 +49,8 @@ Default(library, cdb)
 shared_sources = [
     "src/worldgen/chunk_generator.cpp",
     "src/worldgen/vegetation_generator.cpp",
-    "src/worldgen/climate_sampler.cpp",
-    "src/worldgen/terrain_spline.cpp",
+    "src/worldgen/biome_registry.cpp",
+    "src/worldgen/biome_layer.cpp",
     "src/core/perlin_noise.cpp",
     "src/core/chunk_data.cpp",
     "src/core/block_types.cpp",
@@ -57,25 +65,31 @@ shared_sources = [
     "src/engine/player_controller.cpp",
 ]
 shared_objects = env.Object(shared_sources)
+cubiomes_objects = env.Object(cubiomes_sources)
 
-# Debug terrain renderer (standalone executable)
-debug_env = env.Clone()
-debug_env.Append(LIBS=[])
-debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp"] + shared_objects[:7])
-Alias("debug", debug_prog)
+# Debug terrain renderer (standalone executable) — currently disabled during 1.7 rewrite
+# debug_env = env.Clone()
+# debug_env.Append(LIBS=[])
+# debug_prog = debug_env.Program("bin/terrain_debug", ["tools/terrain_debug.cpp"] + shared_objects[:7])
+# Alias("debug", debug_prog)
 
 # Performance benchmark (standalone executable)
 bench_env = env.Clone()
 bench_env.Append(CPPPATH=["src/"])
 bench_env.Append(LIBS=[])
-bench_prog = bench_env.Program("bin/benchmark", ["tools/benchmark.cpp"] + shared_objects)
+bench_prog = bench_env.Program("bin/benchmark", ["tools/benchmark.cpp"] + shared_objects + cubiomes_objects)
 Alias("bench", bench_prog)
 
 # Unit tests (standalone executable, no Godot runtime needed)
 test_env = env.Clone()
 test_env.Append(CPPPATH=["src/", "tests/"])
 test_env.Append(LIBS=[])
-test_prog = test_env.Program("bin/run_tests", Glob("tests/*.cpp") + shared_objects)
+test_sources = Glob("tests/*.cpp")
+# Exclude test files that reference removed 1.18 terrain infrastructure
+test_sources = [s for s in test_sources if os.path.basename(str(s)) not in (
+    "test_spline_factor.cpp", "test_concurrent_generation.cpp",
+)]
+test_prog = test_env.Program("bin/run_tests", test_sources + shared_objects + cubiomes_objects)
 Alias("test", test_prog)
 
 # LibFuzzer harnesses (Clang-only, Linux/macOS)

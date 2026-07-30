@@ -1,6 +1,7 @@
 #include "worldgen/terrain_spline.hpp"
 #include <cmath>
 #include <algorithm>
+#include <mutex>
 
 namespace VoxelEngine {
 
@@ -338,8 +339,8 @@ float get_spline(const TerrainSpline* sp, const float vals[5]) {
 float compute_terrain_offset(float c, float e, float w) {
     static SplineStack stack;
     static TerrainSpline* root = nullptr;
-    if (!root)
-        root = init_terrain_spline(stack);
+    static std::once_flag init_flag;
+    std::call_once(init_flag, [&]() { root = init_terrain_spline(stack); });
     return compute_terrain_offset(c, e, w, root);
 }
 
@@ -354,8 +355,8 @@ float compute_terrain_offset(float c, float e, float w, const TerrainSpline* roo
 float compute_factor(float c, float e, float w) {
     static SplineStack stack;
     static TerrainSpline* root = nullptr;
-    if (!root)
-        root = init_factor_spline(stack);
+    static std::once_flag init_flag;
+    std::call_once(init_flag, [&]() { root = init_factor_spline(stack); });
     return compute_factor(c, e, w, root);
 }
 
@@ -369,8 +370,8 @@ float compute_factor(float c, float e, float w, const TerrainSpline* root) {
 float compute_jaggedness(float c, float e, float w) {
     static SplineStack stack;
     static TerrainSpline* root = nullptr;
-    if (!root)
-        root = init_jaggedness_spline(stack);
+    static std::once_flag init_flag;
+    std::call_once(init_flag, [&]() { root = init_jaggedness_spline(stack); });
     return compute_jaggedness(c, e, w, root);
 }
 

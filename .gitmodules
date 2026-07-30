@@ -1,3 +1,6 @@
 [submodule "godot-cpp"]
 	path = godot-cpp
 	url = https://github.com/godotengine/godot-cpp.git
+[submodule "third_party/cubiomes"]
+	path = third_party/cubiomes
+	url = https://github.com/IceTank/cubiomes

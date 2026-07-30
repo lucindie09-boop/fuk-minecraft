@@ -6,6 +6,10 @@
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
 
+extern "C" {
+#include "layers.h"
+}
+
 using namespace godot;
 using namespace VoxelEngine;
 
@@ -13,9 +17,18 @@ void initialize_chunk_module(ModuleInitializationLevel p_level) {
     if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
-    
+
+    print_line("GDExtension: Starting initialization...");
+
+    // Initialize cubiomes library for biome generation
+    print_line("GDExtension: Calling initBiomes()...");
+    initBiomes();
+    print_line("GDExtension: initBiomes() completed");
+
+    print_line("GDExtension: Registering classes...");
     ClassDB::register_class<VoxelEngine::ChunkManager>();
     ClassDB::register_class<::PlayerController>();
+    print_line("GDExtension: Initialization complete");
 }
 
 void terminate_chunk_module(ModuleInitializationLevel p_level) {

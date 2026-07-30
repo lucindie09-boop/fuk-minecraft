@@ -79,8 +79,6 @@ public:
     godot::Vector3 get_player_position() const;
     void set_sea_level(float level);
     float get_sea_level() const;
-    void set_biome_size(float size);
-    float get_biome_size() const;
     void set_auto_update(bool enabled);
     bool get_auto_update() const;
     void set_editor_enabled(bool enabled);
@@ -169,8 +167,7 @@ private:
 bool smooth_lighting = false;
     int32_t lod_distance = 0;
     float lod_detail_level = 0.5f;
-    float sea_level = 200.0f;
-    float biome_size = 1.0f;
+    float sea_level = 63.0f;
     bool vegetation_enabled = true;
     double runtime_elapsed = 0.0;
     uint64_t frame_count = 0;
