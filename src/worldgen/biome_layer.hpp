@@ -3,8 +3,9 @@
 #include <cstdint>
 #include <memory>
 
-// cubiomes forward declarations
-struct LayerStack;
+extern "C" {
+#include "generator.h"
+}
 
 namespace VoxelEngine {
 
