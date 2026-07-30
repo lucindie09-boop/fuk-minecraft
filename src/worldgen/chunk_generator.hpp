@@ -132,21 +132,24 @@ private:
         return land_biome_from_grid(temperature, humidity);
     }
 
-    // Continuous Voronoi-weighted blend of all land-biome height parameters.
-    // All biomes share the same noise recipe; differentiation comes from
-    // base_off and scale_m per biome center.
-    // Uses fixed base-frequency climate for Voronoi weights so biome boundaries
-    // in the height field remain smooth regardless of biome_size.
+    // Additive multi-band terrain height.
+    // Each band is an independent additive term with its own frequency and
+    // amplitude ceiling. No normalized blending, so adding a band can only
+    // increase potential relief, never dilute existing terms.
+    //   regional_swell   (0.001) × 60 — where mountain ranges vs plains regions are
+    //   primary_relief   (0.010) × 30 — the hill you're actually standing on
+    //   ridged_detail    (0.020) × 15 — ridge lines and valleys
+    //   fine_roughness   (0.060) ×  4 — block-scale surface texture
     float sample_land_shape(float x, float z, float /*temperature*/, float /*humidity*/) const {
         static constexpr float BASE_TEMP_SCALE = 0.00015f;
         static constexpr float BASE_HUM_SCALE  = 0.00020f;
         // One entry per land biome. base_off/scale_m shape the *height*;
         // all biomes now use the same noise recipe, so the only difference
-        // between them is base height offset and amplitude scaling.
-        static constexpr struct { float t, h, base_off, scale_m; } centers[] = {
- {0.50f, 0.35f,   6.0f, 0.12f},   // 0 Plains — gentle rolling
-            {0.50f, 0.78f,   4.0f, 1.00f},   // 1 Forest     — temperate, humid: hilly
-            {0.78f, 0.22f, -12.0f, 0.37f},   // 2 Desert     — hot, dry
+        // between them is base height offset.
+        static constexpr struct { float t, h, base_off; } centers[] = {
+            {0.50f, 0.35f,   6.0f},   // Plains
+            {0.50f, 0.78f,   4.0f},   // Forest
+            {0.78f, 0.22f, -12.0f},   // Desert
         };
         static constexpr int NUM_BIOMES = 3;
         // Sample climate at the base frequency for smooth height blending
@@ -154,30 +157,29 @@ private:
         float blend_hum  = clamp01((humidity_noise.noise_2d(x * BASE_HUM_SCALE,  z * BASE_HUM_SCALE)  + 1.0f) * 0.5f);
 
         float w_total = 0.0f, w_base = 0.0f;
-        float weights[NUM_BIOMES];
         for (int i = 0; i < NUM_BIOMES; i++) {
             float dsq = (blend_temp - centers[i].t) * (blend_temp - centers[i].t)
                       + (blend_hum  - centers[i].h) * (blend_hum  - centers[i].h);
             float w = 1.0f / (dsq + 0.0001f);
-            weights[i] = w;
             w_base  += w * centers[i].base_off;
             w_total += w;
         }
-        float base  = 208.0f + w_base / w_total;
-
-        // Terrain amplitude control — distinct flat, hilly, and mountainous regions
-        float terrain_control = terrain_noise.fbm(x + 7000.0f, z + 7000.0f, 3, 0.50f, 0.0015f);
-        float terrain_amplitude = lerp(8.0f, 32.0f, smoothstep(-0.3f, 0.5f, terrain_control));
+        float base = 208.0f + w_base / w_total;
 
         // Anisotropic domain warp — subtle directional flow so contours aren't perfectly isotropic
         float warp_x = terrain_noise.noise_2d(x * 0.002f, z * 0.002f) * 18.0f;
         float warp_z = terrain_noise.noise_2d((x + 5000.0f) * 0.002f, (z + 5000.0f) * 0.002f) * 30.0f;
 
-        // Broad low-frequency terrain with light ridged detail
-        float per_noise_val = terrain_noise.fbm(x + warp_x, z + warp_z, 4, 0.52f, 0.0064f) * 0.85f
-                            + terrain_noise.ridged_noise(x + 4000.0f + warp_x, z + 4000.0f + warp_z, 3, 0.55f, 0.016f) * 0.15f;
+        float wx = x + warp_x;
+        float wz = z + warp_z;
 
-        return base + per_noise_val * terrain_amplitude;
+        // Additive bands — each adds independent relief with its own amplitude ceiling
+        float regional_swell = terrain_noise.fbm(wx, wz, 3, 0.50f, 0.0010f) * 60.0f;
+        float primary_relief = terrain_noise.fbm(wx + 2000.0f, wz + 2000.0f, 4, 0.52f, 0.010f) * 30.0f;
+        float ridged_detail  = terrain_noise.ridged_noise(wx + 4000.0f, wz + 4000.0f, 3, 0.55f, 0.020f) * 15.0f;
+        float fine_roughness = terrain_noise.noise_2d(wx * 0.06f, wz * 0.06f) * 4.0f;
+
+        return base + regional_swell + primary_relief + ridged_detail + fine_roughness;
     }
 
     // -------------------------------------------------------------------------
